@@ -134,23 +134,16 @@ class DartApp {
     }
 
     _bindOverlayToggles() {
-        const toggles = ["toggle-roi", "toggle-motion", "toggle-fields"];
-        const keys = ["roi", "motion", "fields"];
-
-        toggles.forEach((id, idx) => {
-            const el = document.getElementById(id);
-            if (el) {
-                el.addEventListener("change", () => {
-                    const body = {};
-                    body[keys[idx]] = el.checked;
-                    fetch("/api/overlays", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify(body),
-                    }).catch(e => console.error("Overlay toggle error:", e));
-                });
-            }
-        });
+        const el = document.getElementById("toggle-motion");
+        if (el) {
+            el.addEventListener("change", () => {
+                fetch("/api/overlays", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ motion: el.checked }),
+                }).catch(e => console.error("Overlay toggle error:", e));
+            });
+        }
     }
 
     // --- Hit Candidate Flow ---

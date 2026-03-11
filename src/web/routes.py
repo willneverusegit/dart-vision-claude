@@ -264,17 +264,11 @@ def setup_routes(app_state: dict) -> APIRouter:
         body = await request.json()
         pipeline = app_state.get("pipeline")
         if pipeline:
-            if "roi" in body:
-                pipeline.show_overlay_roi = bool(body["roi"])
             if "motion" in body:
                 pipeline.show_overlay_motion = bool(body["motion"])
-            if "fields" in body:
-                pipeline.show_overlay_fields = bool(body["fields"])
         return {
             "ok": True,
-            "roi": pipeline.show_overlay_roi if pipeline else False,
             "motion": pipeline.show_overlay_motion if pipeline else False,
-            "fields": pipeline.show_overlay_fields if pipeline else False,
         }
 
     @router.get("/api/overlays")
@@ -282,9 +276,7 @@ def setup_routes(app_state: dict) -> APIRouter:
         """Get current overlay toggle states."""
         pipeline = app_state.get("pipeline")
         return {
-            "roi": pipeline.show_overlay_roi if pipeline else False,
             "motion": pipeline.show_overlay_motion if pipeline else False,
-            "fields": pipeline.show_overlay_fields if pipeline else False,
         }
 
     # --- Calibration ---
@@ -301,6 +293,12 @@ def setup_routes(app_state: dict) -> APIRouter:
                 homography = pipeline.calibration.get_homography()
                 if homography is not None and hasattr(pipeline, "roi"):
                     pipeline.roi.set_homography_matrix(homography)
+                # Apply calibrated radii to field mapper
+                radii_px = pipeline.calibration.get_radii_px()
+                if radii_px and len(radii_px) == 6 and hasattr(pipeline, "field_mapper"):
+                    outer_r = radii_px[-1]
+                    if outer_r > 0:
+                        pipeline.field_mapper.set_ring_radii_px(radii_px, outer_r)
             return result
         return {"ok": False, "error": "No pipeline/calibration manager"}
 

@@ -60,10 +60,8 @@ class DartPipeline:
         self._last_roi: np.ndarray | None = None
         self._last_motion_mask: np.ndarray | None = None
 
-        # Overlay toggles (set from web routes)
-        self.show_overlay_roi = False
+        # Motion overlay toggle (set from web routes)
         self.show_overlay_motion = False
-        self.show_overlay_fields = False
 
     def start(self) -> None:
         """Initialize all modules and start processing loop."""
@@ -286,31 +284,15 @@ class DartPipeline:
                         (detection.center[0] + 20, detection.center[1]),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
 
-        # --- Vision overlays (composited into bottom-right corner) ---
-        overlay_size = 160
-        margin = 10
-        overlay_y = annotated.shape[0] - overlay_size - margin
-        overlay_x = annotated.shape[1] - overlay_size - margin
-        overlay_count = 0
-
-        if self.show_overlay_roi and roi is not None:
-            self._composite_overlay(annotated, roi, overlay_x, overlay_y,
-                                     overlay_size, "ROI")
-            overlay_x -= overlay_size + margin
-            overlay_count += 1
-
+        # --- Motion mask overlay (large, bottom-right corner) ---
         if self.show_overlay_motion and motion_mask is not None:
+            fh, fw = annotated.shape[:2]
+            overlay_size = min(fw // 2, fh // 2, 320)
+            margin = 10
+            overlay_y = fh - overlay_size - margin
+            overlay_x = fw - overlay_size - margin
             self._composite_overlay(annotated, motion_mask, overlay_x, overlay_y,
                                      overlay_size, "MOTION")
-            overlay_x -= overlay_size + margin
-            overlay_count += 1
-
-        if self.show_overlay_fields and roi is not None:
-            field_img = cv2.cvtColor(roi, cv2.COLOR_GRAY2BGR) if len(roi.shape) == 2 else roi.copy()
-            self._draw_field_overlay(field_img)
-            self._composite_overlay(annotated, field_img, overlay_x, overlay_y,
-                                     overlay_size, "FIELDS")
-            overlay_count += 1
 
         self._last_annotated_frame = annotated
 

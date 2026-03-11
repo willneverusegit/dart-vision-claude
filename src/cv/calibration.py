@@ -13,10 +13,14 @@ from datetime import datetime, timezone
 logger = logging.getLogger(__name__)
 
 BOARD_DIAMETER_MM = 340  # Standard dartboard playing area diameter
+BOARD_RADIUS_MM = 170   # Double-outer ring radius
 
 # Known surround frame dimensions (black frame around board)
 FRAME_OUTER_MM = 517  # Outer edge of black frame
 FRAME_INNER_MM = 480  # Inner edge where ArUco markers sit
+
+# ROI crop: board diameter + margin so the double ring is fully visible
+BOARD_CROP_MM = 380   # 340mm board + 20mm margin each side
 
 # ArUco configuration for the project markers
 ARUCO_DICT_TYPE = cv2.aruco.DICT_4X4_50
@@ -88,12 +92,24 @@ class CalibrationManager:
             board_width_px = float(np.linalg.norm(src[1] - src[0]))
             if board_width_px < 1:
                 return {"ok": False, "error": "Board width too small (< 1px)"}
-            mm_per_px = BOARD_DIAMETER_MM / board_width_px
+            # Assume clicked points span the frame inner edge (480mm)
+            mm_per_px = FRAME_INNER_MM / board_width_px
             center_x = float((src[0][0] + src[2][0]) / 2)
             center_y = float((src[0][1] + src[2][1]) / 2)
+            # Compute radii for the ROI: ROI (400px) maps the clicked area
+            # which spans FRAME_INNER_MM (480mm)
+            roi_w = roi_size[0]
+            roi_mm_per_px_local = FRAME_INNER_MM / roi_w
+            radii_px = []
+            for key in ["bull_inner", "bull_outer", "triple_inner",
+                         "triple_outer", "double_inner", "double_outer"]:
+                r_mm = RING_RADII_MM[key]
+                r_px = r_mm / roi_mm_per_px_local
+                radii_px.append(round(r_px, 1))
             self._config.update({
                 "center_px": [center_x, center_y],
                 "mm_per_px": mm_per_px,
+                "radii_px": radii_px,
                 "homography": homography.tolist(),
                 "last_update_utc": datetime.now(timezone.utc).isoformat(),
                 "valid": True,
@@ -196,28 +212,60 @@ class CalibrationManager:
             ordered = [centers[tl_idx], centers[tr_idx],
                        centers[br_idx], centers[bl_idx]]
 
-            src = np.float32(ordered)
-            dst = np.float32([[0, 0], [roi_size[0], 0],
-                              [roi_size[0], roi_size[1]], [0, roi_size[1]]])
-            homography = cv2.getPerspectiveTransform(src, dst)
+            src_markers = np.float32(ordered)
+            roi_w, roi_h = roi_size
+
+            # Step 1: Compute homography from marker corners to a
+            # "frame space" (480mm mapped to 480px for easy math)
+            frame_px = marker_spacing_mm  # 480
+            frame_dst = np.float32([
+                [0, 0], [frame_px, 0],
+                [frame_px, frame_px], [0, frame_px],
+            ])
+            H_frame = cv2.getPerspectiveTransform(src_markers, frame_dst)
+
+            # Step 2: Define a tighter crop centered on the board
+            # BOARD_CROP_MM (380mm) = board diameter + small margin
+            crop_mm = BOARD_CROP_MM
+            margin = (frame_px - crop_mm) / 2  # (480-380)/2 = 50
+            crop_in_frame = np.float32([
+                [margin, margin],
+                [frame_px - margin, margin],
+                [frame_px - margin, frame_px - margin],
+                [margin, frame_px - margin],
+            ])
+
+            # Step 3: Map crop corners back to camera image coordinates
+            H_frame_inv = np.linalg.inv(H_frame)
+            crop_in_image = cv2.perspectiveTransform(
+                crop_in_frame.reshape(1, -1, 2), H_frame_inv
+            ).reshape(4, 2)
+
+            # Step 4: Final homography — camera crop region → 400×400 ROI
+            dst = np.float32([
+                [0, 0], [roi_w, 0],
+                [roi_w, roi_h], [0, roi_h],
+            ])
+            homography = cv2.getPerspectiveTransform(
+                np.float32(crop_in_image), dst
+            )
 
             det = np.linalg.det(homography)
             if abs(det) < 1e-6:
                 return {"ok": False, "error": "Degenerate homography"}
 
-            # Compute mm/px from known frame dimensions
-            # The markers sit at the inner corners → spacing = FRAME_INNER_MM
-            diag_px = float(np.linalg.norm(src[2] - src[0]))
+            # Compute mm/px from known frame dimensions (original image scale)
+            diag_px = float(np.linalg.norm(src_markers[2] - src_markers[0]))
             diag_mm = marker_spacing_mm * math.sqrt(2)
             mm_per_px = diag_mm / diag_px if diag_px > 0 else 1.0
 
-            # Board center = center of the 4 markers
-            center_x = float(np.mean(src[:, 0]))
-            center_y = float(np.mean(src[:, 1]))
+            # Board center in original image
+            center_x = float(np.mean(src_markers[:, 0]))
+            center_y = float(np.mean(src_markers[:, 1]))
 
-            # Compute radii in pixels for the ROI (after warp)
-            roi_w, roi_h = roi_size
-            roi_mm_per_px = marker_spacing_mm / roi_w  # ROI spans marker_spacing_mm
+            # Compute radii in pixels for the cropped ROI
+            # The ROI now spans BOARD_CROP_MM (380mm), not the full frame
+            roi_mm_per_px = crop_mm / roi_w  # 380/400 = 0.95 mm/px
             radii_px = []
             for key in ["bull_inner", "bull_outer", "triple_inner",
                          "triple_outer", "double_inner", "double_outer"]:
@@ -231,6 +279,7 @@ class CalibrationManager:
                 "homography": homography.tolist(),
                 "radii_px": radii_px,
                 "frame_inner_mm": marker_spacing_mm,
+                "board_crop_mm": crop_mm,
                 "marker_corners_px": ordered,
                 "last_update_utc": datetime.now(timezone.utc).isoformat(),
                 "valid": True,
