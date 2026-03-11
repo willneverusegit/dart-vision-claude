@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dart-Vision</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <header class="header">
+        <h1 class="header__title">Dart-Vision</h1>
+        <div class="header__stats">
+            <span id="fps-display">FPS: --</span>
+            <span id="ws-status" class="ws-status ws-status--disconnected">Offline</span>
+        </div>
+    </header>
+
+    <main class="main-layout">
+        <!-- Left: Video Feed -->
+        <section class="panel panel--video">
+            <h2 class="panel__title">Kamera</h2>
+            <div class="video-container">
+                <img id="video-feed" src="/video/feed" alt="Live Camera Feed" class="video-feed">
+                <div id="video-overlay" class="video-overlay"></div>
+            </div>
+            <div class="video-controls">
+                <button id="btn-calibrate" class="btn btn--secondary">Kalibrieren</button>
+            </div>
+        </section>
+
+        <!-- Center: Dartboard SVG -->
+        <section class="panel panel--dartboard">
+            <h2 class="panel__title">Dartboard</h2>
+            <div id="dartboard-container" class="dartboard-container"></div>
+            <div class="turn-info">
+                <span id="turn-total" class="turn-total">0</span>
+                <span class="turn-label">Punkte diese Runde</span>
+                <div class="darts-remaining">
+                    <span id="dart-1" class="dart-icon">&#x1F3AF;</span>
+                    <span id="dart-2" class="dart-icon">&#x1F3AF;</span>
+                    <span id="dart-3" class="dart-icon">&#x1F3AF;</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Right: Scoreboard -->
+        <section class="panel panel--scoreboard">
+            <h2 class="panel__title">Scoreboard</h2>
+            <div id="scoreboard" class="scoreboard"></div>
+            <div class="game-controls">
+                <button id="btn-undo" class="btn btn--warning">Undo</button>
+                <button id="btn-next" class="btn btn--primary">Weiter</button>
+                <button id="btn-remove-darts" class="btn btn--secondary">Darts entfernen</button>
+                <button id="btn-end-game" class="btn btn--danger">Spiel beenden</button>
+            </div>
+        </section>
+    </main>
+
+    <!-- Game Setup Controls -->
+    <section class="game-setup">
+        <div class="setup-row">
+            <select id="game-mode" class="select">
+                <option value="x01">X01</option>
+                <option value="cricket">Cricket</option>
+                <option value="free">Free Play</option>
+            </select>
+            <select id="starting-score" class="select">
+                <option value="301">301</option>
+                <option value="501" selected>501</option>
+                <option value="701">701</option>
+            </select>
+            <input id="player-names" type="text" class="input" placeholder="Spieler (kommagetrennt)" value="Spieler 1, Spieler 2">
+            <button id="btn-new-game" class="btn btn--accent">Neues Spiel</button>
+        </div>
+    </section>
+
+    <!-- Winner Modal -->
+    <div id="winner-modal" class="modal" style="display: none;">
+        <div class="modal__content">
+            <h2 id="winner-text" class="modal__title">Gewinner!</h2>
+            <button id="btn-close-modal" class="btn btn--accent">OK</button>
+        </div>
+    </div>
+
+    <!-- Calibration Modal -->
+    <div id="calibration-modal" class="modal" style="display: none;">
+        <div class="modal__content modal__content--wide">
+            <h2 class="modal__title">Kalibrierung</h2>
+
+            <!-- Step 1: Mode Selection -->
+            <div id="cal-step-mode" class="cal-step">
+                <p class="modal__text">Kalibrierungsmethode:</p>
+                <div class="cal-mode-buttons">
+                    <button id="btn-cal-manual" class="btn btn--primary cal-mode-btn">Manuell (4 Punkte)</button>
+                    <button id="btn-cal-aruco" class="btn btn--primary cal-mode-btn">ArUco (Auto)</button>
+                    <button id="btn-cal-charuco" class="btn btn--primary cal-mode-btn">ChArUco (Multi-Frame)</button>
+                </div>
+            </div>
+
+            <!-- Step 2: Manual Point Selection -->
+            <div id="cal-step-manual" class="cal-step" style="display: none;">
+                <p class="modal__text">Klicke 4 Board-Ecken im Uhrzeigersinn (OL, OR, UR, UL)</p>
+                <canvas id="calibration-canvas" class="calibration-canvas"></canvas>
+                <div class="modal__actions">
+                    <button id="btn-calibrate-confirm" class="btn btn--accent" disabled>Kalibrieren</button>
+                    <button id="btn-calibrate-reset" class="btn btn--warning">Reset</button>
+                    <button id="btn-cal-back" class="btn btn--secondary">Zurueck</button>
+                </div>
+            </div>
+
+            <!-- Step 3: Auto Calibration Progress -->
+            <div id="cal-step-auto" class="cal-step" style="display: none;">
+                <p id="cal-auto-status" class="modal__text">Kalibrierung laeuft...</p>
+                <div class="cal-spinner"></div>
+            </div>
+
+            <!-- Step 4: Result / Preview -->
+            <div id="cal-step-result" class="cal-step" style="display: none;">
+                <p id="cal-result-text" class="modal__text">Kalibrierung erfolgreich!</p>
+                <div class="cal-preview-row">
+                    <div class="cal-preview-item">
+                        <p class="cal-preview-label">ROI Vorschau</p>
+                        <img id="cal-roi-preview" class="cal-preview-img" alt="ROI Preview">
+                    </div>
+                    <div class="cal-preview-item">
+                        <p class="cal-preview-label">Feld-Overlay</p>
+                        <img id="cal-overlay-preview" class="cal-preview-img" alt="Field Overlay">
+                    </div>
+                </div>
+                <div class="modal__actions">
+                    <button id="btn-cal-accept" class="btn btn--accent">Uebernehmen</button>
+                    <button id="btn-cal-retry" class="btn btn--warning">Wiederholen</button>
+                </div>
+            </div>
+
+            <!-- Cancel always visible -->
+            <div class="modal__actions" id="cal-cancel-row">
+                <button id="btn-calibrate-cancel" class="btn btn--secondary">Abbrechen</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/websocket.js"></script>
+    <script src="/static/js/dartboard.js"></script>
+    <script src="/static/js/scoreboard.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

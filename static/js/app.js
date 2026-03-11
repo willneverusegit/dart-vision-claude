@@ -1,0 +1,482 @@
+/**
+ * DartApp: Main application logic connecting all components.
+ * Uses safe DOM methods (no innerHTML) to prevent XSS.
+ */
+class DartApp {
+    constructor() {
+        this.ws = new DartWebSocket();
+        this.dartboard = new DartboardRenderer("dartboard-container");
+        this.scoreboard = new Scoreboard("scoreboard");
+        this.state = null;
+        this.calibrationPoints = [];
+
+        this._bindEvents();
+        this._bindWebSocket();
+        this.ws.connect();
+        this._startStatsPolling();
+    }
+
+    _bindEvents() {
+        // New Game
+        const btnNewGame = document.getElementById("btn-new-game");
+        if (btnNewGame) {
+            btnNewGame.addEventListener("click", () => this._newGame());
+        }
+
+        // Undo
+        const btnUndo = document.getElementById("btn-undo");
+        if (btnUndo) {
+            btnUndo.addEventListener("click", () => this._undo());
+        }
+
+        // Next Player
+        const btnNext = document.getElementById("btn-next");
+        if (btnNext) {
+            btnNext.addEventListener("click", () => this._nextPlayer());
+        }
+
+        // Remove Darts
+        const btnRemove = document.getElementById("btn-remove-darts");
+        if (btnRemove) {
+            btnRemove.addEventListener("click", () => this._removeDarts());
+        }
+
+        // End Game
+        const btnEndGame = document.getElementById("btn-end-game");
+        if (btnEndGame) {
+            btnEndGame.addEventListener("click", () => this._endGame());
+        }
+
+        // Calibrate — open mode selection
+        const btnCalibrate = document.getElementById("btn-calibrate");
+        if (btnCalibrate) {
+            btnCalibrate.addEventListener("click", () => this._openCalibration());
+        }
+
+        // Mode selection buttons
+        const btnCalManual = document.getElementById("btn-cal-manual");
+        if (btnCalManual) {
+            btnCalManual.addEventListener("click", () => this._startManualCalibration());
+        }
+        const btnCalAruco = document.getElementById("btn-cal-aruco");
+        if (btnCalAruco) {
+            btnCalAruco.addEventListener("click", () => this._startArucoCalibration());
+        }
+        const btnCalCharuco = document.getElementById("btn-cal-charuco");
+        if (btnCalCharuco) {
+            btnCalCharuco.addEventListener("click", () => this._startCharucoCalibration());
+        }
+
+        // Manual calibration confirm/reset
+        const btnCalConfirm = document.getElementById("btn-calibrate-confirm");
+        if (btnCalConfirm) {
+            btnCalConfirm.addEventListener("click", () => this._submitCalibration());
+        }
+        const btnCalReset = document.getElementById("btn-calibrate-reset");
+        if (btnCalReset) {
+            btnCalReset.addEventListener("click", () => this._resetManualPoints());
+        }
+        const btnCalBack = document.getElementById("btn-cal-back");
+        if (btnCalBack) {
+            btnCalBack.addEventListener("click", () => this._showCalStep("cal-step-mode"));
+        }
+
+        // Result accept/retry
+        const btnCalAccept = document.getElementById("btn-cal-accept");
+        if (btnCalAccept) {
+            btnCalAccept.addEventListener("click", () => this._closeCalibration());
+        }
+        const btnCalRetry = document.getElementById("btn-cal-retry");
+        if (btnCalRetry) {
+            btnCalRetry.addEventListener("click", () => this._showCalStep("cal-step-mode"));
+        }
+
+        // Cancel
+        const btnCalCancel = document.getElementById("btn-calibrate-cancel");
+        if (btnCalCancel) {
+            btnCalCancel.addEventListener("click", () => this._closeCalibration());
+        }
+
+        // Winner modal close
+        const btnCloseModal = document.getElementById("btn-close-modal");
+        if (btnCloseModal) {
+            btnCloseModal.addEventListener("click", () => {
+                document.getElementById("winner-modal").style.display = "none";
+            });
+        }
+    }
+
+    _bindWebSocket() {
+        this.ws.on("connected", () => {
+            const el = document.getElementById("ws-status");
+            if (el) {
+                el.textContent = "Online";
+                el.className = "ws-status ws-status--connected";
+            }
+        });
+
+        this.ws.on("disconnected", () => {
+            const el = document.getElementById("ws-status");
+            if (el) {
+                el.textContent = "Offline";
+                el.className = "ws-status ws-status--disconnected";
+            }
+        });
+
+        this.ws.on("game_state", (data) => {
+            this._updateState(data);
+        });
+
+        this.ws.on("score", (data) => {
+            this._onScoreEvent(data);
+        });
+    }
+
+    _updateState(state) {
+        this.state = state;
+
+        // Update scoreboard
+        this.scoreboard.update(state);
+
+        // Update turn total
+        const turnTotalEl = document.getElementById("turn-total");
+        if (turnTotalEl) {
+            turnTotalEl.textContent = (state.turn_total || 0).toString();
+        }
+
+        // Update dart icons
+        const dartsThrown = state.darts_thrown || 0;
+        for (let i = 1; i <= 3; i++) {
+            const dartEl = document.getElementById("dart-" + i);
+            if (dartEl) {
+                if (i <= dartsThrown) {
+                    dartEl.classList.add("dart-icon--used");
+                } else {
+                    dartEl.classList.remove("dart-icon--used");
+                }
+            }
+        }
+
+        // Check for winner
+        if (state.winner) {
+            this._showWinner(state.winner);
+        }
+    }
+
+    _onScoreEvent(data) {
+        // Add hit marker to dartboard
+        if (data.sector !== undefined && data.ring !== undefined) {
+            this.dartboard.addHit(data.sector, data.ring, data.score);
+        }
+    }
+
+    _showWinner(name) {
+        const modal = document.getElementById("winner-modal");
+        const text = document.getElementById("winner-text");
+        if (modal && text) {
+            text.textContent = name + " gewinnt!";
+            modal.style.display = "flex";
+            modal.classList.add("winner-pulse");
+            setTimeout(() => modal.classList.remove("winner-pulse"), 2000);
+        }
+    }
+
+    async _newGame() {
+        const modeEl = document.getElementById("game-mode");
+        const scoreEl = document.getElementById("starting-score");
+        const playersEl = document.getElementById("player-names");
+
+        const mode = modeEl ? modeEl.value : "x01";
+        const startingScore = scoreEl ? parseInt(scoreEl.value, 10) : 501;
+        const playersStr = playersEl ? playersEl.value : "Spieler 1";
+
+        const players = playersStr.split(",").map(s => s.trim()).filter(s => s.length > 0);
+        if (players.length === 0) {
+            players.push("Spieler 1");
+        }
+
+        // Clear dartboard hits
+        this.dartboard.clearHits();
+
+        try {
+            const response = await fetch("/api/game/new", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ mode, players, starting_score: startingScore }),
+            });
+            const data = await response.json();
+            this._updateState(data);
+        } catch (e) {
+            console.error("New game error:", e);
+        }
+    }
+
+    async _undo() {
+        try {
+            const response = await fetch("/api/game/undo", { method: "POST" });
+            const data = await response.json();
+            this._updateState(data);
+        } catch (e) {
+            console.error("Undo error:", e);
+        }
+    }
+
+    async _nextPlayer() {
+        try {
+            const response = await fetch("/api/game/next-player", { method: "POST" });
+            const data = await response.json();
+            this._updateState(data);
+            this.dartboard.clearHits();
+        } catch (e) {
+            console.error("Next player error:", e);
+        }
+    }
+
+    async _removeDarts() {
+        try {
+            const response = await fetch("/api/game/remove-darts", { method: "POST" });
+            const data = await response.json();
+            this._updateState(data);
+            this.dartboard.clearHits();
+        } catch (e) {
+            console.error("Remove darts error:", e);
+        }
+    }
+
+    async _endGame() {
+        const confirmed = window.confirm("Spiel wirklich beenden?");
+        if (!confirmed) return;
+        try {
+            const response = await fetch("/api/game/end", { method: "POST" });
+            const data = await response.json();
+            this._updateState(data);
+            this.dartboard.clearHits();
+        } catch (e) {
+            console.error("End game error:", e);
+        }
+    }
+
+    // --- Calibration Workflow ---
+
+    _openCalibration() {
+        this.calibrationPoints = [];
+        const modal = document.getElementById("calibration-modal");
+        if (!modal) return;
+        modal.style.display = "flex";
+        this._showCalStep("cal-step-mode");
+    }
+
+    _showCalStep(stepId) {
+        const steps = document.querySelectorAll(".cal-step");
+        steps.forEach(s => { s.style.display = "none"; });
+        const target = document.getElementById(stepId);
+        if (target) target.style.display = "block";
+    }
+
+    async _startManualCalibration() {
+        this.calibrationPoints = [];
+        this._showCalStep("cal-step-manual");
+        const btn = document.getElementById("btn-calibrate-confirm");
+        if (btn) btn.disabled = true;
+
+        try {
+            const response = await fetch("/api/calibration/frame");
+            const data = await response.json();
+            if (data.ok && data.image) {
+                const canvas = document.getElementById("calibration-canvas");
+                if (canvas) {
+                    const ctx = canvas.getContext("2d");
+                    const img = new Image();
+                    img.onload = () => {
+                        canvas.width = img.width;
+                        canvas.height = img.height;
+                        ctx.drawImage(img, 0, 0);
+                        this._setupCalibrationClicks(canvas, ctx, img);
+                    };
+                    img.src = data.image;
+                }
+            }
+        } catch (e) {
+            console.error("Calibration frame error:", e);
+        }
+    }
+
+    async _startArucoCalibration() {
+        this._showCalStep("cal-step-auto");
+        const statusEl = document.getElementById("cal-auto-status");
+        if (statusEl) statusEl.textContent = "ArUco-Marker werden gesucht...";
+
+        try {
+            const response = await fetch("/api/calibration/aruco", { method: "POST" });
+            const data = await response.json();
+            if (data.ok) {
+                await this._showCalibrationResult("ArUco-Kalibrierung erfolgreich!");
+            } else {
+                if (statusEl) statusEl.textContent = "Fehler: " + (data.error || "Unbekannt");
+                setTimeout(() => this._showCalStep("cal-step-mode"), 3000);
+            }
+        } catch (e) {
+            console.error("ArUco calibration error:", e);
+            if (statusEl) statusEl.textContent = "Verbindungsfehler";
+            setTimeout(() => this._showCalStep("cal-step-mode"), 3000);
+        }
+    }
+
+    async _startCharucoCalibration() {
+        this._showCalStep("cal-step-auto");
+        const statusEl = document.getElementById("cal-auto-status");
+        if (statusEl) statusEl.textContent = "ChArUco-Board wird erkannt (ca. 3 Sekunden)...";
+
+        try {
+            const response = await fetch("/api/calibration/charuco", { method: "POST" });
+            const data = await response.json();
+            if (data.ok) {
+                await this._showCalibrationResult("ChArUco-Kalibrierung erfolgreich!");
+            } else {
+                if (statusEl) statusEl.textContent = "Fehler: " + (data.error || "Unbekannt");
+                setTimeout(() => this._showCalStep("cal-step-mode"), 3000);
+            }
+        } catch (e) {
+            console.error("ChArUco calibration error:", e);
+            if (statusEl) statusEl.textContent = "Verbindungsfehler";
+            setTimeout(() => this._showCalStep("cal-step-mode"), 3000);
+        }
+    }
+
+    _setupCalibrationClicks(canvas, ctx, img) {
+        const self = this;
+        canvas.onclick = function(event) {
+            if (self.calibrationPoints.length >= 4) return;
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const x = (event.clientX - rect.left) * scaleX;
+            const y = (event.clientY - rect.top) * scaleY;
+            self.calibrationPoints.push([x, y]);
+
+            // Draw point
+            ctx.beginPath();
+            ctx.arc(x, y, 5, 0, 2 * Math.PI);
+            ctx.fillStyle = "#2ed573";
+            ctx.fill();
+            ctx.strokeStyle = "#fff";
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Draw line to previous point
+            if (self.calibrationPoints.length > 1) {
+                const prev = self.calibrationPoints[self.calibrationPoints.length - 2];
+                ctx.beginPath();
+                ctx.moveTo(prev[0], prev[1]);
+                ctx.lineTo(x, y);
+                ctx.strokeStyle = "#2ed573";
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+
+            // Close polygon when 4 points
+            if (self.calibrationPoints.length === 4) {
+                const first = self.calibrationPoints[0];
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.lineTo(first[0], first[1]);
+                ctx.strokeStyle = "#2ed573";
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                const btn = document.getElementById("btn-calibrate-confirm");
+                if (btn) btn.disabled = false;
+            }
+
+            // Label
+            const labelNum = self.calibrationPoints.length;
+            const labels = ["OL", "OR", "UR", "UL"];
+            ctx.fillStyle = "#fff";
+            ctx.font = "bold 14px sans-serif";
+            ctx.fillText(labels[labelNum - 1], x + 8, y - 8);
+        };
+    }
+
+    _resetManualPoints() {
+        this.calibrationPoints = [];
+        const btn = document.getElementById("btn-calibrate-confirm");
+        if (btn) btn.disabled = true;
+        this._startManualCalibration();
+    }
+
+    async _submitCalibration() {
+        if (this.calibrationPoints.length !== 4) return;
+        try {
+            const response = await fetch("/api/calibration/manual", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ points: this.calibrationPoints }),
+            });
+            const data = await response.json();
+            if (data.ok) {
+                console.log("Calibration OK, mm/px:", data.mm_per_px);
+                await this._showCalibrationResult("Manuelle Kalibrierung erfolgreich!");
+            } else {
+                console.error("Calibration failed:", data.error);
+            }
+        } catch (e) {
+            console.error("Calibration submit error:", e);
+        }
+    }
+
+    async _showCalibrationResult(message) {
+        this._showCalStep("cal-step-result");
+        const textEl = document.getElementById("cal-result-text");
+        if (textEl) textEl.textContent = message;
+
+        // Load ROI preview
+        try {
+            const roiResp = await fetch("/api/calibration/roi-preview");
+            const roiData = await roiResp.json();
+            if (roiData.ok && roiData.image) {
+                const roiImg = document.getElementById("cal-roi-preview");
+                if (roiImg) roiImg.src = roiData.image;
+            }
+        } catch (e) {
+            console.error("ROI preview error:", e);
+        }
+
+        // Load field overlay
+        try {
+            const overlayResp = await fetch("/api/calibration/overlay");
+            const overlayData = await overlayResp.json();
+            if (overlayData.ok && overlayData.image) {
+                const overlayImg = document.getElementById("cal-overlay-preview");
+                if (overlayImg) overlayImg.src = overlayData.image;
+            }
+        } catch (e) {
+            console.error("Overlay preview error:", e);
+        }
+    }
+
+    _closeCalibration() {
+        const modal = document.getElementById("calibration-modal");
+        if (modal) modal.style.display = "none";
+        this.calibrationPoints = [];
+    }
+
+    _startStatsPolling() {
+        setInterval(async () => {
+            try {
+                const response = await fetch("/api/stats");
+                const data = await response.json();
+                const fpsEl = document.getElementById("fps-display");
+                if (fpsEl) {
+                    fpsEl.textContent = "FPS: " + data.fps;
+                }
+            } catch (e) {
+                // Silent fail for stats polling
+            }
+        }, 2000);
+    }
+}
+
+// Initialize app when DOM is ready
+document.addEventListener("DOMContentLoaded", () => {
+    window.dartApp = new DartApp();
+});
