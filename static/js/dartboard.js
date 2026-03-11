@@ -1,5 +1,6 @@
 /**
- * DartboardRenderer: Programmatic SVG dartboard with hit markers.
+ * DartboardRenderer: Programmatic SVG dartboard with exact hit markers.
+ * Supports pending (candidate) and confirmed hit states.
  */
 class DartboardRenderer {
     constructor(containerId) {
@@ -8,7 +9,7 @@ class DartboardRenderer {
         this.size = 400;
         this.cx = this.size / 2;
         this.cy = this.size / 2;
-        this.hits = [];
+        this.hits = new Map(); // candidate_id -> SVG group element
 
         // Standard dartboard sector order (clockwise from top)
         this.sectors = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5];
@@ -22,6 +23,12 @@ class DartboardRenderer {
             outerSingle: this.size * 0.47,
             double: this.size * 0.5,
         };
+
+        // ROI mapping: ROI is 400x400, double_outer is at ~141.7px from center
+        // SVG double radius is this.radii.double = 200
+        // Scale factor = svgDouble / roiDouble (set after calibration)
+        this.roiScale = this.radii.double / 141.7; // Default estimate
+        this.roiSize = 400; // ROI image dimensions
 
         // Colors
         this.colors = {
@@ -37,10 +44,25 @@ class DartboardRenderer {
         };
 
         this._render();
+        this._loadCalibration();
+    }
+
+    async _loadCalibration() {
+        try {
+            const resp = await fetch("/api/calibration/info");
+            const data = await resp.json();
+            if (data.ok && data.radii_px && data.radii_px.length === 6) {
+                const roiDoubleOuter = data.radii_px[5]; // double_outer in ROI pixels
+                if (roiDoubleOuter > 0) {
+                    this.roiScale = this.radii.double / roiDoubleOuter;
+                }
+            }
+        } catch (e) {
+            // Use default scale
+        }
     }
 
     _render() {
-        // Clear container
         while (this.container.firstChild) {
             this.container.removeChild(this.container.firstChild);
         }
@@ -57,26 +79,19 @@ class DartboardRenderer {
 
         // Draw sectors
         const sectorAngle = 360 / 20;
-        const startOffset = -90 - sectorAngle / 2; // 20 is at the top
+        const startOffset = -90 - sectorAngle / 2;
 
         for (let i = 0; i < 20; i++) {
             const angle1 = startOffset + i * sectorAngle;
             const angle2 = startOffset + (i + 1) * sectorAngle;
             const isEven = i % 2 === 0;
 
-            // Double ring
             this._addSector(angle1, angle2, this.radii.outerSingle, this.radii.double,
                 isEven ? this.colors.red : this.colors.green);
-
-            // Outer single
             this._addSector(angle1, angle2, this.radii.triple, this.radii.outerSingle,
                 isEven ? this.colors.black : this.colors.white);
-
-            // Triple ring
             this._addSector(angle1, angle2, this.radii.innerSingle, this.radii.triple,
                 isEven ? this.colors.red : this.colors.green);
-
-            // Inner single
             this._addSector(angle1, angle2, this.radii.outerBull, this.radii.innerSingle,
                 isEven ? this.colors.black : this.colors.white);
         }
@@ -91,7 +106,7 @@ class DartboardRenderer {
                            this.radii.outerSingle, this.radii.double];
         wireRadii.forEach(r => this._addCircleStroke(this.cx, this.cy, r, this.colors.wire, 0.5));
 
-        // Wire lines (sector dividers)
+        // Wire lines
         for (let i = 0; i < 20; i++) {
             const angle = (startOffset + i * sectorAngle) * Math.PI / 180;
             const x1 = this.cx + this.radii.outerBull * Math.cos(angle);
@@ -118,106 +133,47 @@ class DartboardRenderer {
         this.container.appendChild(svg);
     }
 
-    _addSector(startAngle, endAngle, innerR, outerR, color) {
-        const a1 = startAngle * Math.PI / 180;
-        const a2 = endAngle * Math.PI / 180;
+    // --- Hit Marker Methods ---
 
-        const x1i = this.cx + innerR * Math.cos(a1);
-        const y1i = this.cy + innerR * Math.sin(a1);
-        const x2i = this.cx + innerR * Math.cos(a2);
-        const y2i = this.cy + innerR * Math.sin(a2);
-        const x1o = this.cx + outerR * Math.cos(a1);
-        const y1o = this.cy + outerR * Math.sin(a1);
-        const x2o = this.cx + outerR * Math.cos(a2);
-        const y2o = this.cy + outerR * Math.sin(a2);
-
-        const largeArc = (endAngle - startAngle) > 180 ? 1 : 0;
-        const d = [
-            `M ${x1i} ${y1i}`,
-            `L ${x1o} ${y1o}`,
-            `A ${outerR} ${outerR} 0 ${largeArc} 1 ${x2o} ${y2o}`,
-            `L ${x2i} ${y2i}`,
-            `A ${innerR} ${innerR} 0 ${largeArc} 0 ${x1i} ${y1i}`,
-            "Z"
-        ].join(" ");
-
-        const path = document.createElementNS(this.svgNS, "path");
-        path.setAttribute("d", d);
-        path.setAttribute("fill", color);
-        this.svg.appendChild(path);
-    }
-
-    _addCircle(cx, cy, r, fill) {
-        const circle = document.createElementNS(this.svgNS, "circle");
-        circle.setAttribute("cx", cx);
-        circle.setAttribute("cy", cy);
-        circle.setAttribute("r", r);
-        circle.setAttribute("fill", fill);
-        this.svg.appendChild(circle);
-    }
-
-    _addCircleStroke(cx, cy, r, stroke, width) {
-        const circle = document.createElementNS(this.svgNS, "circle");
-        circle.setAttribute("cx", cx);
-        circle.setAttribute("cy", cy);
-        circle.setAttribute("r", r);
-        circle.setAttribute("fill", "none");
-        circle.setAttribute("stroke", stroke);
-        circle.setAttribute("stroke-width", width);
-        this.svg.appendChild(circle);
-    }
-
-    _addLine(x1, y1, x2, y2, stroke, width) {
-        const line = document.createElementNS(this.svgNS, "line");
-        line.setAttribute("x1", x1);
-        line.setAttribute("y1", y1);
-        line.setAttribute("x2", x2);
-        line.setAttribute("y2", y2);
-        line.setAttribute("stroke", stroke);
-        line.setAttribute("stroke-width", width);
-        this.svg.appendChild(line);
-    }
-
-    _addText(x, y, text, fill, size) {
-        const el = document.createElementNS(this.svgNS, "text");
-        el.setAttribute("x", x);
-        el.setAttribute("y", y);
-        el.setAttribute("fill", fill);
-        el.setAttribute("font-size", size);
-        el.setAttribute("font-weight", "bold");
-        el.setAttribute("text-anchor", "middle");
-        el.setAttribute("dominant-baseline", "central");
-        el.textContent = text;
-        this.svg.appendChild(el);
+    /**
+     * Add a hit using exact ROI coordinates.
+     */
+    addHitExact(roiX, roiY, score, candidateId, pending) {
+        const roiCx = this.roiSize / 2;
+        const roiCy = this.roiSize / 2;
+        const svgX = this.cx + (roiX - roiCx) * this.roiScale;
+        const svgY = this.cy + (roiY - roiCy) * this.roiScale;
+        this._createHitMarker(svgX, svgY, score, candidateId, pending);
     }
 
     /**
-     * Add a hit marker to the dartboard.
-     * @param {number} sector - The sector number (1-20, 25 for bull)
-     * @param {string} ring - "single", "double", "triple", "inner_bull", "outer_bull"
-     * @param {number} score - The score value
+     * Add a hit using sector/ring (fallback for non-exact data).
      */
-    addHit(sector, ring, score) {
+    addHit(sector, ring, score, candidateId, pending) {
         const pos = this._getHitPosition(sector, ring);
         if (!pos) return;
+        this._createHitMarker(pos.x, pos.y, score, candidateId, pending);
+    }
 
-        // Create hit marker
+    _createHitMarker(x, y, score, candidateId, pending) {
         const g = document.createElementNS(this.svgNS, "g");
+        if (candidateId) g.setAttribute("data-candidate-id", candidateId);
 
         const circle = document.createElementNS(this.svgNS, "circle");
-        circle.setAttribute("cx", pos.x);
-        circle.setAttribute("cy", pos.y);
-        circle.setAttribute("r", 6);
-        circle.setAttribute("fill", "#ff0");
-        circle.setAttribute("stroke", "#000");
-        circle.setAttribute("stroke-width", 1.5);
-        circle.setAttribute("opacity", 0.9);
+        circle.setAttribute("cx", x);
+        circle.setAttribute("cy", y);
+        circle.setAttribute("r", pending ? 7 : 6);
+        circle.setAttribute("fill", pending ? "rgba(255,165,0,0.8)" : "#ff0");
+        circle.setAttribute("stroke", pending ? "#fff" : "#000");
+        circle.setAttribute("stroke-width", pending ? 2 : 1.5);
+        circle.setAttribute("opacity", pending ? 0.85 : 0.9);
+        if (pending) circle.setAttribute("class", "hit-pending-pulse");
         g.appendChild(circle);
 
         const label = document.createElementNS(this.svgNS, "text");
-        label.setAttribute("x", pos.x);
-        label.setAttribute("y", pos.y + 1);
-        label.setAttribute("fill", "#000");
+        label.setAttribute("x", x);
+        label.setAttribute("y", y + 1);
+        label.setAttribute("fill", pending ? "#fff" : "#000");
         label.setAttribute("font-size", 7);
         label.setAttribute("font-weight", "bold");
         label.setAttribute("text-anchor", "middle");
@@ -226,25 +182,51 @@ class DartboardRenderer {
         g.appendChild(label);
 
         this.hitsGroup.appendChild(g);
-        this.hits.push(g);
+        if (candidateId) this.hits.set(candidateId, g);
     }
 
-    _getHitPosition(sector, ring) {
-        let angle, radius;
+    confirmHit(candidateId) {
+        const g = this.hits.get(candidateId);
+        if (!g) return;
+        const circle = g.querySelector("circle");
+        if (circle) {
+            circle.setAttribute("fill", "#ff0");
+            circle.setAttribute("stroke", "#000");
+            circle.setAttribute("stroke-width", 1.5);
+            circle.setAttribute("r", 6);
+            circle.setAttribute("opacity", 0.9);
+            circle.removeAttribute("class");
+        }
+        const label = g.querySelector("text");
+        if (label) label.setAttribute("fill", "#000");
+    }
 
-        if (sector === 25 || ring === "inner_bull") {
-            return { x: this.cx, y: this.cy };
+    removeHit(candidateId) {
+        const g = this.hits.get(candidateId);
+        if (g && g.parentNode) g.parentNode.removeChild(g);
+        this.hits.delete(candidateId);
+    }
+
+    clearHits() {
+        while (this.hitsGroup.firstChild) {
+            this.hitsGroup.removeChild(this.hitsGroup.firstChild);
         }
-        if (ring === "outer_bull") {
-            return { x: this.cx + 8, y: this.cy + 3 };
-        }
+        this.hits.clear();
+    }
+
+    // --- SVG Drawing Helpers ---
+
+    _getHitPosition(sector, ring) {
+        if (sector === 25 || ring === "inner_bull") return { x: this.cx, y: this.cy };
+        if (ring === "outer_bull") return { x: this.cx + 8, y: this.cy + 3 };
 
         const idx = this.sectors.indexOf(sector);
         if (idx === -1) return null;
 
         const sectorAngle = 360 / 20;
         const startOffset = -90 - sectorAngle / 2;
-        angle = (startOffset + (idx + 0.5) * sectorAngle) * Math.PI / 180;
+        const angle = (startOffset + (idx + 0.5) * sectorAngle) * Math.PI / 180;
+        let radius;
 
         switch (ring) {
             case "triple":
@@ -253,7 +235,7 @@ class DartboardRenderer {
             case "double":
                 radius = (this.radii.outerSingle + this.radii.double) / 2;
                 break;
-            default: // single
+            default:
                 radius = (this.radii.triple + this.radii.outerSingle) / 2;
         }
 
@@ -263,10 +245,60 @@ class DartboardRenderer {
         };
     }
 
-    clearHits() {
-        while (this.hitsGroup.firstChild) {
-            this.hitsGroup.removeChild(this.hitsGroup.firstChild);
-        }
-        this.hits = [];
+    _addSector(startAngle, endAngle, innerR, outerR, color) {
+        const a1 = startAngle * Math.PI / 180;
+        const a2 = endAngle * Math.PI / 180;
+        const x1i = this.cx + innerR * Math.cos(a1);
+        const y1i = this.cy + innerR * Math.sin(a1);
+        const x2i = this.cx + innerR * Math.cos(a2);
+        const y2i = this.cy + innerR * Math.sin(a2);
+        const x1o = this.cx + outerR * Math.cos(a1);
+        const y1o = this.cy + outerR * Math.sin(a1);
+        const x2o = this.cx + outerR * Math.cos(a2);
+        const y2o = this.cy + outerR * Math.sin(a2);
+        const largeArc = (endAngle - startAngle) > 180 ? 1 : 0;
+        const d = [
+            `M ${x1i} ${y1i}`, `L ${x1o} ${y1o}`,
+            `A ${outerR} ${outerR} 0 ${largeArc} 1 ${x2o} ${y2o}`,
+            `L ${x2i} ${y2i}`,
+            `A ${innerR} ${innerR} 0 ${largeArc} 0 ${x1i} ${y1i}`, "Z"
+        ].join(" ");
+        const path = document.createElementNS(this.svgNS, "path");
+        path.setAttribute("d", d);
+        path.setAttribute("fill", color);
+        this.svg.appendChild(path);
+    }
+
+    _addCircle(cx, cy, r, fill) {
+        const circle = document.createElementNS(this.svgNS, "circle");
+        circle.setAttribute("cx", cx); circle.setAttribute("cy", cy);
+        circle.setAttribute("r", r); circle.setAttribute("fill", fill);
+        this.svg.appendChild(circle);
+    }
+
+    _addCircleStroke(cx, cy, r, stroke, width) {
+        const circle = document.createElementNS(this.svgNS, "circle");
+        circle.setAttribute("cx", cx); circle.setAttribute("cy", cy);
+        circle.setAttribute("r", r); circle.setAttribute("fill", "none");
+        circle.setAttribute("stroke", stroke); circle.setAttribute("stroke-width", width);
+        this.svg.appendChild(circle);
+    }
+
+    _addLine(x1, y1, x2, y2, stroke, width) {
+        const line = document.createElementNS(this.svgNS, "line");
+        line.setAttribute("x1", x1); line.setAttribute("y1", y1);
+        line.setAttribute("x2", x2); line.setAttribute("y2", y2);
+        line.setAttribute("stroke", stroke); line.setAttribute("stroke-width", width);
+        this.svg.appendChild(line);
+    }
+
+    _addText(x, y, text, fill, size) {
+        const el = document.createElementNS(this.svgNS, "text");
+        el.setAttribute("x", x); el.setAttribute("y", y);
+        el.setAttribute("fill", fill); el.setAttribute("font-size", size);
+        el.setAttribute("font-weight", "bold"); el.setAttribute("text-anchor", "middle");
+        el.setAttribute("dominant-baseline", "central");
+        el.textContent = text;
+        this.svg.appendChild(el);
     }
 }

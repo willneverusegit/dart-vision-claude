@@ -11,6 +11,7 @@
         <h1 class="header__title">Dart-Vision</h1>
         <div class="header__stats">
             <span id="fps-display">FPS: --</span>
+            <span id="pending-count" class="pending-badge" style="display:none;">0 Kandidaten</span>
             <span id="ws-status" class="ws-status ws-status--disconnected">Offline</span>
         </div>
     </header>
@@ -25,6 +26,15 @@
             </div>
             <div class="video-controls">
                 <button id="btn-calibrate" class="btn btn--secondary">Kalibrieren</button>
+                <label class="overlay-toggle" title="ROI-Vorschau einblenden">
+                    <input type="checkbox" id="toggle-roi"> ROI
+                </label>
+                <label class="overlay-toggle" title="Motion-Maske einblenden">
+                    <input type="checkbox" id="toggle-motion"> Motion
+                </label>
+                <label class="overlay-toggle" title="Feld-Overlay einblenden">
+                    <input type="checkbox" id="toggle-fields"> Felder
+                </label>
             </div>
         </section>
 
@@ -43,10 +53,17 @@
             </div>
         </section>
 
-        <!-- Right: Scoreboard -->
+        <!-- Right: Scoreboard + Controls -->
         <section class="panel panel--scoreboard">
             <h2 class="panel__title">Scoreboard</h2>
             <div id="scoreboard" class="scoreboard"></div>
+
+            <!-- Hit Candidates Review -->
+            <div id="candidates-panel" class="candidates-panel" style="display:none;">
+                <h3 class="candidates-title">Treffer-Kandidaten</h3>
+                <div id="candidates-list" class="candidates-list"></div>
+            </div>
+
             <div class="game-controls">
                 <button id="btn-undo" class="btn btn--warning">Undo</button>
                 <button id="btn-next" class="btn btn--primary">Weiter</button>

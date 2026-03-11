@@ -464,6 +464,184 @@ body {
     animation: pulse 0.5s ease-in-out 3;
 }
 
+/* Overlay Toggles */
+.overlay-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 10px;
+    border-radius: var(--radius);
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: border-color 0.2s, color 0.2s;
+    user-select: none;
+}
+
+.overlay-toggle:hover {
+    border-color: var(--accent);
+    color: var(--text-primary);
+}
+
+.overlay-toggle input[type="checkbox"] {
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+
+/* Pending Badge (Header) */
+.pending-badge {
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    background: var(--warning);
+    color: #111;
+    animation: badge-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes badge-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+/* Hit Candidates Panel */
+.candidates-panel {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+}
+
+.candidates-title {
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--warning);
+    margin-bottom: 8px;
+}
+
+.candidates-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 240px;
+    overflow-y: auto;
+}
+
+/* Individual Candidate Row */
+.candidate-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: var(--bg-panel);
+    border-radius: var(--radius);
+    border-left: 3px solid var(--warning);
+    transition: border-color 0.2s;
+}
+
+.candidate-row:hover {
+    border-left-color: var(--accent);
+}
+
+.candidate-score {
+    font-size: 1.1rem;
+    font-weight: 700;
+    min-width: 40px;
+    text-align: center;
+    color: var(--text-primary);
+}
+
+.candidate-ring {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    min-width: 50px;
+}
+
+/* Quality Bar */
+.quality-bar {
+    flex: 1;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    overflow: hidden;
+    min-width: 40px;
+}
+
+.quality-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s ease;
+}
+
+.quality--good {
+    background: var(--success);
+}
+
+.quality--medium {
+    background: var(--warning);
+}
+
+.quality--low {
+    background: var(--accent);
+}
+
+/* Candidate Action Buttons */
+.candidate-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.btn--small {
+    padding: 4px 8px;
+    font-size: 0.7rem;
+    border-radius: 4px;
+}
+
+.btn--confirm {
+    background: var(--success);
+    color: #111;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+    transition: background 0.2s;
+}
+
+.btn--confirm:hover {
+    background: #4ceb8f;
+}
+
+.btn--reject {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+    transition: background 0.2s;
+}
+
+.btn--reject:hover {
+    background: var(--accent-hover);
+}
+
+/* Pending Hit Pulse Animation (SVG) */
+@keyframes hit-pending-pulse {
+    0%, 100% {
+        r: 7;
+        opacity: 0.85;
+    }
+    50% {
+        r: 9;
+        opacity: 0.5;
+    }
+}
+
+.hit-pending-pulse {
+    animation: hit-pending-pulse 1.2s ease-in-out infinite;
+}
+
 /* Responsive */
 @media (max-width: 1024px) {
     .main-layout {

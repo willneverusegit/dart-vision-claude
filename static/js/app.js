@@ -1,6 +1,6 @@
 /**
  * DartApp: Main application logic connecting all components.
- * Uses safe DOM methods (no innerHTML) to prevent XSS.
+ * Supports hit candidate review flow and vision overlays.
  */
 class DartApp {
     constructor() {
@@ -9,9 +9,12 @@ class DartApp {
         this.scoreboard = new Scoreboard("scoreboard");
         this.state = null;
         this.calibrationPoints = [];
+        this.pendingHits = new Map(); // candidate_id -> candidate
 
         this._bindEvents();
         this._bindWebSocket();
+        this._bindKeyboard();
+        this._bindOverlayToggles();
         this.ws.connect();
         this._startStatsPolling();
     }
@@ -19,83 +22,53 @@ class DartApp {
     _bindEvents() {
         // New Game
         const btnNewGame = document.getElementById("btn-new-game");
-        if (btnNewGame) {
-            btnNewGame.addEventListener("click", () => this._newGame());
-        }
+        if (btnNewGame) btnNewGame.addEventListener("click", () => this._newGame());
 
         // Undo
         const btnUndo = document.getElementById("btn-undo");
-        if (btnUndo) {
-            btnUndo.addEventListener("click", () => this._undo());
-        }
+        if (btnUndo) btnUndo.addEventListener("click", () => this._undo());
 
         // Next Player
         const btnNext = document.getElementById("btn-next");
-        if (btnNext) {
-            btnNext.addEventListener("click", () => this._nextPlayer());
-        }
+        if (btnNext) btnNext.addEventListener("click", () => this._nextPlayer());
 
-        // Remove Darts
+        // Remove Darts (no longer advances player)
         const btnRemove = document.getElementById("btn-remove-darts");
-        if (btnRemove) {
-            btnRemove.addEventListener("click", () => this._removeDarts());
-        }
+        if (btnRemove) btnRemove.addEventListener("click", () => this._removeDarts());
 
         // End Game
         const btnEndGame = document.getElementById("btn-end-game");
-        if (btnEndGame) {
-            btnEndGame.addEventListener("click", () => this._endGame());
-        }
+        if (btnEndGame) btnEndGame.addEventListener("click", () => this._endGame());
 
-        // Calibrate — open mode selection
+        // Calibrate
         const btnCalibrate = document.getElementById("btn-calibrate");
-        if (btnCalibrate) {
-            btnCalibrate.addEventListener("click", () => this._openCalibration());
-        }
+        if (btnCalibrate) btnCalibrate.addEventListener("click", () => this._openCalibration());
 
-        // Mode selection buttons
+        // Mode selection
         const btnCalManual = document.getElementById("btn-cal-manual");
-        if (btnCalManual) {
-            btnCalManual.addEventListener("click", () => this._startManualCalibration());
-        }
+        if (btnCalManual) btnCalManual.addEventListener("click", () => this._startManualCalibration());
         const btnCalAruco = document.getElementById("btn-cal-aruco");
-        if (btnCalAruco) {
-            btnCalAruco.addEventListener("click", () => this._startArucoCalibration());
-        }
+        if (btnCalAruco) btnCalAruco.addEventListener("click", () => this._startArucoCalibration());
         const btnCalCharuco = document.getElementById("btn-cal-charuco");
-        if (btnCalCharuco) {
-            btnCalCharuco.addEventListener("click", () => this._startCharucoCalibration());
-        }
+        if (btnCalCharuco) btnCalCharuco.addEventListener("click", () => this._startCharucoCalibration());
 
         // Manual calibration confirm/reset
         const btnCalConfirm = document.getElementById("btn-calibrate-confirm");
-        if (btnCalConfirm) {
-            btnCalConfirm.addEventListener("click", () => this._submitCalibration());
-        }
+        if (btnCalConfirm) btnCalConfirm.addEventListener("click", () => this._submitCalibration());
         const btnCalReset = document.getElementById("btn-calibrate-reset");
-        if (btnCalReset) {
-            btnCalReset.addEventListener("click", () => this._resetManualPoints());
-        }
+        if (btnCalReset) btnCalReset.addEventListener("click", () => this._resetManualPoints());
         const btnCalBack = document.getElementById("btn-cal-back");
-        if (btnCalBack) {
-            btnCalBack.addEventListener("click", () => this._showCalStep("cal-step-mode"));
-        }
+        if (btnCalBack) btnCalBack.addEventListener("click", () => this._showCalStep("cal-step-mode"));
 
         // Result accept/retry
         const btnCalAccept = document.getElementById("btn-cal-accept");
-        if (btnCalAccept) {
-            btnCalAccept.addEventListener("click", () => this._closeCalibration());
-        }
+        if (btnCalAccept) btnCalAccept.addEventListener("click", () => this._closeCalibration());
         const btnCalRetry = document.getElementById("btn-cal-retry");
-        if (btnCalRetry) {
-            btnCalRetry.addEventListener("click", () => this._showCalStep("cal-step-mode"));
-        }
+        if (btnCalRetry) btnCalRetry.addEventListener("click", () => this._showCalStep("cal-step-mode"));
 
         // Cancel
         const btnCalCancel = document.getElementById("btn-calibrate-cancel");
-        if (btnCalCancel) {
-            btnCalCancel.addEventListener("click", () => this._closeCalibration());
-        }
+        if (btnCalCancel) btnCalCancel.addEventListener("click", () => this._closeCalibration());
 
         // Winner modal close
         const btnCloseModal = document.getElementById("btn-close-modal");
@@ -123,49 +96,217 @@ class DartApp {
             }
         });
 
-        this.ws.on("game_state", (data) => {
-            this._updateState(data);
-        });
+        this.ws.on("game_state", (data) => this._updateState(data));
 
-        this.ws.on("score", (data) => {
-            this._onScoreEvent(data);
+        // Hit candidate flow
+        this.ws.on("hit_candidate", (data) => this._onHitCandidate(data));
+        this.ws.on("hit_confirmed", (data) => this._onHitConfirmed(data));
+        this.ws.on("hit_rejected", (data) => this._onHitRejected(data));
+
+        // Legacy score event (for manual scoring)
+        this.ws.on("score", (data) => this._onScoreEvent(data));
+
+        // Darts removed
+        this.ws.on("darts_removed", () => {
+            this.dartboard.clearHits();
+            this.pendingHits.clear();
+            this._renderCandidates();
         });
     }
 
-    _updateState(state) {
-        this.state = state;
+    _bindKeyboard() {
+        document.addEventListener("keydown", (e) => {
+            // Don't trigger in input fields
+            if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
 
-        // Update scoreboard
-        this.scoreboard.update(state);
+            if (e.key === "Enter") {
+                // Confirm oldest pending hit
+                e.preventDefault();
+                this._confirmOldestCandidate();
+            } else if (e.key === "Backspace" || e.key === "Delete") {
+                // Reject oldest pending hit
+                e.preventDefault();
+                this._rejectOldestCandidate();
+            } else if (e.key === "u" || e.key === "U") {
+                this._undo();
+            }
+        });
+    }
 
-        // Update turn total
-        const turnTotalEl = document.getElementById("turn-total");
-        if (turnTotalEl) {
-            turnTotalEl.textContent = (state.turn_total || 0).toString();
+    _bindOverlayToggles() {
+        const toggles = ["toggle-roi", "toggle-motion", "toggle-fields"];
+        const keys = ["roi", "motion", "fields"];
+
+        toggles.forEach((id, idx) => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.addEventListener("change", () => {
+                    const body = {};
+                    body[keys[idx]] = el.checked;
+                    fetch("/api/overlays", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(body),
+                    }).catch(e => console.error("Overlay toggle error:", e));
+                });
+            }
+        });
+    }
+
+    // --- Hit Candidate Flow ---
+
+    _onHitCandidate(data) {
+        this.pendingHits.set(data.candidate_id, data);
+
+        // Show candidate marker on dartboard (with pending style)
+        if (data.roi_x !== undefined && data.roi_y !== undefined) {
+            this.dartboard.addHitExact(data.roi_x, data.roi_y, data.score,
+                                        data.candidate_id, true);
+        } else {
+            this.dartboard.addHit(data.sector, data.ring, data.score, data.candidate_id, true);
         }
 
-        // Update dart icons
+        this._renderCandidates();
+    }
+
+    _onHitConfirmed(data) {
+        this.pendingHits.delete(data.candidate_id);
+        // Update marker style from pending to confirmed
+        this.dartboard.confirmHit(data.candidate_id);
+        this._renderCandidates();
+    }
+
+    _onHitRejected(data) {
+        this.pendingHits.delete(data.candidate_id);
+        // Remove marker from dartboard
+        this.dartboard.removeHit(data.candidate_id);
+        this._renderCandidates();
+    }
+
+    _renderCandidates() {
+        const panel = document.getElementById("candidates-panel");
+        const list = document.getElementById("candidates-list");
+        const badge = document.getElementById("pending-count");
+        if (!panel || !list) return;
+
+        // Clear
+        while (list.firstChild) list.removeChild(list.firstChild);
+
+        if (this.pendingHits.size === 0) {
+            panel.style.display = "none";
+            if (badge) badge.style.display = "none";
+            return;
+        }
+
+        panel.style.display = "block";
+        if (badge) {
+            badge.style.display = "inline";
+            badge.textContent = this.pendingHits.size + " Kandidat" + (this.pendingHits.size > 1 ? "en" : "");
+        }
+
+        this.pendingHits.forEach((candidate) => {
+            const row = document.createElement("div");
+            row.className = "candidate-row";
+
+            // Score info
+            const info = document.createElement("div");
+            info.className = "candidate-info";
+
+            const scoreLabel = document.createElement("span");
+            scoreLabel.className = "candidate-score";
+            scoreLabel.textContent = candidate.ring.toUpperCase() + " " + candidate.score;
+            info.appendChild(scoreLabel);
+
+            const qualityBar = document.createElement("div");
+            qualityBar.className = "quality-bar";
+            const qualityFill = document.createElement("div");
+            qualityFill.className = "quality-fill";
+            qualityFill.style.width = candidate.quality + "%";
+            if (candidate.quality >= 70) qualityFill.classList.add("quality--good");
+            else if (candidate.quality >= 40) qualityFill.classList.add("quality--medium");
+            else qualityFill.classList.add("quality--low");
+            qualityBar.appendChild(qualityFill);
+            info.appendChild(qualityBar);
+
+            row.appendChild(info);
+
+            // Buttons
+            const actions = document.createElement("div");
+            actions.className = "candidate-actions";
+
+            const btnConfirm = document.createElement("button");
+            btnConfirm.className = "btn btn--small btn--confirm";
+            btnConfirm.textContent = "\u2713";
+            btnConfirm.title = "Bestaetigen (Enter)";
+            btnConfirm.addEventListener("click", () => this._confirmCandidate(candidate.candidate_id));
+            actions.appendChild(btnConfirm);
+
+            const btnReject = document.createElement("button");
+            btnReject.className = "btn btn--small btn--reject";
+            btnReject.textContent = "\u2717";
+            btnReject.title = "Verwerfen (Backspace)";
+            btnReject.addEventListener("click", () => this._rejectCandidate(candidate.candidate_id));
+            actions.appendChild(btnReject);
+
+            row.appendChild(actions);
+            list.appendChild(row);
+        });
+    }
+
+    async _confirmCandidate(candidateId) {
+        try {
+            const response = await fetch(`/api/hits/${candidateId}/confirm`, { method: "POST" });
+            await response.json();
+        } catch (e) {
+            console.error("Confirm error:", e);
+        }
+    }
+
+    async _rejectCandidate(candidateId) {
+        try {
+            const response = await fetch(`/api/hits/${candidateId}/reject`, { method: "POST" });
+            await response.json();
+        } catch (e) {
+            console.error("Reject error:", e);
+        }
+    }
+
+    _confirmOldestCandidate() {
+        const first = this.pendingHits.keys().next();
+        if (!first.done) this._confirmCandidate(first.value);
+    }
+
+    _rejectOldestCandidate() {
+        const first = this.pendingHits.keys().next();
+        if (!first.done) this._rejectCandidate(first.value);
+    }
+
+    // --- State Updates ---
+
+    _updateState(state) {
+        this.state = state;
+        this.scoreboard.update(state);
+
+        const turnTotalEl = document.getElementById("turn-total");
+        if (turnTotalEl) turnTotalEl.textContent = (state.turn_total || 0).toString();
+
         const dartsThrown = state.darts_thrown || 0;
         for (let i = 1; i <= 3; i++) {
             const dartEl = document.getElementById("dart-" + i);
             if (dartEl) {
-                if (i <= dartsThrown) {
-                    dartEl.classList.add("dart-icon--used");
-                } else {
-                    dartEl.classList.remove("dart-icon--used");
-                }
+                if (i <= dartsThrown) dartEl.classList.add("dart-icon--used");
+                else dartEl.classList.remove("dart-icon--used");
             }
         }
 
-        // Check for winner
-        if (state.winner) {
-            this._showWinner(state.winner);
-        }
+        if (state.winner) this._showWinner(state.winner);
     }
 
     _onScoreEvent(data) {
-        // Add hit marker to dartboard
-        if (data.sector !== undefined && data.ring !== undefined) {
+        // Legacy: direct score without candidate flow (manual entry)
+        if (data.roi_x !== undefined && data.roi_y !== undefined) {
+            this.dartboard.addHitExact(data.roi_x, data.roi_y, data.score);
+        } else if (data.sector !== undefined && data.ring !== undefined) {
             this.dartboard.addHit(data.sector, data.ring, data.score);
         }
     }
@@ -181,6 +322,8 @@ class DartApp {
         }
     }
 
+    // --- Game Actions ---
+
     async _newGame() {
         const modeEl = document.getElementById("game-mode");
         const scoreEl = document.getElementById("starting-score");
@@ -189,14 +332,12 @@ class DartApp {
         const mode = modeEl ? modeEl.value : "x01";
         const startingScore = scoreEl ? parseInt(scoreEl.value, 10) : 501;
         const playersStr = playersEl ? playersEl.value : "Spieler 1";
-
         const players = playersStr.split(",").map(s => s.trim()).filter(s => s.length > 0);
-        if (players.length === 0) {
-            players.push("Spieler 1");
-        }
+        if (players.length === 0) players.push("Spieler 1");
 
-        // Clear dartboard hits
         this.dartboard.clearHits();
+        this.pendingHits.clear();
+        this._renderCandidates();
 
         try {
             const response = await fetch("/api/game/new", {
@@ -227,6 +368,8 @@ class DartApp {
             const data = await response.json();
             this._updateState(data);
             this.dartboard.clearHits();
+            this.pendingHits.clear();
+            this._renderCandidates();
         } catch (e) {
             console.error("Next player error:", e);
         }
@@ -234,10 +377,8 @@ class DartApp {
 
     async _removeDarts() {
         try {
-            const response = await fetch("/api/game/remove-darts", { method: "POST" });
-            const data = await response.json();
-            this._updateState(data);
-            this.dartboard.clearHits();
+            await fetch("/api/game/remove-darts", { method: "POST" });
+            // UI update comes via WebSocket "darts_removed" event
         } catch (e) {
             console.error("Remove darts error:", e);
         }
@@ -251,6 +392,8 @@ class DartApp {
             const data = await response.json();
             this._updateState(data);
             this.dartboard.clearHits();
+            this.pendingHits.clear();
+            this._renderCandidates();
         } catch (e) {
             console.error("End game error:", e);
         }
@@ -354,7 +497,6 @@ class DartApp {
             const y = (event.clientY - rect.top) * scaleY;
             self.calibrationPoints.push([x, y]);
 
-            // Draw point
             ctx.beginPath();
             ctx.arc(x, y, 5, 0, 2 * Math.PI);
             ctx.fillStyle = "#2ed573";
@@ -363,7 +505,6 @@ class DartApp {
             ctx.lineWidth = 2;
             ctx.stroke();
 
-            // Draw line to previous point
             if (self.calibrationPoints.length > 1) {
                 const prev = self.calibrationPoints[self.calibrationPoints.length - 2];
                 ctx.beginPath();
@@ -374,7 +515,6 @@ class DartApp {
                 ctx.stroke();
             }
 
-            // Close polygon when 4 points
             if (self.calibrationPoints.length === 4) {
                 const first = self.calibrationPoints[0];
                 ctx.beginPath();
@@ -388,7 +528,6 @@ class DartApp {
                 if (btn) btn.disabled = false;
             }
 
-            // Label
             const labelNum = self.calibrationPoints.length;
             const labels = ["OL", "OR", "UR", "UL"];
             ctx.fillStyle = "#fff";
@@ -414,7 +553,6 @@ class DartApp {
             });
             const data = await response.json();
             if (data.ok) {
-                console.log("Calibration OK, mm/px:", data.mm_per_px);
                 await this._showCalibrationResult("Manuelle Kalibrierung erfolgreich!");
             } else {
                 console.error("Calibration failed:", data.error);
@@ -429,7 +567,6 @@ class DartApp {
         const textEl = document.getElementById("cal-result-text");
         if (textEl) textEl.textContent = message;
 
-        // Load ROI preview
         try {
             const roiResp = await fetch("/api/calibration/roi-preview");
             const roiData = await roiResp.json();
@@ -441,7 +578,6 @@ class DartApp {
             console.error("ROI preview error:", e);
         }
 
-        // Load field overlay
         try {
             const overlayResp = await fetch("/api/calibration/overlay");
             const overlayData = await overlayResp.json();
@@ -466,11 +602,9 @@ class DartApp {
                 const response = await fetch("/api/stats");
                 const data = await response.json();
                 const fpsEl = document.getElementById("fps-display");
-                if (fpsEl) {
-                    fpsEl.textContent = "FPS: " + data.fps;
-                }
+                if (fpsEl) fpsEl.textContent = "FPS: " + data.fps;
             } catch (e) {
-                // Silent fail for stats polling
+                // Silent fail
             }
         }, 2000);
     }

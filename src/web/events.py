@@ -8,11 +8,21 @@ logger = logging.getLogger(__name__)
 
 
 class EventManager:
-    """Manages WebSocket connections and broadcasts game events."""
+    """Manages WebSocket connections and broadcasts game events.
+
+    Thread-safe: broadcast_sync() can be called from any thread
+    as long as set_loop() was called with the main asyncio loop.
+    """
 
     def __init__(self) -> None:
         self._connections: list[WebSocket] = []
         self._lock = asyncio.Lock()
+        self._loop: asyncio.AbstractEventLoop | None = None
+
+    def set_loop(self, loop: asyncio.AbstractEventLoop) -> None:
+        """Store reference to the main asyncio event loop for cross-thread use."""
+        self._loop = loop
+        logger.info("EventManager bound to event loop")
 
     async def connect(self, websocket: WebSocket) -> None:
         """Accept and register a WebSocket connection."""
@@ -49,12 +59,31 @@ class EventManager:
             logger.info("Removed %d dead connections", len(dead))
 
     def broadcast_sync(self, event_type: str, data: dict) -> None:
-        """Synchronous wrapper for broadcast (for use from sync code)."""
+        """Thread-safe synchronous wrapper for broadcast.
+
+        Uses asyncio.run_coroutine_threadsafe to schedule the broadcast
+        on the main event loop. Safe to call from any thread (e.g., CV pipeline).
+        """
+        if self._loop is None or self._loop.is_closed():
+            logger.debug("No event loop bound, broadcast skipped (%s)", event_type)
+            return
+
         try:
-            loop = asyncio.get_running_loop()
-            loop.create_task(self.broadcast(event_type, data))
-        except RuntimeError:
-            logger.debug("No event loop for broadcast, skipping")
+            future = asyncio.run_coroutine_threadsafe(
+                self.broadcast(event_type, data), self._loop
+            )
+            # Don't block waiting for result — fire and forget
+            future.add_done_callback(self._broadcast_done)
+        except RuntimeError as e:
+            logger.debug("broadcast_sync failed: %s", e)
+
+    @staticmethod
+    def _broadcast_done(future: asyncio.Future) -> None:
+        """Callback for completed broadcast futures (logs errors)."""
+        try:
+            future.result()
+        except Exception as e:
+            logger.error("Broadcast error: %s", e)
 
     @property
     def connection_count(self) -> int:

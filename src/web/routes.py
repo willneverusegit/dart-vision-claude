@@ -16,19 +16,16 @@ templates = Jinja2Templates(directory="templates")
 
 
 def setup_routes(app_state: dict) -> APIRouter:
-    """Create router with access to shared app state.
+    """Create router with access to shared app state."""
 
-    Args:
-        app_state: Dict with keys "game_engine", "pipeline", "event_manager", "latest_frame"
-
-    Returns:
-        Configured APIRouter
-    """
+    # --- Page ---
 
     @router.get("/", response_class=HTMLResponse)
     async def index(request: Request) -> HTMLResponse:
         """Serve main page."""
         return templates.TemplateResponse(request, "index.html")
+
+    # --- Game State ---
 
     @router.get("/api/state")
     async def get_state() -> dict:
@@ -56,6 +53,11 @@ def setup_routes(app_state: dict) -> APIRouter:
         pipeline = app_state.get("pipeline")
         if pipeline and hasattr(pipeline, "detector"):
             pipeline.detector.reset()
+        # Clear pending hits on new game
+        lock = app_state.get("pending_hits_lock")
+        if lock:
+            with lock:
+                app_state["pending_hits"].clear()
         return state
 
     @router.post("/api/game/undo")
@@ -86,18 +88,22 @@ def setup_routes(app_state: dict) -> APIRouter:
 
     @router.post("/api/game/remove-darts")
     async def remove_darts() -> dict:
-        """Signal that darts have been removed from the board."""
+        """Signal that darts have been removed from the board.
+
+        Only resets the CV detector — does NOT advance to next player.
+        That is now a separate action via /api/game/next-player.
+        """
         pipeline = app_state.get("pipeline")
         if pipeline and hasattr(pipeline, "detector"):
             pipeline.detector.reset()
-        engine = app_state.get("game_engine")
-        if engine:
-            engine.next_player()
-            state = engine.get_state()
-            em = app_state.get("event_manager")
-            if em:
-                em.broadcast_sync("game_state", state)
-            return state
+        # Clear pending hits
+        lock = app_state.get("pending_hits_lock")
+        if lock:
+            with lock:
+                app_state["pending_hits"].clear()
+        em = app_state.get("event_manager")
+        if em:
+            em.broadcast_sync("darts_removed", {})
         return {"ok": True}
 
     @router.post("/api/game/end")
@@ -114,7 +120,174 @@ def setup_routes(app_state: dict) -> APIRouter:
         pipeline = app_state.get("pipeline")
         if pipeline and hasattr(pipeline, "detector"):
             pipeline.detector.reset()
+        # Clear pending hits
+        lock = app_state.get("pending_hits_lock")
+        if lock:
+            with lock:
+                app_state["pending_hits"].clear()
         return state
+
+    # --- Hit Candidate Review ---
+
+    @router.get("/api/hits/pending")
+    async def get_pending_hits() -> dict:
+        """Get all pending hit candidates."""
+        lock = app_state.get("pending_hits_lock")
+        if lock:
+            with lock:
+                return {"ok": True, "hits": list(app_state["pending_hits"].values())}
+        return {"ok": True, "hits": []}
+
+    @router.post("/api/hits/{candidate_id}/confirm")
+    async def confirm_hit(candidate_id: str) -> dict:
+        """Confirm a hit candidate — registers the throw in the game engine."""
+        lock = app_state.get("pending_hits_lock")
+        candidate = None
+        if lock:
+            with lock:
+                candidate = app_state["pending_hits"].pop(candidate_id, None)
+
+        if candidate is None:
+            return {"ok": False, "error": f"Candidate {candidate_id} not found"}
+
+        engine = app_state.get("game_engine")
+        em = app_state.get("event_manager")
+        if not engine:
+            return {"ok": False, "error": "No game engine"}
+
+        # Register the confirmed throw
+        score_result = {
+            "score": candidate["score"],
+            "sector": candidate["sector"],
+            "multiplier": candidate["multiplier"],
+            "ring": candidate["ring"],
+        }
+        game_state = engine.register_throw(score_result)
+
+        # Broadcast confirmed hit + updated game state
+        if em:
+            em.broadcast_sync("hit_confirmed", candidate)
+            em.broadcast_sync("game_state", game_state)
+
+        logger.info("Hit confirmed: %s (%s %d)", candidate_id,
+                     candidate["ring"], candidate["score"])
+        return {"ok": True, "game_state": game_state}
+
+    @router.post("/api/hits/{candidate_id}/reject")
+    async def reject_hit(candidate_id: str) -> dict:
+        """Reject a hit candidate — removes it without affecting game state."""
+        lock = app_state.get("pending_hits_lock")
+        candidate = None
+        if lock:
+            with lock:
+                candidate = app_state["pending_hits"].pop(candidate_id, None)
+
+        if candidate is None:
+            return {"ok": False, "error": f"Candidate {candidate_id} not found"}
+
+        em = app_state.get("event_manager")
+        if em:
+            em.broadcast_sync("hit_rejected", {"candidate_id": candidate_id})
+
+        logger.info("Hit rejected: %s", candidate_id)
+        return {"ok": True}
+
+    @router.post("/api/hits/{candidate_id}/correct")
+    async def correct_hit(candidate_id: str, request: Request) -> dict:
+        """Correct a hit candidate — override score before registering."""
+        body = await request.json()
+        lock = app_state.get("pending_hits_lock")
+        candidate = None
+        if lock:
+            with lock:
+                candidate = app_state["pending_hits"].pop(candidate_id, None)
+
+        if candidate is None:
+            return {"ok": False, "error": f"Candidate {candidate_id} not found"}
+
+        # Apply corrections
+        corrected_score = body.get("score", candidate["score"])
+        corrected_sector = body.get("sector", candidate["sector"])
+        corrected_multiplier = body.get("multiplier", candidate["multiplier"])
+        corrected_ring = body.get("ring", candidate["ring"])
+
+        engine = app_state.get("game_engine")
+        em = app_state.get("event_manager")
+        if not engine:
+            return {"ok": False, "error": "No game engine"}
+
+        score_result = {
+            "score": corrected_score,
+            "sector": corrected_sector,
+            "multiplier": corrected_multiplier,
+            "ring": corrected_ring,
+        }
+        game_state = engine.register_throw(score_result)
+
+        corrected_candidate = {**candidate, **score_result, "corrected": True}
+        if em:
+            em.broadcast_sync("hit_confirmed", corrected_candidate)
+            em.broadcast_sync("game_state", game_state)
+
+        logger.info("Hit corrected: %s -> %s %d", candidate_id,
+                     corrected_ring, corrected_score)
+        return {"ok": True, "game_state": game_state}
+
+    # --- Manual Score Entry ---
+
+    @router.post("/api/game/manual-score")
+    async def manual_score(request: Request) -> dict:
+        """Manually enter a score (bypass CV pipeline)."""
+        body = await request.json()
+        engine = app_state.get("game_engine")
+        em = app_state.get("event_manager")
+        if not engine:
+            return {"error": "No game engine"}
+
+        score_result = {
+            "score": body.get("score", 0),
+            "sector": body.get("sector", 0),
+            "multiplier": body.get("multiplier", 1),
+            "ring": body.get("ring", "single"),
+        }
+        game_state = engine.register_throw(score_result)
+        if em:
+            em.broadcast_sync("score", score_result)
+            em.broadcast_sync("game_state", game_state)
+        return game_state
+
+    # --- Overlay Toggles ---
+
+    @router.post("/api/overlays")
+    async def set_overlays(request: Request) -> dict:
+        """Toggle vision overlays on the video stream."""
+        body = await request.json()
+        pipeline = app_state.get("pipeline")
+        if pipeline:
+            if "roi" in body:
+                pipeline.show_overlay_roi = bool(body["roi"])
+            if "motion" in body:
+                pipeline.show_overlay_motion = bool(body["motion"])
+            if "fields" in body:
+                pipeline.show_overlay_fields = bool(body["fields"])
+        return {
+            "ok": True,
+            "roi": pipeline.show_overlay_roi if pipeline else False,
+            "motion": pipeline.show_overlay_motion if pipeline else False,
+            "fields": pipeline.show_overlay_fields if pipeline else False,
+        }
+
+    @router.get("/api/overlays")
+    async def get_overlays() -> dict:
+        """Get current overlay toggle states."""
+        pipeline = app_state.get("pipeline")
+        return {
+            "roi": pipeline.show_overlay_roi if pipeline else False,
+            "motion": pipeline.show_overlay_motion if pipeline else False,
+            "fields": pipeline.show_overlay_fields if pipeline else False,
+        }
+
+    # --- Calibration ---
 
     @router.post("/api/calibration/manual")
     async def manual_calibration(request: Request) -> dict:
@@ -154,6 +327,12 @@ def setup_routes(app_state: dict) -> APIRouter:
                 homography = pipeline.calibration.get_homography()
                 if homography is not None and hasattr(pipeline, "roi"):
                     pipeline.roi.set_homography_matrix(homography)
+                # Apply calibrated radii to field mapper
+                radii_px = result.get("radii_px")
+                if radii_px and len(radii_px) == 6 and hasattr(pipeline, "field_mapper"):
+                    outer_r = radii_px[-1]
+                    if outer_r > 0:
+                        pipeline.field_mapper.set_ring_radii_px(radii_px, outer_r)
             return result
         return {"ok": False, "error": "No pipeline/calibration manager"}
 
@@ -217,6 +396,24 @@ def setup_routes(app_state: dict) -> APIRouter:
                 return JSONResponse({"ok": True, "image": "data:image/jpeg;base64," + b64})
         return JSONResponse({"ok": False, "error": "No overlay available"})
 
+    @router.get("/api/calibration/info")
+    async def calibration_info() -> dict:
+        """Get calibration metadata (radii, mm/px, method, etc)."""
+        pipeline = app_state.get("pipeline")
+        if not pipeline or not hasattr(pipeline, "calibration"):
+            return {"ok": False, "error": "No calibration manager"}
+        config = pipeline.calibration.get_config()
+        return {
+            "ok": True,
+            "valid": config.get("valid", False),
+            "method": config.get("method"),
+            "mm_per_px": config.get("mm_per_px", 1.0),
+            "radii_px": config.get("radii_px", []),
+            "center_px": config.get("center_px", [200, 200]),
+        }
+
+    # --- Stats ---
+
     @router.get("/api/stats")
     async def get_stats() -> dict:
         """Get system stats (FPS, connections, etc)."""
@@ -225,11 +422,19 @@ def setup_routes(app_state: dict) -> APIRouter:
         fps = 0.0
         if pipeline and hasattr(pipeline, "fps_counter"):
             fps = pipeline.fps_counter.fps()
+        lock = app_state.get("pending_hits_lock")
+        pending_count = 0
+        if lock:
+            with lock:
+                pending_count = len(app_state.get("pending_hits", {}))
         return {
             "fps": round(fps, 1),
             "connections": em.connection_count if em else 0,
             "pipeline_running": app_state.get("pipeline_running", False),
+            "pending_hits": pending_count,
         }
+
+    # --- Video Stream ---
 
     @router.get("/video/feed")
     async def video_feed() -> StreamingResponse:
@@ -247,6 +452,8 @@ def setup_routes(app_state: dict) -> APIRouter:
             media_type="multipart/x-mixed-replace; boundary=frame",
         )
 
+    # --- WebSocket ---
+
     @router.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket) -> None:
         """WebSocket endpoint for real-time game events."""
@@ -262,6 +469,15 @@ def setup_routes(app_state: dict) -> APIRouter:
                 "type": "game_state",
                 "data": engine.get_state(),
             })
+        # Send any pending hits
+        lock = app_state.get("pending_hits_lock")
+        if lock:
+            with lock:
+                for candidate in app_state.get("pending_hits", {}).values():
+                    await websocket.send_json({
+                        "type": "hit_candidate",
+                        "data": candidate,
+                    })
         try:
             while True:
                 data = await websocket.receive_json()

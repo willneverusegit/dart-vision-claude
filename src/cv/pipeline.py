@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 import argparse
 import logging
+import math
 from typing import Callable
 
 from src.cv.capture import ThreadedCamera
@@ -22,13 +23,13 @@ class DartPipeline:
     """Orchestrates the full CV pipeline: capture -> preprocess -> detect -> score."""
 
     def __init__(self, camera_src: int | str = 0,
-                 on_dart_detected: Callable[[dict], None] | None = None,
+                 on_dart_detected: Callable | None = None,
                  on_dart_removed: Callable[[], None] | None = None,
                  debug: bool = False) -> None:
         """
         Args:
             camera_src: Camera source for ThreadedCamera.
-            on_dart_detected: Callback when a dart is confirmed. Receives score dict.
+            on_dart_detected: Callback(score_result, detection) when a dart is confirmed.
             on_dart_removed: Callback when darts are removed (turn reset).
             debug: Show OpenCV debug windows with overlays.
         """
@@ -56,6 +57,13 @@ class DartPipeline:
         # Frame storage for annotated output
         self._last_annotated_frame: np.ndarray | None = None
         self._last_score: dict | None = None
+        self._last_roi: np.ndarray | None = None
+        self._last_motion_mask: np.ndarray | None = None
+
+        # Overlay toggles (set from web routes)
+        self.show_overlay_roi = False
+        self.show_overlay_motion = False
+        self.show_overlay_fields = False
 
     def start(self) -> None:
         """Initialize all modules and start processing loop."""
@@ -102,9 +110,11 @@ class DartPipeline:
 
         # 2. ROI Extraction
         roi = self.roi_processor.warp_roi(enhanced)
+        self._last_roi = roi
 
         # 3. Motion Gating
         motion_mask, has_motion = self.motion_detector.detect(roi)
+        self._last_motion_mask = motion_mask
 
         if not has_motion:
             self._update_annotated_frame(frame, roi, None)
@@ -120,8 +130,7 @@ class DartPipeline:
         # 5. Scoring
         center_x = self.roi_processor.roi_size[0] // 2
         center_y = self.roi_processor.roi_size[1] // 2
-        # Use calibrated double-outer radius if available,
-        # otherwise fall back to half ROI size
+        # Use calibrated double-outer radius if available
         radii_px = self.calibration.get_radii_px()
         if radii_px and len(radii_px) == 6 and radii_px[-1] > 0:
             radius_px = radii_px[-1]  # double_outer in pixels
@@ -133,9 +142,13 @@ class DartPipeline:
             center_x, center_y, radius_px
         )
 
-        # 6. Callback
+        # Add ROI coordinates for exact hit positioning
+        score_result["roi_x"] = detection.center[0]
+        score_result["roi_y"] = detection.center[1]
+
+        # 6. Callback — pass both score_result and detection
         if self.on_dart_detected:
-            self.on_dart_detected(score_result)
+            self.on_dart_detected(score_result, detection)
 
         self._last_score = score_result
         self._update_annotated_frame(frame, roi, motion_mask, detection, score_result)
@@ -164,7 +177,6 @@ class DartPipeline:
             return None
         ret, frame = self.camera.read()
         if not ret or frame is None:
-            # Fallback to last annotated frame's ROI
             return None
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         enhanced = self.clahe.apply(gray)
@@ -188,9 +200,13 @@ class DartPipeline:
         else:
             overlay = roi.copy()
 
+        self._draw_field_overlay(overlay)
+        return overlay
+
+    def _draw_field_overlay(self, overlay: np.ndarray) -> None:
+        """Draw dartboard field boundaries on an overlay image."""
         h, w = overlay.shape[:2]
         cx, cy = w // 2, h // 2
-        import math
 
         # Use calibrated double-outer radius if available
         radii_px = self.calibration.get_radii_px()
@@ -199,7 +215,7 @@ class DartPipeline:
         else:
             radius = min(cx, cy)
 
-        # Draw ring circles — use calibrated fractions from FieldMapper
+        # Draw ring circles
         ring_fractions = list(self.field_mapper.ring_radii.values())
         ring_colors = [
             (0, 0, 255),    # inner bull
@@ -215,8 +231,6 @@ class DartPipeline:
 
         # Draw sector lines
         # Sector boundaries: 20 is centered at 12 o'clock (top).
-        # Each sector spans 18°, so the boundary between 5 and 20
-        # is at -9° from top, i.e., -90° - 9° = -99° from x-axis.
         sector_angle = 18.0
         offset = 9.0
         for i in range(20):
@@ -242,12 +256,10 @@ class DartPipeline:
             cv2.putText(overlay, str(sectors[i]), (lx - 8, ly + 5),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.35, (255, 255, 255), 1)
 
-        return overlay
-
     def _update_annotated_frame(self, frame: np.ndarray, roi: np.ndarray,
                                  motion_mask: np.ndarray | None,
                                  detection=None, score_result: dict | None = None) -> None:
-        """Draw debug HUD overlay on frame."""
+        """Draw debug HUD overlay on frame, including optional vision overlays."""
         annotated = frame.copy()
         fps = self.fps_counter.fps()
 
@@ -274,23 +286,68 @@ class DartPipeline:
                         (detection.center[0] + 20, detection.center[1]),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
 
+        # --- Vision overlays (composited into bottom-right corner) ---
+        overlay_size = 160
+        margin = 10
+        overlay_y = annotated.shape[0] - overlay_size - margin
+        overlay_x = annotated.shape[1] - overlay_size - margin
+        overlay_count = 0
+
+        if self.show_overlay_roi and roi is not None:
+            self._composite_overlay(annotated, roi, overlay_x, overlay_y,
+                                     overlay_size, "ROI")
+            overlay_x -= overlay_size + margin
+            overlay_count += 1
+
+        if self.show_overlay_motion and motion_mask is not None:
+            self._composite_overlay(annotated, motion_mask, overlay_x, overlay_y,
+                                     overlay_size, "MOTION")
+            overlay_x -= overlay_size + margin
+            overlay_count += 1
+
+        if self.show_overlay_fields and roi is not None:
+            field_img = cv2.cvtColor(roi, cv2.COLOR_GRAY2BGR) if len(roi.shape) == 2 else roi.copy()
+            self._draw_field_overlay(field_img)
+            self._composite_overlay(annotated, field_img, overlay_x, overlay_y,
+                                     overlay_size, "FIELDS")
+            overlay_count += 1
+
         self._last_annotated_frame = annotated
 
         if self.debug:
             cv2.imshow("Dart Vision", annotated)
-
-            # Show ROI
             if len(roi.shape) == 2:
                 roi_display = cv2.cvtColor(roi, cv2.COLOR_GRAY2BGR)
             else:
                 roi_display = roi
             cv2.imshow("ROI", roi_display)
-
-            # Show motion mask
             if motion_mask is not None:
                 cv2.imshow("Motion", motion_mask)
-
             cv2.waitKey(1)
+
+    def _composite_overlay(self, frame: np.ndarray, overlay_img: np.ndarray,
+                            x: int, y: int, size: int, label: str) -> None:
+        """Resize and composite a small overlay image onto the main frame."""
+        if x < 0 or y < 0:
+            return
+        try:
+            if len(overlay_img.shape) == 2:
+                overlay_bgr = cv2.cvtColor(overlay_img, cv2.COLOR_GRAY2BGR)
+            else:
+                overlay_bgr = overlay_img
+            resized = cv2.resize(overlay_bgr, (size, size))
+            # Bounds check
+            fh, fw = frame.shape[:2]
+            if y + size > fh or x + size > fw:
+                return
+            frame[y:y + size, x:x + size] = resized
+            # Border
+            cv2.rectangle(frame, (x, y), (x + size, y + size), (100, 100, 100), 1)
+            # Label
+            cv2.putText(frame, label, (x + 4, y + 14),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 255), 1)
+        except Exception:
+            pass  # Silent fail if overlay doesn't fit
 
 
 def main() -> None:
@@ -302,7 +359,7 @@ def main() -> None:
 
     setup_logging()
 
-    def on_dart(score: dict) -> None:
+    def on_dart(score: dict, detection=None) -> None:
         ring = score["ring"]
         points = score["score"]
         sector = score["sector"]
