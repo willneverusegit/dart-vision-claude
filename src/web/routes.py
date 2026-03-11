@@ -372,7 +372,7 @@ def setup_routes(app_state: dict) -> APIRouter:
 
     @router.post("/api/calibration/verify-rings")
     async def verify_rings() -> dict:
-        """Run Hough circle + Canny edge detection to verify ring alignment."""
+        """Verify calibrated ring radii against expected dartboard dimensions."""
         pipeline = app_state.get("pipeline")
         if not pipeline:
             return {"ok": False, "error": "No pipeline"}
@@ -381,6 +381,17 @@ def setup_routes(app_state: dict) -> APIRouter:
             return {"ok": False, "error": "No ROI frame available"}
         result = pipeline.calibration.verify_rings(roi)
         return result
+
+    @router.post("/api/calibration/optical-center")
+    async def detect_optical_center() -> dict:
+        """Detect the true bullseye position via color thresholding."""
+        pipeline = app_state.get("pipeline")
+        if not pipeline:
+            return {"ok": False, "error": "No pipeline"}
+        oc = pipeline.detect_optical_center()
+        if oc is None:
+            return {"ok": False, "error": "Could not detect optical center"}
+        return {"ok": True, "optical_center": [oc[0], oc[1]]}
 
     @router.get("/api/calibration/overlay")
     async def field_overlay() -> JSONResponse:

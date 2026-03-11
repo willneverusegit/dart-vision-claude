@@ -60,6 +60,9 @@ class DartPipeline:
         self._last_roi: np.ndarray | None = None
         self._last_motion_mask: np.ndarray | None = None
 
+        # Optical center override (refined bullseye position in ROI px)
+        self._optical_center: tuple[float, float] | None = None
+
         # Motion overlay toggle (set from web routes)
         self.show_overlay_motion = False
 
@@ -81,6 +84,11 @@ class DartPipeline:
                 if outer_r > 0:
                     self.field_mapper.set_ring_radii_px(radii_px, outer_r)
                     logger.info("Field mapper radii updated from calibration")
+            # Load stored optical center if available
+            oc = self.calibration.get_optical_center()
+            if oc is not None:
+                self._optical_center = oc
+                logger.info("Optical center loaded: (%.1f, %.1f)", oc[0], oc[1])
         logger.info("DartPipeline started (src=%s, debug=%s)", self.camera_src, self.debug)
 
     def stop(self) -> None:
@@ -125,9 +133,12 @@ class DartPipeline:
             self._update_annotated_frame(frame, roi, motion_mask)
             return None
 
-        # 5. Scoring
-        center_x = self.roi_processor.roi_size[0] // 2
-        center_y = self.roi_processor.roi_size[1] // 2
+        # 5. Scoring — use optical center if available, else geometric center
+        if self._optical_center is not None:
+            center_x, center_y = self._optical_center
+        else:
+            center_x = self.roi_processor.roi_size[0] / 2.0
+            center_y = self.roi_processor.roi_size[1] / 2.0
         # Use calibrated double-outer radius if available
         radii_px = self.calibration.get_radii_px()
         if radii_px and len(radii_px) == 6 and radii_px[-1] > 0:
@@ -157,6 +168,23 @@ class DartPipeline:
         self.roi_processor.set_homography(src_points, dst_points)
         self.motion_detector.reset()
         logger.info("Calibration updated, motion detector reset")
+
+    def detect_optical_center(self) -> tuple[float, float] | None:
+        """Capture a color frame, warp it, and find the bullseye optical center."""
+        if self.camera is None:
+            return None
+        ret, frame = self.camera.read()
+        if not ret or frame is None:
+            return None
+        # Warp the color frame (not grayscale) so HSV thresholding works
+        roi_color = self.roi_processor.warp_roi(frame)
+        cx, cy = self.calibration.find_optical_center(roi_color)
+        self._optical_center = (cx, cy)
+        # Persist to config
+        self.calibration._config["optical_center_roi_px"] = [cx, cy]
+        self.calibration._atomic_save()
+        logger.info("Optical center detected and saved: (%.1f, %.1f)", cx, cy)
+        return (cx, cy)
 
     def reset_turn(self) -> None:
         """Reset detector state for new turn (after darts removed)."""
@@ -204,7 +232,10 @@ class DartPipeline:
     def _draw_field_overlay(self, overlay: np.ndarray) -> None:
         """Draw dartboard field boundaries on an overlay image."""
         h, w = overlay.shape[:2]
-        cx, cy = w // 2, h // 2
+        if self._optical_center is not None:
+            cx, cy = int(self._optical_center[0]), int(self._optical_center[1])
+        else:
+            cx, cy = w // 2, h // 2
 
         # Use calibrated double-outer radius if available
         radii_px = self.calibration.get_radii_px()
