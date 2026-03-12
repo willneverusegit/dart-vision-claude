@@ -49,8 +49,8 @@ class DartApp {
         if (btnCalManual) btnCalManual.addEventListener("click", () => this._startManualCalibration());
         const btnCalAruco = document.getElementById("btn-cal-aruco");
         if (btnCalAruco) btnCalAruco.addEventListener("click", () => this._startArucoCalibration());
-        const btnCalCharuco = document.getElementById("btn-cal-charuco");
-        if (btnCalCharuco) btnCalCharuco.addEventListener("click", () => this._startCharucoCalibration());
+        const btnCalLens = document.getElementById("btn-cal-lens");
+        if (btnCalLens) btnCalLens.addEventListener("click", () => this._startLensCalibration());
 
         // Manual calibration confirm/reset
         const btnCalConfirm = document.getElementById("btn-calibrate-confirm");
@@ -152,7 +152,11 @@ class DartApp {
         this.pendingHits.set(data.candidate_id, data);
 
         // Show candidate marker on dartboard (with pending style)
-        if (data.roi_x !== undefined && data.roi_y !== undefined) {
+        if (data.board_x_norm !== undefined && data.board_y_norm !== undefined) {
+            this.dartboard.addHitNormalized(
+                data.board_x_norm, data.board_y_norm, data.score, data.candidate_id, true
+            );
+        } else if (data.roi_x !== undefined && data.roi_y !== undefined) {
             this.dartboard.addHitExact(data.roi_x, data.roi_y, data.score,
                                         data.candidate_id, true);
         } else {
@@ -297,7 +301,9 @@ class DartApp {
 
     _onScoreEvent(data) {
         // Legacy: direct score without candidate flow (manual entry)
-        if (data.roi_x !== undefined && data.roi_y !== undefined) {
+        if (data.board_x_norm !== undefined && data.board_y_norm !== undefined) {
+            this.dartboard.addHitNormalized(data.board_x_norm, data.board_y_norm, data.score);
+        } else if (data.roi_x !== undefined && data.roi_y !== undefined) {
             this.dartboard.addHitExact(data.roi_x, data.roi_y, data.score);
         } else if (data.sector !== undefined && data.ring !== undefined) {
             this.dartboard.addHit(data.sector, data.ring, data.score);
@@ -440,13 +446,13 @@ class DartApp {
     async _startArucoCalibration() {
         this._showCalStep("cal-step-auto");
         const statusEl = document.getElementById("cal-auto-status");
-        if (statusEl) statusEl.textContent = "ArUco-Marker werden gesucht...";
+        if (statusEl) statusEl.textContent = "Board-ArUco Alignment wird gestartet...";
 
         try {
-            const response = await fetch("/api/calibration/aruco", { method: "POST" });
+            const response = await fetch("/api/calibration/board/aruco", { method: "POST" });
             const data = await response.json();
             if (data.ok) {
-                await this._showCalibrationResult("ArUco-Kalibrierung erfolgreich!");
+                await this._showCalibrationResult("Board-ArUco Alignment erfolgreich!");
             } else {
                 if (statusEl) statusEl.textContent = "Fehler: " + (data.error || "Unbekannt");
                 setTimeout(() => this._showCalStep("cal-step-mode"), 3000);
@@ -458,22 +464,22 @@ class DartApp {
         }
     }
 
-    async _startCharucoCalibration() {
+    async _startLensCalibration() {
         this._showCalStep("cal-step-auto");
         const statusEl = document.getElementById("cal-auto-status");
-        if (statusEl) statusEl.textContent = "ChArUco-Board wird erkannt (ca. 3 Sekunden)...";
+        if (statusEl) statusEl.textContent = "Lens Setup per ChArUco (ca. 3 Sekunden)...";
 
         try {
-            const response = await fetch("/api/calibration/charuco", { method: "POST" });
+            const response = await fetch("/api/calibration/lens/charuco", { method: "POST" });
             const data = await response.json();
             if (data.ok) {
-                await this._showCalibrationResult("ChArUco-Kalibrierung erfolgreich!");
+                await this._showCalibrationResult("Lens Setup erfolgreich!");
             } else {
                 if (statusEl) statusEl.textContent = "Fehler: " + (data.error || "Unbekannt");
                 setTimeout(() => this._showCalStep("cal-step-mode"), 3000);
             }
         } catch (e) {
-            console.error("ChArUco calibration error:", e);
+            console.error("Lens calibration error:", e);
             if (statusEl) statusEl.textContent = "Verbindungsfehler";
             setTimeout(() => this._showCalStep("cal-step-mode"), 3000);
         }
@@ -539,14 +545,14 @@ class DartApp {
     async _submitCalibration() {
         if (this.calibrationPoints.length !== 4) return;
         try {
-            const response = await fetch("/api/calibration/manual", {
+            const response = await fetch("/api/calibration/board/manual", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ points: this.calibrationPoints }),
             });
             const data = await response.json();
             if (data.ok) {
-                await this._showCalibrationResult("Manuelle Kalibrierung erfolgreich!");
+                await this._showCalibrationResult("Board-Alignment (manuell) erfolgreich!");
             } else {
                 console.error("Calibration failed:", data.error);
             }

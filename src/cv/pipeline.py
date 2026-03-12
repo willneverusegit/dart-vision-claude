@@ -1,18 +1,26 @@
-"""Orchestrates the full CV pipeline: capture -> preprocess -> detect -> score."""
+"""Orchestrates the full CV pipeline: capture -> remap -> detect -> score."""
 
-import cv2
-import numpy as np
+from __future__ import annotations
+
 import argparse
 import logging
 import math
+import os
 from typing import Callable
 
+import cv2
+import numpy as np
+
+from src.cv.board_calibration import BoardCalibrationManager
+from src.cv.camera_calibration import CameraCalibrationManager
 from src.cv.capture import ThreadedCamera
-from src.cv.roi import ROIProcessor
-from src.cv.motion import MotionDetector
 from src.cv.detector import DartImpactDetector
 from src.cv.field_mapper import FieldMapper
-from src.cv.calibration import CalibrationManager
+from src.cv.geometry import BoardGeometry
+from src.cv.motion import MotionDetector
+from src.cv.remapping import CombinedRemapper
+from src.cv.replay import ReplayCamera
+from src.cv.roi import ROIProcessor
 from src.utils.fps import FPSCounter
 from src.utils.logger import setup_logging
 
@@ -20,75 +28,69 @@ logger = logging.getLogger(__name__)
 
 
 class DartPipeline:
-    """Orchestrates the full CV pipeline: capture -> preprocess -> detect -> score."""
+    """Orchestrates the full CV pipeline and exposes web-safe helper methods."""
 
-    def __init__(self, camera_src: int | str = 0,
-                 on_dart_detected: Callable | None = None,
-                 on_dart_removed: Callable[[], None] | None = None,
-                 debug: bool = False) -> None:
-        """
-        Args:
-            camera_src: Camera source for ThreadedCamera.
-            on_dart_detected: Callback(score_result, detection) when a dart is confirmed.
-            on_dart_removed: Callback when darts are removed (turn reset).
-            debug: Show OpenCV debug windows with overlays.
-        """
+    def __init__(
+        self,
+        camera_src: int | str = 0,
+        on_dart_detected: Callable | None = None,
+        on_dart_removed: Callable[[], None] | None = None,
+        debug: bool = False,
+    ) -> None:
         self.camera_src = camera_src
         self.on_dart_detected = on_dart_detected
         self.on_dart_removed = on_dart_removed
         self.debug = debug
 
-        # Modules (initialized in start())
-        self.camera: ThreadedCamera | None = None
+        # Modules
+        self.camera: ThreadedCamera | ReplayCamera | None = None
         self.roi_processor = ROIProcessor(roi_size=(400, 400))
         self.motion_detector = MotionDetector(threshold=500)
         self.dart_detector = DartImpactDetector(confirmation_frames=3)
         self.field_mapper = FieldMapper()
         self.fps_counter = FPSCounter()
-        self.calibration = CalibrationManager()
+        self.camera_calibration = CameraCalibrationManager()
+        self.board_calibration = BoardCalibrationManager(roi_size=self.roi_processor.roi_size)
+        self.remapper = CombinedRemapper(roi_size=self.roi_processor.roi_size)
+        self.geometry: BoardGeometry | None = None
 
-        # Aliases used by web routes
+        # Backward compatibility aliases used by routes/tests
         self.roi = self.roi_processor
         self.detector = self.dart_detector
+        self.calibration = self.board_calibration
 
         # CLAHE for contrast enhancement
         self.clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
 
-        # Frame storage for annotated output
+        # Frame storage
+        self._last_raw_frame: np.ndarray | None = None
         self._last_annotated_frame: np.ndarray | None = None
         self._last_score: dict | None = None
         self._last_roi: np.ndarray | None = None
         self._last_motion_mask: np.ndarray | None = None
 
-        # Optical center override (refined bullseye position in ROI px)
+        # Optical center override (ROI pixel space)
         self._optical_center: tuple[float, float] | None = None
 
-        # Motion overlay toggle (set from web routes)
+        # Motion overlay toggle
         self.show_overlay_motion = False
 
     def start(self) -> None:
-        """Initialize all modules and start processing loop."""
-        self.camera = ThreadedCamera(src=self.camera_src)
+        """Initialize modules and start capture source."""
+        self.camera = self._build_camera_source()
         self.camera.start()
-        # Load existing calibration if valid
-        if self.calibration.is_valid():
-            homography = self.calibration.get_homography()
-            if homography is not None:
-                self.roi_processor.set_homography_matrix(homography)
-                logger.info("Loaded existing calibration (method=%s)",
-                            self.calibration.get_config().get("method"))
-            # Apply calibrated ring radii to field mapper
-            radii_px = self.calibration.get_radii_px()
-            if radii_px and len(radii_px) == 6:
-                outer_r = radii_px[-1]  # double_outer
-                if outer_r > 0:
-                    self.field_mapper.set_ring_radii_px(radii_px, outer_r)
-                    logger.info("Field mapper radii updated from calibration")
-            # Load stored optical center if available
-            oc = self.calibration.get_optical_center()
-            if oc is not None:
-                self._optical_center = oc
-                logger.info("Optical center loaded: (%.1f, %.1f)", oc[0], oc[1])
+
+        pose = self.board_calibration.get_pose()
+        if pose.homography is not None:
+            self.roi_processor.set_homography_matrix(pose.homography)
+        radii_px = self.board_calibration.get_radii_px()
+        if radii_px and len(radii_px) == 6 and radii_px[-1] > 0:
+            self.field_mapper.set_ring_radii_px(radii_px, radii_px[-1])
+        oc = self.board_calibration.get_optical_center()
+        if oc is not None:
+            self._optical_center = oc
+
+        self.refresh_remapper()
         logger.info("DartPipeline started (src=%s, debug=%s)", self.camera_src, self.debug)
 
     def stop(self) -> None:
@@ -99,6 +101,26 @@ class DartPipeline:
             cv2.destroyAllWindows()
         logger.info("DartPipeline stopped")
 
+    def _build_camera_source(self) -> ThreadedCamera | ReplayCamera:
+        """Create camera source adapter (live webcam or replay clip)."""
+        if isinstance(self.camera_src, str) and os.path.isfile(self.camera_src):
+            logger.info("Using replay source: %s", self.camera_src)
+            return ReplayCamera(self.camera_src, loop=True)
+        return ThreadedCamera(src=self.camera_src)
+
+    def refresh_remapper(self) -> None:
+        """Refresh combined remap tables after lens/board calibration changes."""
+        homography = self.board_calibration.get_homography()
+        intrinsics = self.camera_calibration.get_intrinsics()
+        self.remapper.configure(homography=homography, intrinsics=intrinsics)
+        self._refresh_geometry()
+
+    def _refresh_geometry(self) -> None:
+        geometry = self.board_calibration.get_geometry()
+        if self._optical_center is not None:
+            geometry.optical_center_px = self._optical_center
+        self.geometry = geometry
+
     def process_frame(self) -> dict | None:
         """Process one frame. Returns score dict if dart detected, else None."""
         if self.camera is None:
@@ -107,82 +129,76 @@ class DartPipeline:
         ret, frame = self.camera.read()
         if not ret or frame is None:
             return None
-
+        self._last_raw_frame = frame
         self.fps_counter.update()
 
-        # 1. Preprocessing
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        # 1) Combined remap to ROI board space
+        roi_source = self.remapper.remap(frame)
+        if roi_source.shape[:2] != (self.roi_processor.roi_size[1], self.roi_processor.roi_size[0]):
+            roi_source = cv2.resize(roi_source, self.roi_processor.roi_size)
+
+        # 2) Grayscale + local contrast enhancement
+        gray = cv2.cvtColor(roi_source, cv2.COLOR_BGR2GRAY) if len(roi_source.shape) == 3 else roi_source
         enhanced = self.clahe.apply(gray)
+        self._last_roi = enhanced
 
-        # 2. ROI Extraction
-        roi = self.roi_processor.warp_roi(enhanced)
-        self._last_roi = roi
-
-        # 3. Motion Gating
-        motion_mask, has_motion = self.motion_detector.detect(roi)
+        # 3) Motion gating
+        motion_mask, has_motion = self.motion_detector.detect(enhanced)
         self._last_motion_mask = motion_mask
-
         if not has_motion:
-            self._update_annotated_frame(frame, roi, None)
+            self._update_annotated_frame(frame, enhanced, None)
             return None
 
-        # 4. Dart Detection (only when motion detected)
-        detection = self.dart_detector.detect(roi, motion_mask)
-
+        # 4) Dart detection
+        detection = self.dart_detector.detect(enhanced, motion_mask)
         if detection is None:
-            self._update_annotated_frame(frame, roi, motion_mask)
+            self._update_annotated_frame(frame, enhanced, motion_mask)
             return None
 
-        # 5. Scoring — use optical center if available, else geometric center
-        if self._optical_center is not None:
-            center_x, center_y = self._optical_center
-        else:
-            center_x = self.roi_processor.roi_size[0] / 2.0
-            center_y = self.roi_processor.roi_size[1] / 2.0
-        # Use calibrated double-outer radius if available
-        radii_px = self.calibration.get_radii_px()
-        if radii_px and len(radii_px) == 6 and radii_px[-1] > 0:
-            radius_px = radii_px[-1]  # double_outer in pixels
-        else:
-            radius_px = float(min(center_x, center_y))
-
+        # 5) Scoring against board geometry
+        geometry = self.geometry or self.board_calibration.get_geometry()
         score_result = self.field_mapper.point_to_score(
-            detection.center[0], detection.center[1],
-            center_x, center_y, radius_px
+            detection.center[0],
+            detection.center[1],
+            geometry=geometry,
         )
-
-        # Add ROI coordinates for exact hit positioning
         score_result["roi_x"] = detection.center[0]
         score_result["roi_y"] = detection.center[1]
+        board_x_norm, board_y_norm = geometry.normalize_point(detection.center[0], detection.center[1])
+        polar_r, polar_angle = geometry.point_to_polar(detection.center[0], detection.center[1])
+        score_result["board_x_norm"] = round(board_x_norm, 4)
+        score_result["board_y_norm"] = round(board_y_norm, 4)
+        score_result["polar_radius_norm"] = round(polar_r, 4)
+        score_result["polar_angle_deg"] = round(polar_angle, 2)
 
-        # 6. Callback — pass both score_result and detection
         if self.on_dart_detected:
             self.on_dart_detected(score_result, detection)
 
         self._last_score = score_result
-        self._update_annotated_frame(frame, roi, motion_mask, detection, score_result)
+        self._update_annotated_frame(frame, enhanced, motion_mask, detection, score_result)
         return score_result
 
-    def set_calibration(self, src_points: np.ndarray, dst_points: np.ndarray) -> None:
-        """Update calibration (from web frontend or CLI)."""
-        self.roi_processor.set_homography(src_points, dst_points)
-        self.motion_detector.reset()
-        logger.info("Calibration updated, motion detector reset")
-
     def detect_optical_center(self) -> tuple[float, float] | None:
-        """Capture a color frame, warp it, and find the bullseye optical center."""
-        if self.camera is None:
+        """Detect the optical center on the latest frame and persist it."""
+        frame = self._last_raw_frame
+        if frame is None and self.camera is not None:
+            ok, frame = self.camera.read()
+            if not ok or frame is None:
+                return None
+            self._last_raw_frame = frame
+        if frame is None:
             return None
-        ret, frame = self.camera.read()
-        if not ret or frame is None:
-            return None
-        # Warp the color frame (not grayscale) so HSV thresholding works
-        roi_color = self.roi_processor.warp_roi(frame)
-        cx, cy = self.calibration.find_optical_center(roi_color)
+
+        roi_color = self.remapper.remap(frame)
+        if roi_color.shape[:2] != (self.roi_processor.roi_size[1], self.roi_processor.roi_size[0]):
+            roi_color = cv2.resize(roi_color, self.roi_processor.roi_size)
+        if len(roi_color.shape) == 2:
+            roi_color = cv2.cvtColor(roi_color, cv2.COLOR_GRAY2BGR)
+
+        cx, cy = self.board_calibration.find_optical_center(roi_color)
         self._optical_center = (cx, cy)
-        # Persist to config
-        self.calibration._config["optical_center_roi_px"] = [cx, cy]
-        self.calibration._atomic_save()
+        self.board_calibration.store_optical_center(self._optical_center)
+        self._refresh_geometry()
         logger.info("Optical center detected and saved: (%.1f, %.1f)", cx, cy)
         return (cx, cy)
 
@@ -191,77 +207,69 @@ class DartPipeline:
         self.dart_detector.reset()
         if self.on_dart_removed:
             self.on_dart_removed()
-        logger.info("Turn reset — dart detector cleared")
+        logger.info("Turn reset - dart detector cleared")
 
     def get_annotated_frame(self) -> np.ndarray | None:
-        """Get current frame with HUD overlay (for MJPEG stream)."""
         return self._last_annotated_frame
 
+    def get_latest_raw_frame(self) -> np.ndarray | None:
+        return self._last_raw_frame
+
     def get_roi_preview(self) -> np.ndarray | None:
-        """Get the current ROI-warped frame for calibration preview."""
-        if self.camera is None:
+        frame = self._last_raw_frame
+        if frame is None:
             return None
-        ret, frame = self.camera.read()
-        if not ret or frame is None:
-            return None
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        enhanced = self.clahe.apply(gray)
-        roi = self.roi_processor.warp_roi(enhanced)
+        roi = self.remapper.remap(frame)
+        if roi.shape[:2] != (self.roi_processor.roi_size[1], self.roi_processor.roi_size[0]):
+            roi = cv2.resize(roi, self.roi_processor.roi_size)
         if len(roi.shape) == 2:
-            roi = cv2.cvtColor(roi, cv2.COLOR_GRAY2BGR)
+            return cv2.cvtColor(roi, cv2.COLOR_GRAY2BGR)
         return roi
 
     def get_field_overlay(self) -> np.ndarray | None:
-        """Get current ROI frame with dartboard field boundaries drawn."""
-        if self.camera is None:
+        roi = self.get_roi_preview()
+        if roi is None:
             return None
-        ret, frame = self.camera.read()
-        if not ret or frame is None:
-            return None
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        enhanced = self.clahe.apply(gray)
-        roi = self.roi_processor.warp_roi(enhanced)
-        if len(roi.shape) == 2:
-            overlay = cv2.cvtColor(roi, cv2.COLOR_GRAY2BGR)
-        else:
-            overlay = roi.copy()
-
+        overlay = roi.copy()
         self._draw_field_overlay(overlay)
         return overlay
 
+    def get_geometry_info(self) -> dict:
+        geometry = self.geometry or self.board_calibration.get_geometry()
+        payload = geometry.to_api_dict()
+        payload["lens_valid"] = self.camera_calibration.has_intrinsics()
+        intrinsics = self.camera_calibration.get_intrinsics()
+        payload["lens_method"] = intrinsics.method if intrinsics else None
+        return payload
+
     def _draw_field_overlay(self, overlay: np.ndarray) -> None:
-        """Draw dartboard field boundaries on an overlay image."""
         h, w = overlay.shape[:2]
         if self._optical_center is not None:
             cx, cy = int(self._optical_center[0]), int(self._optical_center[1])
         else:
             cx, cy = w // 2, h // 2
 
-        # Use calibrated double-outer radius if available
-        radii_px = self.calibration.get_radii_px()
+        radii_px = self.board_calibration.get_radii_px()
         if radii_px and len(radii_px) == 6 and radii_px[-1] > 0:
-            radius = radii_px[-1]  # double_outer in pixels
+            radius = radii_px[-1]
         else:
             radius = min(cx, cy)
 
-        # Draw ring circles
         ring_fractions = list(self.field_mapper.ring_radii.values())
         ring_colors = [
-            (0, 0, 255),    # inner bull
-            (0, 255, 0),    # outer bull
-            (255, 255, 0),  # triple inner
-            (255, 255, 0),  # triple outer
-            (0, 165, 255),  # double inner
-            (0, 165, 255),  # double outer
+            (0, 0, 255),
+            (0, 255, 0),
+            (255, 255, 0),
+            (255, 255, 0),
+            (0, 165, 255),
+            (0, 165, 255),
         ]
         for frac, color in zip(ring_fractions, ring_colors):
             r = int(frac * radius)
             cv2.circle(overlay, (cx, cy), r, color, 1)
 
-        # Draw sector lines
-        # Sector boundaries: 20 is centered at 12 o'clock (top).
         sector_angle = 18.0
-        offset = 9.0
+        offset = 9.0 + (self.geometry.rotation_deg if self.geometry else 0.0)
         for i in range(20):
             angle_deg = -90 - offset + i * sector_angle
             angle_rad = math.radians(angle_deg)
@@ -273,102 +281,116 @@ class DartPipeline:
             y_start = int(cy + inner_r * math.sin(angle_rad))
             cv2.line(overlay, (x_start, y_start), (x_end, y_end), (100, 100, 255), 1)
 
-        # Draw sector number labels
-        sectors = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17,
-                   3, 19, 7, 16, 8, 11, 14, 9, 12, 5]
+        sectors = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5]
         for i in range(20):
             angle_deg = -90 - offset + (i + 0.5) * sector_angle
             angle_rad = math.radians(angle_deg)
             label_r = 0.85 * radius
             lx = int(cx + label_r * math.cos(angle_rad))
             ly = int(cy + label_r * math.sin(angle_rad))
-            cv2.putText(overlay, str(sectors[i]), (lx - 8, ly + 5),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.35, (255, 255, 255), 1)
+            cv2.putText(
+                overlay,
+                str(sectors[i]),
+                (lx - 8, ly + 5),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.35,
+                (255, 255, 255),
+                1,
+            )
 
-    def _update_annotated_frame(self, frame: np.ndarray, roi: np.ndarray,
-                                 motion_mask: np.ndarray | None,
-                                 detection=None, score_result: dict | None = None) -> None:
-        """Draw debug HUD overlay on frame, including optional vision overlays."""
+    def _update_annotated_frame(
+        self,
+        frame: np.ndarray,
+        roi: np.ndarray,
+        motion_mask: np.ndarray | None,
+        detection=None,
+        score_result: dict | None = None,
+    ) -> None:
         annotated = frame.copy()
         fps = self.fps_counter.fps()
+        cv2.putText(annotated, f"FPS: {fps:.1f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
 
-        # FPS (top left, green)
-        cv2.putText(annotated, f"FPS: {fps:.1f}", (10, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        cal_status = "CAL: OK" if self.board_calibration.is_valid() else "CAL: NONE"
+        cal_color = (0, 255, 0) if self.board_calibration.is_valid() else (0, 0, 255)
+        cv2.putText(
+            annotated,
+            cal_status,
+            (frame.shape[1] - 150, 30),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            cal_color,
+            2,
+        )
 
-        # Calibration status (top right)
-        cal_status = "CAL: OK" if self.roi_processor.homography is not None else "CAL: NONE"
-        cal_color = (0, 255, 0) if self.roi_processor.homography is not None else (0, 0, 255)
-        cv2.putText(annotated, cal_status, (frame.shape[1] - 150, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, cal_color, 2)
-
-        # Confirmed darts count
         dart_count = len(self.dart_detector.get_all_confirmed())
-        cv2.putText(annotated, f"Darts: {dart_count}/3", (10, 60),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+        cv2.putText(
+            annotated,
+            f"Darts: {dart_count}/3",
+            (10, 60),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            (255, 255, 255),
+            2,
+        )
 
-        # Detection marker
         if detection is not None and score_result is not None:
             cv2.circle(annotated, detection.center, 15, (0, 0, 255), 2)
             label = f"{score_result['ring'].upper()} {score_result['score']}"
-            cv2.putText(annotated, label,
-                        (detection.center[0] + 20, detection.center[1]),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+            cv2.putText(
+                annotated,
+                label,
+                (detection.center[0] + 20, detection.center[1]),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                (255, 255, 255),
+                2,
+            )
 
-        # --- Motion mask overlay (large, bottom-right corner) ---
         if self.show_overlay_motion and motion_mask is not None:
             fh, fw = annotated.shape[:2]
             overlay_size = min(fw // 2, fh // 2, 320)
             margin = 10
             overlay_y = fh - overlay_size - margin
             overlay_x = fw - overlay_size - margin
-            self._composite_overlay(annotated, motion_mask, overlay_x, overlay_y,
-                                     overlay_size, "MOTION")
+            self._composite_overlay(annotated, motion_mask, overlay_x, overlay_y, overlay_size, "MOTION")
 
         self._last_annotated_frame = annotated
 
         if self.debug:
             cv2.imshow("Dart Vision", annotated)
-            if len(roi.shape) == 2:
-                roi_display = cv2.cvtColor(roi, cv2.COLOR_GRAY2BGR)
-            else:
-                roi_display = roi
+            roi_display = cv2.cvtColor(roi, cv2.COLOR_GRAY2BGR) if len(roi.shape) == 2 else roi
             cv2.imshow("ROI", roi_display)
             if motion_mask is not None:
                 cv2.imshow("Motion", motion_mask)
             cv2.waitKey(1)
 
-    def _composite_overlay(self, frame: np.ndarray, overlay_img: np.ndarray,
-                            x: int, y: int, size: int, label: str) -> None:
-        """Resize and composite a small overlay image onto the main frame."""
+    def _composite_overlay(self, frame: np.ndarray, overlay_img: np.ndarray, x: int, y: int, size: int, label: str) -> None:
         if x < 0 or y < 0:
             return
         try:
-            if len(overlay_img.shape) == 2:
-                overlay_bgr = cv2.cvtColor(overlay_img, cv2.COLOR_GRAY2BGR)
-            else:
-                overlay_bgr = overlay_img
+            overlay_bgr = cv2.cvtColor(overlay_img, cv2.COLOR_GRAY2BGR) if len(overlay_img.shape) == 2 else overlay_img
             resized = cv2.resize(overlay_bgr, (size, size))
-            # Bounds check
             fh, fw = frame.shape[:2]
             if y + size > fh or x + size > fw:
                 return
-            frame[y:y + size, x:x + size] = resized
-            # Border
+            frame[y : y + size, x : x + size] = resized
             cv2.rectangle(frame, (x, y), (x + size, y + size), (100, 100, 100), 1)
-            # Label
-            cv2.putText(frame, label, (x + 4, y + 14),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 255), 1)
+            cv2.putText(frame, label, (x + 4, y + 14), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 255), 1)
         except Exception:
-            pass  # Silent fail if overlay doesn't fit
+            pass
 
 
 def main() -> None:
-    """CLI entry point for standalone pipeline testing."""
     parser = argparse.ArgumentParser(description="Dart Vision CV Pipeline")
-    parser.add_argument("--source", type=int, default=0, help="Camera source index")
+    parser.add_argument("--source", default=0, help="Camera source index or replay video path")
     parser.add_argument("--debug", action="store_true", help="Show debug windows")
     args = parser.parse_args()
+
+    source: int | str
+    try:
+        source = int(args.source)
+    except Exception:
+        source = str(args.source)
 
     setup_logging()
 
@@ -379,12 +401,7 @@ def main() -> None:
         mult = score["multiplier"]
         logger.info("SCORE: %s %d (sector=%d, x%d)", ring, points, sector, mult)
 
-    pipeline = DartPipeline(
-        camera_src=args.source,
-        on_dart_detected=on_dart,
-        debug=args.debug
-    )
-
+    pipeline = DartPipeline(camera_src=source, on_dart_detected=on_dart, debug=args.debug)
     try:
         pipeline.start()
         logger.info("Pipeline running. Press Ctrl+C to stop.")

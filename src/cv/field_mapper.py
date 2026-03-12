@@ -1,6 +1,10 @@
 """Maps pixel coordinates to dartboard sector and score."""
 
 import math
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.cv.geometry import BoardGeometry
 
 
 class FieldMapper:
@@ -57,9 +61,15 @@ class FieldMapper:
         for key, r_px in zip(keys, radii_px):
             self.ring_radii[key] = r_px / outer_radius_px
 
-    def point_to_score(self, x: float, y: float,
-                       center_x: float, center_y: float,
-                       radius_px: float) -> dict:
+    def point_to_score(
+        self,
+        x: float,
+        y: float,
+        center_x: float | None = None,
+        center_y: float | None = None,
+        radius_px: float | None = None,
+        geometry: "BoardGeometry | None" = None,
+    ) -> dict:
         """
         Convert pixel coords to score.
 
@@ -79,6 +89,18 @@ class FieldMapper:
                 "angle_deg": float      # 0-360
             }
         """
+        rotation_deg = 0.0
+        if geometry is not None:
+            center_x = geometry.optical_center_px[0]
+            center_y = geometry.optical_center_px[1]
+            radius_px = geometry.double_outer_radius_px
+            rotation_deg = geometry.rotation_deg
+
+        if center_x is None or center_y is None:
+            raise ValueError("center_x/center_y or geometry must be provided")
+        if radius_px is None:
+            raise ValueError("radius_px or geometry must be provided")
+
         dx = x - center_x
         dy = y - center_y
         distance = math.hypot(dx, dy)
@@ -91,7 +113,7 @@ class FieldMapper:
         angle_deg = math.degrees(angle_rad)
         # +90 rotates so 0° is at top (12 o'clock), sector_offset shifts
         # to align with sector boundaries (20 sector centered at top)
-        adjusted_angle = (angle_deg + 90 + self.sector_offset_deg) % 360
+        adjusted_angle = (angle_deg + 90 + self.sector_offset_deg + rotation_deg) % 360
 
         sector_index = int(adjusted_angle / self.sector_angle_deg) % 20
         sector_value = self.SECTOR_ORDER[sector_index]

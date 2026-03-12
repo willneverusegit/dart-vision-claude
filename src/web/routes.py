@@ -281,26 +281,33 @@ def setup_routes(app_state: dict) -> APIRouter:
 
     # --- Calibration ---
 
+    async def _run_manual_board_alignment(points: list[list[float]]) -> dict:
+        pipeline = app_state.get("pipeline")
+        if not pipeline or not hasattr(pipeline, "board_calibration"):
+            return {"ok": False, "error": "No pipeline/board calibration manager"}
+        result = pipeline.board_calibration.manual_calibration(points)
+        if result.get("ok"):
+            pipeline.refresh_remapper()
+            radii_px = pipeline.board_calibration.get_radii_px()
+            if radii_px and len(radii_px) == 6 and hasattr(pipeline, "field_mapper"):
+                outer_r = radii_px[-1]
+                if outer_r > 0:
+                    pipeline.field_mapper.set_ring_radii_px(radii_px, outer_r)
+        return result
+
     @router.post("/api/calibration/manual")
     async def manual_calibration(request: Request) -> dict:
-        """Perform manual 4-point calibration."""
+        """Legacy endpoint: manual board alignment."""
         body = await request.json()
         points = body.get("points", [])
-        pipeline = app_state.get("pipeline")
-        if pipeline and hasattr(pipeline, "calibration"):
-            result = pipeline.calibration.manual_calibration(points)
-            if result.get("ok"):
-                homography = pipeline.calibration.get_homography()
-                if homography is not None and hasattr(pipeline, "roi"):
-                    pipeline.roi.set_homography_matrix(homography)
-                # Apply calibrated radii to field mapper
-                radii_px = pipeline.calibration.get_radii_px()
-                if radii_px and len(radii_px) == 6 and hasattr(pipeline, "field_mapper"):
-                    outer_r = radii_px[-1]
-                    if outer_r > 0:
-                        pipeline.field_mapper.set_ring_radii_px(radii_px, outer_r)
-            return result
-        return {"ok": False, "error": "No pipeline/calibration manager"}
+        return await _run_manual_board_alignment(points)
+
+    @router.post("/api/calibration/board/manual")
+    async def board_manual_calibration(request: Request) -> dict:
+        """Board alignment via manual 4-point selection."""
+        body = await request.json()
+        points = body.get("points", [])
+        return await _run_manual_board_alignment(points)
 
     @router.get("/api/calibration/frame")
     async def get_calibration_frame() -> JSONResponse:
@@ -312,51 +319,90 @@ def setup_routes(app_state: dict) -> APIRouter:
             return JSONResponse({"ok": True, "image": "data:image/jpeg;base64," + b64})
         return JSONResponse({"ok": False, "error": "No frame available"})
 
+    async def _run_aruco_board_alignment(frame) -> dict:
+        pipeline = app_state.get("pipeline")
+        if not pipeline or not hasattr(pipeline, "board_calibration"):
+            return {"ok": False, "error": "No pipeline/board calibration manager"}
+        result = pipeline.board_calibration.aruco_calibration(frame)
+        if result.get("ok"):
+            pipeline.refresh_remapper()
+            radii_px = result.get("radii_px")
+            if radii_px and len(radii_px) == 6 and hasattr(pipeline, "field_mapper"):
+                outer_r = radii_px[-1]
+                if outer_r > 0:
+                    pipeline.field_mapper.set_ring_radii_px(radii_px, outer_r)
+        return result
+
     @router.post("/api/calibration/aruco")
     async def aruco_calibration() -> dict:
-        """Perform ArUco marker-based calibration on current frame."""
-        frame = app_state.get("latest_frame")
+        """Legacy endpoint: ArUco board alignment on latest frame."""
+        pipeline = app_state.get("pipeline")
+        frame = pipeline.get_latest_raw_frame() if pipeline else None
+        if frame is None:
+            frame = app_state.get("latest_frame")
         if frame is None:
             return {"ok": False, "error": "No frame available"}
+        return await _run_aruco_board_alignment(frame)
+
+    @router.post("/api/calibration/board/aruco")
+    async def board_aruco_calibration() -> dict:
+        """Board alignment via ArUco markers on latest raw frame."""
         pipeline = app_state.get("pipeline")
-        if pipeline and hasattr(pipeline, "calibration"):
-            result = pipeline.calibration.aruco_calibration(frame)
-            if result.get("ok"):
-                homography = pipeline.calibration.get_homography()
-                if homography is not None and hasattr(pipeline, "roi"):
-                    pipeline.roi.set_homography_matrix(homography)
-                # Apply calibrated radii to field mapper
-                radii_px = result.get("radii_px")
-                if radii_px and len(radii_px) == 6 and hasattr(pipeline, "field_mapper"):
-                    outer_r = radii_px[-1]
-                    if outer_r > 0:
-                        pipeline.field_mapper.set_ring_radii_px(radii_px, outer_r)
-            return result
-        return {"ok": False, "error": "No pipeline/calibration manager"}
+        frame = pipeline.get_latest_raw_frame() if pipeline else None
+        if frame is None:
+            frame = app_state.get("latest_frame")
+        if frame is None:
+            return {"ok": False, "error": "No frame available"}
+        return await _run_aruco_board_alignment(frame)
+
+    async def _run_lens_charuco_calibration() -> dict:
+        """Capture latest raw frames and calibrate camera intrinsics."""
+        pipeline = app_state.get("pipeline")
+        if not pipeline or not hasattr(pipeline, "camera_calibration"):
+            return {"ok": False, "error": "No pipeline/camera calibration manager"}
+        if not pipeline.camera:
+            return {"ok": False, "error": "Camera not available"}
+
+        import time as _time
+
+        frames = []
+        for _ in range(30):
+            raw = pipeline.get_latest_raw_frame()
+            if raw is not None:
+                frames.append(raw.copy())
+            _time.sleep(0.1)
+
+        if len(frames) < 3:
+            return {"ok": False, "error": f"Only captured {len(frames)} frames, need at least 3"}
+        result = pipeline.camera_calibration.charuco_calibration(frames)
+        if result.get("ok"):
+            pipeline.refresh_remapper()
+        return result
 
     @router.post("/api/calibration/charuco")
     async def charuco_calibration() -> dict:
-        """Perform ChArUco calibration (collects frames automatically)."""
+        """Legacy endpoint: now performs lens setup via ChArUco."""
+        return await _run_lens_charuco_calibration()
+
+    @router.post("/api/calibration/lens/charuco")
+    async def lens_charuco_calibration() -> dict:
+        """Lens setup: estimate camera intrinsics with ChArUco."""
+        return await _run_lens_charuco_calibration()
+
+    @router.get("/api/calibration/lens/info")
+    async def lens_info() -> dict:
+        """Get lens calibration metadata."""
         pipeline = app_state.get("pipeline")
-        if not pipeline or not hasattr(pipeline, "calibration"):
-            return {"ok": False, "error": "No pipeline/calibration manager"}
-        if not pipeline.camera:
-            return {"ok": False, "error": "Camera not available"}
-        import time as _time
-        frames = []
-        for _ in range(30):
-            ret, frame = pipeline.camera.read()
-            if ret and frame is not None:
-                frames.append(frame.copy())
-            _time.sleep(0.1)
-        if len(frames) < 3:
-            return {"ok": False, "error": f"Only captured {len(frames)} frames, need at least 3"}
-        result = pipeline.calibration.charuco_calibration(frames)
-        if result.get("ok"):
-            homography = pipeline.calibration.get_homography()
-            if homography is not None and hasattr(pipeline, "roi"):
-                pipeline.roi.set_homography_matrix(homography)
-        return result
+        if not pipeline or not hasattr(pipeline, "camera_calibration"):
+            return {"ok": False, "error": "No camera calibration manager"}
+        cfg = pipeline.camera_calibration.get_config()
+        return {
+            "ok": True,
+            "valid": bool(cfg.get("lens_valid", False)),
+            "method": cfg.get("lens_method"),
+            "image_size": cfg.get("lens_image_size"),
+            "reprojection_error": cfg.get("lens_reprojection_error"),
+        }
 
     @router.get("/api/calibration/roi-preview")
     async def roi_preview() -> JSONResponse:
@@ -379,7 +425,7 @@ def setup_routes(app_state: dict) -> APIRouter:
         roi = pipeline.get_roi_preview()
         if roi is None:
             return {"ok": False, "error": "No ROI frame available"}
-        result = pipeline.calibration.verify_rings(roi)
+        result = pipeline.board_calibration.verify_rings(roi)
         return result
 
     @router.post("/api/calibration/optical-center")
@@ -407,19 +453,32 @@ def setup_routes(app_state: dict) -> APIRouter:
 
     @router.get("/api/calibration/info")
     async def calibration_info() -> dict:
-        """Get calibration metadata (radii, mm/px, method, etc)."""
+        """Get combined calibration metadata (board + lens)."""
         pipeline = app_state.get("pipeline")
-        if not pipeline or not hasattr(pipeline, "calibration"):
+        if not pipeline or not hasattr(pipeline, "board_calibration"):
             return {"ok": False, "error": "No calibration manager"}
-        config = pipeline.calibration.get_config()
+        config = pipeline.board_calibration.get_config()
+        lens_cfg = pipeline.camera_calibration.get_config() if hasattr(pipeline, "camera_calibration") else {}
         return {
             "ok": True,
-            "valid": config.get("valid", False),
-            "method": config.get("method"),
+            "board_valid": config.get("valid", False),
+            "board_method": config.get("method"),
             "mm_per_px": config.get("mm_per_px", 1.0),
             "radii_px": config.get("radii_px", []),
             "center_px": config.get("center_px", [200, 200]),
+            "optical_center_roi_px": config.get("optical_center_roi_px"),
+            "lens_valid": bool(lens_cfg.get("lens_valid", False)),
+            "lens_method": lens_cfg.get("lens_method"),
+            "schema_version": config.get("schema_version", 1),
         }
+
+    @router.get("/api/board/geometry")
+    async def board_geometry() -> dict:
+        """Expose canonical board geometry used by scoring/rendering."""
+        pipeline = app_state.get("pipeline")
+        if not pipeline or not hasattr(pipeline, "get_geometry_info"):
+            return {"ok": False, "error": "No pipeline geometry available"}
+        return {"ok": True, **pipeline.get_geometry_info()}
 
     # --- Stats ---
 

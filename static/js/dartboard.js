@@ -24,9 +24,7 @@ class DartboardRenderer {
             double: this.size * 0.5,
         };
 
-        // ROI mapping: ROI is 400x400, double_outer is at ~141.7px from center
-        // SVG double radius is this.radii.double = 200
-        // Scale factor = svgDouble / roiDouble (set after calibration)
+        // Legacy ROI fallback mapping (kept for backward compatibility)
         this.roiScale = this.radii.double / 141.7; // Default estimate
         this.roiSize = 400; // ROI image dimensions
 
@@ -49,7 +47,7 @@ class DartboardRenderer {
 
     async _loadCalibration() {
         try {
-            const resp = await fetch("/api/calibration/info");
+            const resp = await fetch("/api/board/geometry");
             const data = await resp.json();
             if (data.ok && data.radii_px && data.radii_px.length === 6) {
                 const roiDoubleOuter = data.radii_px[5]; // double_outer in ROI pixels
@@ -134,6 +132,16 @@ class DartboardRenderer {
     }
 
     // --- Hit Marker Methods ---
+
+    /**
+     * Add a hit using normalized board coordinates (preferred).
+     * boardXNorm / boardYNorm are relative to double-outer radius.
+     */
+    addHitNormalized(boardXNorm, boardYNorm, score, candidateId, pending) {
+        const svgX = this.cx + boardXNorm * this.radii.double;
+        const svgY = this.cy + boardYNorm * this.radii.double;
+        this._createHitMarker(svgX, svgY, score, candidateId, pending);
+    }
 
     /**
      * Add a hit using exact ROI coordinates.
