@@ -46,8 +46,8 @@ def _compute_quality_score(detection, score_result: dict, field_mapper) -> int:
     quality = 50  # Base score
 
     # Factor 1: Confirmation frames (more frames = higher confidence)
-    if hasattr(detection, "confirmation_count"):
-        frames = detection.confirmation_count
+    if hasattr(detection, "frame_count"):
+        frames = detection.frame_count
         quality += min(frames * 8, 25)  # Up to +25 for 3+ frames
     else:
         quality += 15  # Default if not tracked

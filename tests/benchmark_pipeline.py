@@ -27,6 +27,8 @@ def run_benchmark(duration: int = 10) -> dict:
 
     # Generate a mock frame
     mock_frame = np.random.randint(0, 50, (480, 640, 3), dtype=np.uint8)
+    # A stable ROI keeps benchmark work close to the runtime pipeline.
+    mock_roi = np.zeros((400, 400), dtype=np.uint8)
 
     print(f"Running benchmark for {duration}s with mock frames...")
     start_time = time.time()
@@ -40,11 +42,11 @@ def run_benchmark(duration: int = 10) -> dict:
         gray = cv2.cvtColor(warped, cv2.COLOR_BGR2GRAY)
         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
         enhanced = clahe.apply(gray)
-        mask, has_motion = motion.detect(warped)
+        mask, has_motion = motion.detect(enhanced)
         if has_motion:
-            detection = detector.detect(enhanced, mask)
+            detection = detector.detect(mock_roi, mask)
             if detection:
-                mapper.point_to_score(detection.x, detection.y, 200, 200, 200)
+                mapper.point_to_score(detection.center[0], detection.center[1], 200, 200, 200)
 
         frame_end = time.perf_counter()
         frame_times.append(frame_end - frame_start)

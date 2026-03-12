@@ -1,0 +1,16 @@
+{
+  "video": "example_clip.mp4",
+  "events": [
+    {
+      "frame_index": 12,
+      "raw_point_px": [320, 240],
+      "expected": {
+        "score": 50,
+        "sector": 50,
+        "ring": "inner_bull",
+        "multiplier": 1
+      },
+      "tag": "example"
+    }
+  ]
+}

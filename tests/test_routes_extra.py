@@ -52,3 +52,17 @@ class TestRoutesCoverage:
         finally:
             if saved is not None:
                 app_state["pipeline"] = saved
+
+    def test_lens_info_endpoint(self):
+        with TestClient(app) as client:
+            resp = client.get("/api/calibration/lens/info")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert "ok" in data
+
+    def test_board_geometry_endpoint(self):
+        with TestClient(app) as client:
+            resp = client.get("/api/board/geometry")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert "ok" in data

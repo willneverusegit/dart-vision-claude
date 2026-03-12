@@ -100,11 +100,14 @@
 
             <!-- Step 1: Mode Selection -->
             <div id="cal-step-mode" class="cal-step">
-                <p class="modal__text">Kalibrierungsmethode:</p>
+                <p class="modal__text">Kalibrierung ist jetzt in zwei getrennte Workflows aufgeteilt:</p>
                 <div class="cal-mode-buttons">
-                    <button id="btn-cal-manual" class="btn btn--primary cal-mode-btn">Manuell (4 Punkte)</button>
-                    <button id="btn-cal-aruco" class="btn btn--primary cal-mode-btn">ArUco (Auto)</button>
-                    <button id="btn-cal-charuco" class="btn btn--primary cal-mode-btn">ChArUco (Multi-Frame)</button>
+                    <button id="btn-cal-lens" class="btn btn--primary cal-mode-btn">Lens Setup (ChArUco)</button>
+                </div>
+                <p class="modal__text">Board Alignment (bei Stativ-/Board-Verschiebung neu ausfuehren):</p>
+                <div class="cal-mode-buttons">
+                    <button id="btn-cal-manual" class="btn btn--primary cal-mode-btn">Board Manuell (4 Punkte)</button>
+                    <button id="btn-cal-aruco" class="btn btn--primary cal-mode-btn">Board ArUco (Auto)</button>
                 </div>
             </div>
 

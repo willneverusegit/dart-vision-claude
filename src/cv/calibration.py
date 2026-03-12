@@ -17,7 +17,11 @@ BOARD_RADIUS_MM = 170   # Double-outer ring radius
 
 # Known surround frame dimensions (black frame around board)
 FRAME_OUTER_MM = 517  # Outer edge of black frame
-FRAME_INNER_MM = 480  # Inner edge where ArUco markers sit
+FRAME_INNER_MM = 480  # Inner edge of black frame (not used for calibration)
+
+# CRITICAL: Physical center-to-center distance between adjacent ArUco markers.
+# This is the actual measured distance, NOT the frame inner edge.
+MARKER_SPACING_MM = 410  # Measured ArUco marker center-to-center distance
 
 # ROI crop: board diameter + margin so the double ring is fully visible
 BOARD_CROP_MM = 380   # 340mm board + 20mm margin each side
@@ -92,12 +96,11 @@ class CalibrationManager:
             board_width_px = float(np.linalg.norm(src[1] - src[0]))
             if board_width_px < 1:
                 return {"ok": False, "error": "Board width too small (< 1px)"}
-            # Assume clicked points span the frame inner edge (480mm)
+            # Clicked points span the frame inner edge (480mm)
             mm_per_px = FRAME_INNER_MM / board_width_px
             center_x = float((src[0][0] + src[2][0]) / 2)
             center_y = float((src[0][1] + src[2][1]) / 2)
-            # Compute radii for the ROI: ROI (400px) maps the clicked area
-            # which spans FRAME_INNER_MM (480mm)
+            # ROI (400px) maps the clicked area which spans FRAME_INNER_MM (480mm)
             roi_w = roi_size[0]
             roi_mm_per_px_local = FRAME_INNER_MM / roi_w
             radii_px = []
@@ -124,13 +127,13 @@ class CalibrationManager:
 
     def aruco_calibration(self, frame: np.ndarray,
                           expected_ids: list[int] | None = None,
-                          marker_spacing_mm: float = FRAME_INNER_MM,
+                          marker_spacing_mm: float = MARKER_SPACING_MM,
                           roi_size: tuple[int, int] = (400, 400)) -> dict:
         """
         Detect ArUco markers (4x4_50 dict) and derive calibration.
 
         Markers are placed at the inner corners of the black surround frame.
-        The known frame inner dimension (480mm) gives precise mm/px scaling.
+        The known marker center-to-center distance (410mm) gives precise mm/px scaling.
 
         Args:
             frame: Single camera frame.
@@ -216,8 +219,8 @@ class CalibrationManager:
             roi_w, roi_h = roi_size
 
             # Step 1: Compute homography from marker corners to a
-            # "frame space" (480mm mapped to 480px for easy math)
-            frame_px = marker_spacing_mm  # 480
+            # "frame space" (410mm mapped to 410px for 1:1 mm-to-px)
+            frame_px = marker_spacing_mm  # 410 (marker center-to-center)
             frame_dst = np.float32([
                 [0, 0], [frame_px, 0],
                 [frame_px, frame_px], [0, frame_px],
@@ -227,7 +230,7 @@ class CalibrationManager:
             # Step 2: Define a tighter crop centered on the board
             # BOARD_CROP_MM (380mm) = board diameter + small margin
             crop_mm = BOARD_CROP_MM
-            margin = (frame_px - crop_mm) / 2  # (480-380)/2 = 50
+            margin = (frame_px - crop_mm) / 2  # (410-380)/2 = 15
             crop_in_frame = np.float32([
                 [margin, margin],
                 [frame_px - margin, margin],
@@ -254,10 +257,17 @@ class CalibrationManager:
             if abs(det) < 1e-6:
                 return {"ok": False, "error": "Degenerate homography"}
 
-            # Compute mm/px from known frame dimensions (original image scale)
-            diag_px = float(np.linalg.norm(src_markers[2] - src_markers[0]))
-            diag_mm = marker_spacing_mm * math.sqrt(2)
-            mm_per_px = diag_mm / diag_px if diag_px > 0 else 1.0
+            # Compute mm/px from ArUco marker edge length (75mm).
+            # Each marker has 4 corners — average the edge lengths of all
+            # detected markers for a robust per-pixel scale.
+            edge_lengths_px = []
+            for idx in selected_indices:
+                mc = corners[idx][0]  # 4 corners of this marker
+                for i in range(4):
+                    edge = float(np.linalg.norm(mc[(i + 1) % 4] - mc[i]))
+                    edge_lengths_px.append(edge)
+            avg_edge_px = float(np.mean(edge_lengths_px)) if edge_lengths_px else 1.0
+            mm_per_px = ARUCO_MARKER_SIZE_MM / avg_edge_px
 
             # Board center in original image
             center_x = float(np.mean(src_markers[:, 0]))
@@ -278,7 +288,7 @@ class CalibrationManager:
                 "mm_per_px": mm_per_px,
                 "homography": homography.tolist(),
                 "radii_px": radii_px,
-                "frame_inner_mm": marker_spacing_mm,
+                "marker_spacing_mm": marker_spacing_mm,
                 "board_crop_mm": crop_mm,
                 "marker_corners_px": ordered,
                 "last_update_utc": datetime.now(timezone.utc).isoformat(),
@@ -303,120 +313,128 @@ class CalibrationManager:
 
     def verify_rings(self, frame: np.ndarray) -> dict:
         """
-        Use Hough circles and Canny edge detection to verify/refine
-        double ring, triple ring, and bullseye positions after calibration.
+        Verify calibrated ring radii against expected mathematical values.
 
-        Should be called on the ROI-warped frame (after homography applied).
+        Note: HoughCircles-based ring detection was removed — it is too
+        error-prone due to wire spider shadows and reflections. Ring
+        positions are now derived purely from the calibrated homography
+        and known dartboard dimensions (polar coordinate math).
 
         Returns:
-            {
-                "ok": bool,
-                "detected_circles": list of (cx, cy, r),
-                "matched_rings": dict mapping ring names to detected radii,
-                "center_offset": (dx, dy) offset from expected center,
-            }
+            {"ok": bool, "radii_px": list, "expected_radii_px": list,
+             "roi_mm_per_px": float}
         """
-        try:
-            if len(frame.shape) == 3:
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            else:
-                gray = frame
+        h, w = frame.shape[:2] if len(frame.shape) >= 2 else (400, 400)
+        crop_mm = self._config.get("board_crop_mm", BOARD_CROP_MM)
+        roi_mm_per_px = crop_mm / w
 
-            h, w = gray.shape[:2]
-            expected_cx, expected_cy = w // 2, h // 2
+        expected_radii = []
+        ring_names = ["bull_inner", "bull_outer", "triple_inner",
+                      "triple_outer", "double_inner", "double_outer"]
+        for name in ring_names:
+            r_mm = RING_RADII_MM[name]
+            expected_radii.append(round(r_mm / roi_mm_per_px, 1))
 
-            # CLAHE for better contrast
-            clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
-            enhanced = clahe.apply(gray)
+        stored_radii = self._config.get("radii_px", [])
 
-            # Blur to reduce noise
-            blurred = cv2.GaussianBlur(enhanced, (5, 5), 1.5)
+        return {
+            "ok": True,
+            "radii_px": stored_radii,
+            "expected_radii_px": expected_radii,
+            "roi_mm_per_px": roi_mm_per_px,
+        }
 
-            # Canny edge detection
-            edges = cv2.Canny(blurred, 30, 100)
+    def find_optical_center(self, roi_frame: np.ndarray,
+                            search_radius_mm: float = 10.0) -> tuple[float, float]:
+        """
+        Find the true optical center (bullseye) in the warped ROI frame.
 
-            # Hough circles — detect concentric rings
-            circles = cv2.HoughCircles(
-                blurred,
-                cv2.HOUGH_GRADIENT,
-                dp=1.2,
-                minDist=15,
-                param1=100,
-                param2=30,
-                minRadius=5,
-                maxRadius=int(max(w, h) * 0.55),
-            )
+        Even with a perfect homography the board may sag mechanically,
+        shifting the bullseye a few mm from the geometric center.  This
+        method searches a small region around the geometric center for
+        the red/green bullseye using color thresholding in HSV.
 
-            if circles is None:
-                return {"ok": False, "error": "No circles detected",
-                        "detected_circles": [], "matched_rings": {}}
+        Args:
+            roi_frame: The perspective-warped ROI image (BGR or grayscale).
+            search_radius_mm: Search radius in mm (default ±10mm).
 
-            detected = circles[0].tolist()
-            detected_circles = [(int(c[0]), int(c[1]), int(c[2])) for c in detected]
-            logger.info("Hough detected %d circles", len(detected_circles))
+        Returns:
+            (cx, cy) — refined center coordinates in ROI pixel space.
+            Falls back to the geometric center if detection fails.
+        """
+        h, w = roi_frame.shape[:2]
+        geo_cx, geo_cy = w / 2.0, h / 2.0
 
-            # Estimate board center from all detected circles
-            if len(detected_circles) >= 3:
-                avg_cx = np.mean([c[0] for c in detected_circles])
-                avg_cy = np.mean([c[1] for c in detected_circles])
-            else:
-                avg_cx, avg_cy = expected_cx, expected_cy
+        # Convert search radius from mm to pixels
+        crop_mm = self._config.get("board_crop_mm", BOARD_CROP_MM)
+        roi_mm_per_px = crop_mm / w
+        search_r_px = int(search_radius_mm / roi_mm_per_px)
 
-            center_offset = (float(avg_cx - expected_cx), float(avg_cy - expected_cy))
+        # Need a color image for HSV thresholding
+        if len(roi_frame.shape) == 2:
+            logger.debug("Grayscale ROI — cannot detect bullseye color, "
+                         "using geometric center")
+            return (geo_cx, geo_cy)
 
-            # Match detected circles to expected ring radii
-            # Use the ROI radii from config if available
-            radii_px = self._config.get("radii_px", [])
-            if not radii_px:
-                # Fallback: estimate from ROI size
-                roi_radius = min(w, h) / 2
-                radii_px = [
-                    RING_RADII_MM["bull_inner"] / RING_RADII_MM["double_outer"] * roi_radius,
-                    RING_RADII_MM["bull_outer"] / RING_RADII_MM["double_outer"] * roi_radius,
-                    RING_RADII_MM["triple_inner"] / RING_RADII_MM["double_outer"] * roi_radius,
-                    RING_RADII_MM["triple_outer"] / RING_RADII_MM["double_outer"] * roi_radius,
-                    RING_RADII_MM["double_inner"] / RING_RADII_MM["double_outer"] * roi_radius,
-                    RING_RADII_MM["double_outer"] / RING_RADII_MM["double_outer"] * roi_radius,
-                ]
+        # Crop a small search region around geometric center
+        x1 = max(0, int(geo_cx) - search_r_px)
+        y1 = max(0, int(geo_cy) - search_r_px)
+        x2 = min(w, int(geo_cx) + search_r_px)
+        y2 = min(h, int(geo_cy) + search_r_px)
+        patch = roi_frame[y1:y2, x1:x2]
 
-            ring_names = ["bull_inner", "bull_outer", "triple_inner",
-                          "triple_outer", "double_inner", "double_outer"]
-            matched_rings = {}
-            tolerance = 15  # px tolerance for matching
+        if patch.size == 0:
+            return (geo_cx, geo_cy)
 
-            for name, expected_r in zip(ring_names, radii_px):
-                best_match = None
-                best_dist = tolerance
-                for cx, cy, r in detected_circles:
-                    # Only consider circles roughly centered
-                    if abs(cx - avg_cx) < 20 and abs(cy - avg_cy) < 20:
-                        dist = abs(r - expected_r)
-                        if dist < best_dist:
-                            best_dist = dist
-                            best_match = r
-                if best_match is not None:
-                    matched_rings[name] = {
-                        "expected_px": round(expected_r, 1),
-                        "detected_px": best_match,
-                        "error_px": round(abs(best_match - expected_r), 1),
-                    }
+        hsv = cv2.cvtColor(patch, cv2.COLOR_BGR2HSV)
 
-            logger.info("Ring verification: %d/%d rings matched, center offset=(%.1f, %.1f)",
-                        len(matched_rings), len(ring_names),
-                        center_offset[0], center_offset[1])
+        # Detect red bullseye (red wraps around H=0/180 in OpenCV HSV)
+        mask_red1 = cv2.inRange(hsv, np.array([0, 70, 50]),
+                                np.array([10, 255, 255]))
+        mask_red2 = cv2.inRange(hsv, np.array([170, 70, 50]),
+                                np.array([180, 255, 255]))
+        # Also detect green (outer bull on many boards)
+        mask_green = cv2.inRange(hsv, np.array([35, 70, 50]),
+                                 np.array([85, 255, 255]))
+        mask = mask_red1 | mask_red2 | mask_green
 
-            return {
-                "ok": True,
-                "detected_circles": detected_circles[:20],  # Limit output
-                "matched_rings": matched_rings,
-                "center_offset": center_offset,
-                "edge_image_shape": edges.shape,
-            }
+        # Morphological cleanup
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
 
-        except Exception as e:
-            logger.error("Ring verification failed: %s", e)
-            return {"ok": False, "error": str(e),
-                    "detected_circles": [], "matched_rings": {}}
+        # Find the centroid of the largest blob
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL,
+                                       cv2.CHAIN_APPROX_SIMPLE)
+        if not contours:
+            logger.debug("No bullseye blob found, using geometric center")
+            return (geo_cx, geo_cy)
+
+        largest = max(contours, key=cv2.contourArea)
+        M = cv2.moments(largest)
+        if M["m00"] < 1:
+            return (geo_cx, geo_cy)
+
+        # Centroid in patch coordinates → ROI coordinates
+        local_cx = M["m10"] / M["m00"]
+        local_cy = M["m01"] / M["m00"]
+        refined_cx = x1 + local_cx
+        refined_cy = y1 + local_cy
+
+        dx = refined_cx - geo_cx
+        dy = refined_cy - geo_cy
+        offset_mm = math.hypot(dx, dy) * roi_mm_per_px
+        logger.info("Optical center offset: (%.1fpx, %.1fpx) = %.1fmm from geometric",
+                    dx, dy, offset_mm)
+
+        # Sanity check: reject if offset is too large (> search radius)
+        if offset_mm > search_radius_mm:
+            logger.warning("Optical center offset (%.1fmm) exceeds search radius "
+                           "(%.1fmm), falling back to geometric center",
+                           offset_mm, search_radius_mm)
+            return (geo_cx, geo_cy)
+
+        return (refined_cx, refined_cy)
 
     def charuco_calibration(self, frames: list[np.ndarray],
                             squares_x: int = 7, squares_y: int = 5,
@@ -494,9 +512,16 @@ class CalibrationManager:
         return self._config.get("valid", False)
 
     def get_center(self) -> tuple[float, float]:
-        """Get board center in pixel coordinates."""
+        """Get board center in original image pixel coordinates."""
         c = self._config.get("center_px", [200, 200])
         return (float(c[0]), float(c[1]))
+
+    def get_optical_center(self) -> tuple[float, float] | None:
+        """Get refined optical center in ROI pixel coordinates, if available."""
+        c = self._config.get("optical_center_roi_px")
+        if c and len(c) == 2:
+            return (float(c[0]), float(c[1]))
+        return None
 
     def get_mm_per_px(self) -> float:
         """Get scale factor (mm per pixel)."""
