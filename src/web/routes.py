@@ -288,11 +288,6 @@ def setup_routes(app_state: dict) -> APIRouter:
         result = pipeline.board_calibration.manual_calibration(points)
         if result.get("ok"):
             pipeline.refresh_remapper()
-            radii_px = pipeline.board_calibration.get_radii_px()
-            if radii_px and len(radii_px) == 6 and hasattr(pipeline, "field_mapper"):
-                outer_r = radii_px[-1]
-                if outer_r > 0:
-                    pipeline.field_mapper.set_ring_radii_px(radii_px, outer_r)
         return result
 
     @router.post("/api/calibration/manual")
@@ -326,11 +321,6 @@ def setup_routes(app_state: dict) -> APIRouter:
         result = pipeline.board_calibration.aruco_calibration(frame)
         if result.get("ok"):
             pipeline.refresh_remapper()
-            radii_px = result.get("radii_px")
-            if radii_px and len(radii_px) == 6 and hasattr(pipeline, "field_mapper"):
-                outer_r = radii_px[-1]
-                if outer_r > 0:
-                    pipeline.field_mapper.set_ring_radii_px(radii_px, outer_r)
         return result
 
     @router.post("/api/calibration/aruco")

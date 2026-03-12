@@ -35,7 +35,7 @@ app_state: dict = {
 }
 
 
-def _compute_quality_score(detection, score_result: dict, field_mapper) -> int:
+def _compute_quality_score(detection, score_result: dict) -> int:
     """Compute a quality score (0-100) for a hit candidate.
 
     Based on:
@@ -105,10 +105,7 @@ def _run_pipeline(state: dict) -> None:
             # Compute quality score
             quality = 50
             if detection is not None:
-                quality = _compute_quality_score(
-                    detection, score_result,
-                    pipeline.field_mapper if pipeline else None
-                )
+                quality = _compute_quality_score(detection, score_result)
 
             # Create candidate
             candidate_id = str(uuid.uuid4())[:8]

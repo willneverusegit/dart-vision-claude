@@ -7,8 +7,7 @@ from src.cv.calibration import CalibrationManager
 from src.cv.roi import ROIProcessor
 from src.cv.motion import MotionDetector
 from src.cv.detector import DartImpactDetector, DartDetection
-from src.cv.field_mapper import FieldMapper
-from src.cv.geometry import BoardGeometry, BoardPose, CameraIntrinsics
+from src.cv.geometry import BoardGeometry, BoardHit, BoardPose, CameraIntrinsics, PolarCoord
 from src.cv.pipeline import DartPipeline
 from src.cv.remapping import CombinedRemapper
 from src.cv.replay import ReplayCamera
@@ -23,10 +22,11 @@ __all__ = [
     "MotionDetector",
     "DartImpactDetector",
     "DartDetection",
-    "FieldMapper",
     "BoardGeometry",
+    "BoardHit",
     "BoardPose",
     "CameraIntrinsics",
+    "PolarCoord",
     "CombinedRemapper",
     "DartPipeline",
 ]
