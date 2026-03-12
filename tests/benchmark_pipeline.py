@@ -9,7 +9,7 @@ import statistics
 import numpy as np
 from src.cv.motion import MotionDetector
 from src.cv.detector import DartImpactDetector
-from src.cv.field_mapper import FieldMapper
+from src.cv.geometry import BoardGeometry, BoardPose
 from src.cv.roi import ROIProcessor
 from src.utils.fps import FPSCounter
 
@@ -19,7 +19,14 @@ def run_benchmark(duration: int = 10) -> dict:
     roi_proc = ROIProcessor()
     motion = MotionDetector(threshold=500)
     detector = DartImpactDetector()
-    mapper = FieldMapper()
+    pose = BoardPose(
+        homography=None,
+        center_px=(200.0, 200.0),
+        radii_px=(10.0, 19.0, 106.0, 116.0, 188.0, 200.0),
+        rotation_deg=0.0,
+        valid=True,
+    )
+    geometry = BoardGeometry.from_pose(pose, roi_size=(400, 400))
     fps_counter = FPSCounter(window_size=100)
 
     frame_times: list[float] = []
@@ -46,7 +53,7 @@ def run_benchmark(duration: int = 10) -> dict:
         if has_motion:
             detection = detector.detect(mock_roi, mask)
             if detection:
-                mapper.point_to_score(detection.center[0], detection.center[1], 200, 200, 200)
+                geometry.point_to_score(float(detection.center[0]), float(detection.center[1]))
 
         frame_end = time.perf_counter()
         frame_times.append(frame_end - frame_start)

@@ -1,7 +1,7 @@
 """Integration tests for the CV pipeline modules."""
 
 import numpy as np
-from src.cv.field_mapper import FieldMapper
+from src.cv.geometry import BoardGeometry, BoardPose
 from src.cv.motion import MotionDetector
 from src.cv.roi import ROIProcessor
 from src.cv.detector import DartImpactDetector
@@ -81,17 +81,26 @@ class TestROIProcessor:
         assert polar.shape == (360, 400)
 
 
-class TestFieldMapperIntegration:
+class TestBoardGeometryScoringIntegration:
+    def _make_geometry(self) -> BoardGeometry:
+        pose = BoardPose(
+            homography=None,
+            center_px=(200.0, 200.0),
+            radii_px=(10.0, 19.0, 106.0, 116.0, 188.0, 200.0),
+            rotation_deg=0.0,
+            valid=True,
+        )
+        return BoardGeometry.from_pose(pose, roi_size=(400, 400))
+
     def test_score_roundtrip(self):
-        """Score detection -> field mapping integration."""
-        mapper = FieldMapper()
-        # Simulate detecting a dart at triple-20 position
-        # Triple zone: 99-107mm / 170mm = 0.582-0.629 fraction
-        result = mapper.point_to_score(200, 200 - 200 * 0.60, 200, 200, 200)
-        assert result["score"] == 60
-        assert result["sector"] == 20
-        assert result["multiplier"] == 3
-        assert result["ring"] == "triple"
+        """Score detection -> BoardGeometry scoring integration."""
+        geometry = self._make_geometry()
+        # Triple at r_norm 0.582-0.629; with radius 200px: 120px from center
+        hit = geometry.point_to_score(200.0, 200.0 - 120.0)
+        assert hit.score == 60
+        assert hit.sector == 20
+        assert hit.multiplier == 3
+        assert hit.ring == "triple"
 
 
 class TestDetectionToScoring:
@@ -99,7 +108,14 @@ class TestDetectionToScoring:
         """Full flow: motion mask -> detection -> scoring."""
         import cv2
         detector = DartImpactDetector(confirmation_frames=2, position_tolerance_px=30)
-        mapper = FieldMapper()
+        pose = BoardPose(
+            homography=None,
+            center_px=(200.0, 200.0),
+            radii_px=(10.0, 19.0, 106.0, 116.0, 188.0, 200.0),
+            rotation_deg=0.0,
+            valid=True,
+        )
+        geometry = BoardGeometry.from_pose(pose, roi_size=(400, 400))
 
         roi = np.zeros((400, 400), dtype=np.uint8)
         # Create a dart-like blob at (200, 90) -> near triple-20 zone
@@ -111,8 +127,7 @@ class TestDetectionToScoring:
         detection = detector.detect(roi, mask)
 
         if detection is not None:
-            # DartDetection has .center = (x, y) tuple
             cx, cy = detection.center
-            score = mapper.point_to_score(cx, cy, 200, 200, 200)
-            assert score["score"] > 0
-            assert score["sector"] in range(1, 21)
+            hit = geometry.point_to_score(float(cx), float(cy))
+            assert hit.score > 0
+            assert hit.sector in range(1, 21)

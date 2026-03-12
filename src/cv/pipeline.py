@@ -15,8 +15,7 @@ from src.cv.board_calibration import BoardCalibrationManager
 from src.cv.camera_calibration import CameraCalibrationManager
 from src.cv.capture import ThreadedCamera
 from src.cv.detector import DartImpactDetector
-from src.cv.field_mapper import FieldMapper
-from src.cv.geometry import BoardGeometry
+from src.cv.geometry import BoardGeometry, BoardHit, RING_BOUNDARIES
 from src.cv.motion import MotionDetector
 from src.cv.remapping import CombinedRemapper
 from src.cv.replay import ReplayCamera
@@ -47,7 +46,6 @@ class DartPipeline:
         self.roi_processor = ROIProcessor(roi_size=(400, 400))
         self.motion_detector = MotionDetector(threshold=500)
         self.dart_detector = DartImpactDetector(confirmation_frames=3)
-        self.field_mapper = FieldMapper()
         self.fps_counter = FPSCounter()
         self.camera_calibration = CameraCalibrationManager()
         self.board_calibration = BoardCalibrationManager(roi_size=self.roi_processor.roi_size)
@@ -83,9 +81,6 @@ class DartPipeline:
         pose = self.board_calibration.get_pose()
         if pose.homography is not None:
             self.roi_processor.set_homography_matrix(pose.homography)
-        radii_px = self.board_calibration.get_radii_px()
-        if radii_px and len(radii_px) == 6 and radii_px[-1] > 0:
-            self.field_mapper.set_ring_radii_px(radii_px, radii_px[-1])
         oc = self.board_calibration.get_optical_center()
         if oc is not None:
             self._optical_center = oc
@@ -155,21 +150,10 @@ class DartPipeline:
             self._update_annotated_frame(frame, enhanced, motion_mask)
             return None
 
-        # 5) Scoring against board geometry
+        # 5) Scoring via BoardGeometry
         geometry = self.geometry or self.board_calibration.get_geometry()
-        score_result = self.field_mapper.point_to_score(
-            detection.center[0],
-            detection.center[1],
-            geometry=geometry,
-        )
-        score_result["roi_x"] = detection.center[0]
-        score_result["roi_y"] = detection.center[1]
-        board_x_norm, board_y_norm = geometry.normalize_point(detection.center[0], detection.center[1])
-        polar_r, polar_angle = geometry.point_to_polar(detection.center[0], detection.center[1])
-        score_result["board_x_norm"] = round(board_x_norm, 4)
-        score_result["board_y_norm"] = round(board_y_norm, 4)
-        score_result["polar_radius_norm"] = round(polar_r, 4)
-        score_result["polar_angle_deg"] = round(polar_angle, 2)
+        hit = geometry.point_to_score(detection.center[0], detection.center[1])
+        score_result = geometry.hit_to_dict(hit)
 
         if self.on_dart_detected:
             self.on_dart_detected(score_result, detection)
@@ -255,7 +239,7 @@ class DartPipeline:
         else:
             radius = min(cx, cy)
 
-        ring_fractions = list(self.field_mapper.ring_radii.values())
+        ring_fractions = [b[1] for b in RING_BOUNDARIES]  # outer boundaries
         ring_colors = [
             (0, 0, 255),
             (0, 255, 0),
