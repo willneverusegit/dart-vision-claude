@@ -73,6 +73,9 @@ class DartPipeline:
         # Motion overlay toggle
         self.show_overlay_motion = False
 
+        # Marker detection overlay toggle (ArUco + ChArUco)
+        self.show_overlay_markers = False
+
     def start(self) -> None:
         """Initialize modules and start capture source."""
         self.camera = self._build_camera_source()
@@ -330,6 +333,9 @@ class DartPipeline:
                 2,
             )
 
+        if self.show_overlay_markers:
+            self._draw_marker_overlay(annotated)
+
         if self.show_overlay_motion and motion_mask is not None:
             fh, fw = annotated.shape[:2]
             overlay_size = min(fw // 2, fh // 2, 320)
@@ -347,6 +353,71 @@ class DartPipeline:
             if motion_mask is not None:
                 cv2.imshow("Motion", motion_mask)
             cv2.waitKey(1)
+
+    def _draw_marker_overlay(self, frame: np.ndarray) -> None:
+        """Draw detected ArUco and ChArUco markers on the frame."""
+        try:
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if len(frame.shape) == 3 else frame
+            fh, fw = frame.shape[:2]
+            aruco_count = 0
+            charuco_count = 0
+
+            # --- ArUco markers (DICT_4X4_50, board alignment) ---
+            aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
+            aruco_params = cv2.aruco.DetectorParameters()
+            aruco_params.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
+            aruco_detector = cv2.aruco.ArucoDetector(aruco_dict, aruco_params)
+            aruco_corners, aruco_ids, _ = aruco_detector.detectMarkers(gray)
+
+            if aruco_ids is not None and len(aruco_ids) > 0:
+                cv2.aruco.drawDetectedMarkers(frame, aruco_corners, aruco_ids,
+                                               borderColor=(0, 255, 0))
+                aruco_count = len(aruco_ids)
+
+            # --- ChArUco board (DICT_6X6_250, lens calibration) ---
+            charuco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_6X6_250)
+            charuco_params = cv2.aruco.DetectorParameters()
+            charuco_params.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
+            charuco_detector = cv2.aruco.ArucoDetector(charuco_dict, charuco_params)
+            charuco_corners, charuco_ids, _ = charuco_detector.detectMarkers(gray)
+
+            if charuco_ids is not None and len(charuco_ids) > 0:
+                # Draw the 6x6 ArUco markers in yellow
+                cv2.aruco.drawDetectedMarkers(frame, charuco_corners, charuco_ids,
+                                               borderColor=(0, 255, 255))
+
+                # Try to interpolate ChArUco corners for extra feedback
+                board = cv2.aruco.CharucoBoard(
+                    (7, 5), 0.04, 0.02, charuco_dict,
+                )
+                ret, ch_corners, ch_ids = cv2.aruco.interpolateCornersCharuco(
+                    charuco_corners, charuco_ids, gray, board,
+                )
+                if ret > 0 and ch_corners is not None:
+                    charuco_count = ret
+                    for pt in ch_corners:
+                        x, y = int(pt[0][0]), int(pt[0][1])
+                        cv2.circle(frame, (x, y), 4, (255, 255, 0), -1)  # Cyan filled
+                        cv2.circle(frame, (x, y), 5, (255, 200, 0), 1)   # Outline
+
+            # Status text at bottom
+            status_parts = []
+            if aruco_count > 0:
+                status_parts.append(f"ArUco 4x4: {aruco_count} Marker")
+            if charuco_count > 0:
+                status_parts.append(f"ChArUco: {charuco_count} Corners")
+            if not status_parts:
+                status_parts.append("Keine Marker erkannt")
+
+            status_text = " | ".join(status_parts)
+            # Background bar for readability
+            text_y = fh - 15
+            cv2.rectangle(frame, (0, fh - 35), (fw, fh), (0, 0, 0), -1)
+            cv2.putText(frame, status_text, (10, text_y),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 200), 1)
+
+        except Exception as e:
+            logger.debug("Marker overlay error: %s", e)
 
     def _composite_overlay(self, frame: np.ndarray, overlay_img: np.ndarray, x: int, y: int, size: int, label: str) -> None:
         if x < 0 or y < 0:

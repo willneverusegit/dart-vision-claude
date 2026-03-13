@@ -268,9 +268,12 @@ def setup_routes(app_state: dict) -> APIRouter:
         if pipeline:
             if "motion" in body:
                 pipeline.show_overlay_motion = bool(body["motion"])
+            if "markers" in body:
+                pipeline.show_overlay_markers = bool(body["markers"])
         return {
             "ok": True,
             "motion": pipeline.show_overlay_motion if pipeline else False,
+            "markers": pipeline.show_overlay_markers if pipeline else False,
         }
 
     @router.get("/api/overlays")
@@ -279,6 +282,7 @@ def setup_routes(app_state: dict) -> APIRouter:
         pipeline = app_state.get("pipeline")
         return {
             "motion": pipeline.show_overlay_motion if pipeline else False,
+            "markers": pipeline.show_overlay_markers if pipeline else False,
         }
 
     # --- Calibration ---
@@ -463,6 +467,17 @@ def setup_routes(app_state: dict) -> APIRouter:
             "lens_method": lens_cfg.get("lens_method"),
             "schema_version": config.get("schema_version", 1),
         }
+
+    @router.post("/api/calibration/stereo")
+    async def stereo_calibration(request: Request) -> dict:
+        """Run stereo calibration between two cameras."""
+        body = await request.json()
+        cam_a = body.get("camera_a", "default")
+        cam_b = body.get("camera_b")
+        if not cam_b:
+            return {"ok": False, "error": "camera_b is required"}
+        # Stub — full implementation in Step 5
+        return {"ok": False, "error": "Not yet implemented — complete in Step 5"}
 
     @router.get("/api/board/geometry")
     async def board_geometry() -> dict:

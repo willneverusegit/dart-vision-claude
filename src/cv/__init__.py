@@ -11,6 +11,9 @@ from src.cv.geometry import BoardGeometry, BoardHit, BoardPose, CameraIntrinsics
 from src.cv.pipeline import DartPipeline
 from src.cv.remapping import CombinedRemapper
 from src.cv.replay import ReplayCamera
+from src.cv.stereo_calibration import StereoResult, stereo_calibrate, detect_charuco_corners
+from src.cv.stereo_utils import CameraParams, TriangulationResult, triangulate_point, point_3d_to_board_2d
+from src.cv.multi_camera import MultiCameraPipeline
 
 __all__ = [
     "BoardCalibrationManager",
@@ -29,4 +32,12 @@ __all__ = [
     "PolarCoord",
     "CombinedRemapper",
     "DartPipeline",
+    "StereoResult",
+    "stereo_calibrate",
+    "detect_charuco_corners",
+    "CameraParams",
+    "TriangulationResult",
+    "triangulate_point",
+    "point_3d_to_board_2d",
+    "MultiCameraPipeline",
 ]

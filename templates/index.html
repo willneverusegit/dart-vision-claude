@@ -118,6 +118,12 @@
 
             <!-- Step 1: Mode Selection -->
             <div id="cal-step-mode" class="cal-step">
+                <div class="cal-marker-toggle" style="margin-bottom: 12px;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" id="toggle-markers" checked>
+                        <span class="modal__text" style="margin: 0;">Marker-Erkennung im Live-Bild anzeigen</span>
+                    </label>
+                </div>
                 <p class="modal__text">Kalibrierung ist jetzt in zwei getrennte Workflows aufgeteilt:</p>
                 <div class="cal-mode-buttons">
                     <button id="btn-cal-lens" class="btn btn--primary cal-mode-btn">Lens Setup (ChArUco)</button>

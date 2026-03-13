@@ -70,6 +70,14 @@ class DartApp {
         const btnCalCancel = document.getElementById("btn-calibrate-cancel");
         if (btnCalCancel) btnCalCancel.addEventListener("click", () => this._closeCalibration());
 
+        // Marker overlay toggle in calibration modal
+        const toggleMarkers = document.getElementById("toggle-markers");
+        if (toggleMarkers) {
+            toggleMarkers.addEventListener("change", () => {
+                this._setMarkerOverlay(toggleMarkers.checked);
+            });
+        }
+
         // Toggle setup
         const btnToggleSetup = document.getElementById("btn-toggle-setup");
         if (btnToggleSetup) {
@@ -434,6 +442,8 @@ class DartApp {
         if (!modal) return;
         modal.style.display = "flex";
         this._showCalStep("cal-step-mode");
+        // Enable marker overlay by default when calibration modal opens
+        this._setMarkerOverlay(true);
     }
 
     _showCalStep(stepId) {
@@ -621,6 +631,18 @@ class DartApp {
         const modal = document.getElementById("calibration-modal");
         if (modal) modal.style.display = "none";
         this.calibrationPoints = [];
+        // Disable marker overlay when calibration modal closes
+        this._setMarkerOverlay(false);
+    }
+
+    _setMarkerOverlay(enabled) {
+        const toggle = document.getElementById("toggle-markers");
+        if (toggle) toggle.checked = enabled;
+        fetch("/api/overlays", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ markers: enabled }),
+        }).catch(e => console.error("Marker overlay toggle error:", e));
     }
 
     _startStatsPolling() {
