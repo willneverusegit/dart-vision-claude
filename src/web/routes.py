@@ -3,8 +3,11 @@
 import asyncio
 import base64
 import logging
+import threading
+import time as _time
 
 import cv2
+import numpy as np
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Request
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
@@ -470,14 +473,206 @@ def setup_routes(app_state: dict) -> APIRouter:
 
     @router.post("/api/calibration/stereo")
     async def stereo_calibration(request: Request) -> dict:
-        """Run stereo calibration between two cameras."""
+        """Run stereo calibration between two cameras.
+
+        Requires: Both cameras must be running in the multi-pipeline
+        and have valid lens intrinsics.
+        Captures synchronized frame pairs, runs stereo_calibrate,
+        saves to multi_cam.yaml.
+        """
         body = await request.json()
         cam_a = body.get("camera_a", "default")
         cam_b = body.get("camera_b")
         if not cam_b:
             return {"ok": False, "error": "camera_b is required"}
-        # Stub — full implementation in Step 5
-        return {"ok": False, "error": "Not yet implemented — complete in Step 5"}
+
+        multi = app_state.get("multi_pipeline")
+        if multi is None:
+            return {"ok": False, "error": "Multi-camera pipeline is not running"}
+
+        pipelines = multi.get_pipelines()
+        pipe_a = pipelines.get(cam_a)
+        pipe_b = pipelines.get(cam_b)
+        if pipe_a is None or pipe_b is None:
+            return {"ok": False, "error": f"Camera '{cam_a}' or '{cam_b}' not found in active pipelines"}
+
+        # Check that both cameras have lens intrinsics
+        intr_a = pipe_a.camera_calibration.get_intrinsics()
+        intr_b = pipe_b.camera_calibration.get_intrinsics()
+        if intr_a is None:
+            return {"ok": False, "error": f"Camera '{cam_a}' has no lens calibration"}
+        if intr_b is None:
+            return {"ok": False, "error": f"Camera '{cam_b}' has no lens calibration"}
+
+        # Capture synchronized frame pairs
+        num_pairs = body.get("num_pairs", 15)
+        capture_delay = body.get("capture_delay", 0.5)
+        frames_a = []
+        frames_b = []
+
+        for i in range(num_pairs):
+            raw_a = pipe_a.get_latest_raw_frame()
+            raw_b = pipe_b.get_latest_raw_frame()
+            if raw_a is not None and raw_b is not None:
+                frames_a.append(raw_a.copy())
+                frames_b.append(raw_b.copy())
+            _time.sleep(capture_delay)
+
+        if len(frames_a) < 5:
+            return {"ok": False, "error": f"Only captured {len(frames_a)} pairs, need at least 5"}
+
+        # Run stereo calibration
+        from src.cv.stereo_calibration import stereo_calibrate
+        result = stereo_calibrate(
+            frames_a, frames_b,
+            intr_a.camera_matrix, intr_a.dist_coeffs,
+            intr_b.camera_matrix, intr_b.dist_coeffs,
+        )
+
+        if not result.ok:
+            return {"ok": False, "error": result.error_message}
+
+        # Save to multi_cam.yaml
+        from src.utils.config import save_stereo_pair
+        save_stereo_pair(
+            cam_a, cam_b,
+            result.R.tolist(), result.T.tolist(),
+            result.reprojection_error,
+        )
+
+        return {
+            "ok": True,
+            "reprojection_error": result.reprojection_error,
+            "pairs_used": len(frames_a),
+            "camera_a": cam_a,
+            "camera_b": cam_b,
+        }
+
+    # --- Multi-Camera Pipeline Routes ---
+
+    @router.post("/api/multi/start")
+    async def multi_start(request: Request) -> dict:
+        """Start multi-camera pipeline.
+
+        Body: {"cameras": [{"camera_id": "cam_left", "src": 0},
+                            {"camera_id": "cam_right", "src": 1}]}
+        """
+        if app_state.get("multi_pipeline_running"):
+            return {"ok": False, "error": "Multi-pipeline already running"}
+
+        body = await request.json()
+        cameras = body.get("cameras", [])
+        if len(cameras) < 2:
+            return {"ok": False, "error": "Need at least 2 cameras"}
+
+        # Validate camera configs
+        for cam in cameras:
+            if "camera_id" not in cam:
+                return {"ok": False, "error": "Each camera must have a camera_id"}
+
+        # Stop the existing single pipeline if running
+        shutdown_ev = app_state.get("shutdown_event")
+        if app_state.get("pipeline_running") and app_state.get("pipeline"):
+            try:
+                app_state["pipeline"].stop()
+            except Exception:
+                pass
+            app_state["pipeline_running"] = False
+            app_state["pipeline"] = None
+
+        # Start multi-pipeline in a background thread
+        from src.main import _run_multi_pipeline
+        multi_thread = threading.Thread(
+            target=_run_multi_pipeline,
+            args=(app_state, cameras),
+            daemon=True,
+            name="cv-multi-pipeline",
+        )
+        multi_thread.start()
+
+        # Brief wait for pipeline to initialize
+        _time.sleep(0.3)
+
+        return {
+            "ok": True,
+            "cameras": [c["camera_id"] for c in cameras],
+            "running": app_state.get("multi_pipeline_running", False),
+        }
+
+    @router.post("/api/multi/stop")
+    async def multi_stop() -> dict:
+        """Stop multi-camera pipeline."""
+        multi = app_state.get("multi_pipeline")
+        if multi is None:
+            return {"ok": False, "error": "Multi-pipeline not running"}
+
+        try:
+            multi.stop()
+        except Exception as e:
+            logger.error("Error stopping multi-pipeline: %s", e)
+
+        app_state["multi_pipeline"] = None
+        app_state["multi_pipeline_running"] = False
+        app_state["active_camera_ids"] = []
+        app_state["multi_latest_frames"] = {}
+
+        return {"ok": True}
+
+    @router.get("/api/multi/status")
+    async def multi_status() -> dict:
+        """Get multi-camera pipeline status (per-camera FPS, calibration state)."""
+        multi = app_state.get("multi_pipeline")
+        if multi is None:
+            return {
+                "ok": True,
+                "running": False,
+                "cameras": [],
+            }
+
+        pipelines = multi.get_pipelines()
+        camera_stats = []
+        for cam_id, pipeline in pipelines.items():
+            fps = 0.0
+            if hasattr(pipeline, "fps_counter"):
+                fps = pipeline.fps_counter.fps()
+            board_valid = False
+            lens_valid = False
+            if hasattr(pipeline, "board_calibration"):
+                board_valid = pipeline.board_calibration.is_valid()
+            if hasattr(pipeline, "camera_calibration"):
+                cfg = pipeline.camera_calibration.get_config()
+                lens_valid = bool(cfg.get("lens_valid", False))
+            camera_stats.append({
+                "camera_id": cam_id,
+                "fps": round(fps, 1),
+                "board_calibrated": board_valid,
+                "lens_calibrated": lens_valid,
+            })
+
+        return {
+            "ok": True,
+            "running": app_state.get("multi_pipeline_running", False),
+            "cameras": camera_stats,
+        }
+
+    # --- Per-Camera Video Feeds (Multi-Camera) ---
+
+    @router.get("/video/feed/{camera_id}")
+    async def video_feed_camera(camera_id: str) -> StreamingResponse:
+        """MJPEG video stream for a specific camera in multi-pipeline."""
+        async def generate():
+            while True:
+                frames = app_state.get("multi_latest_frames", {})
+                frame = frames.get(camera_id)
+                if frame is not None:
+                    jpeg = encode_frame_jpeg(frame)
+                    yield make_mjpeg_frame(jpeg)
+                await asyncio.sleep(0.033)
+
+        return StreamingResponse(
+            generate(),
+            media_type="multipart/x-mixed-replace; boundary=frame",
+        )
 
     @router.get("/api/board/geometry")
     async def board_geometry() -> dict:
@@ -506,6 +701,8 @@ def setup_routes(app_state: dict) -> APIRouter:
             "fps": round(fps, 1),
             "connections": em.connection_count if em else 0,
             "pipeline_running": app_state.get("pipeline_running", False),
+            "multi_pipeline_running": app_state.get("multi_pipeline_running", False),
+            "active_cameras": app_state.get("active_camera_ids", []),
             "pending_hits": pending_count,
         }
 

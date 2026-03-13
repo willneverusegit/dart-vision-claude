@@ -32,6 +32,11 @@ app_state: dict = {
     "overlay_roi": False,
     "overlay_motion": False,
     "overlay_fields": False,
+    # Multi-camera pipeline
+    "multi_pipeline": None,         # MultiCameraPipeline | None
+    "multi_pipeline_running": False,
+    "active_camera_ids": [],        # List of active camera IDs
+    "multi_latest_frames": {},      # {camera_id: frame} for per-camera MJPEG
 }
 
 
@@ -170,6 +175,99 @@ def _run_pipeline(state: dict) -> None:
             except Exception:
                 pass
         logger.info("CV Pipeline stopped")
+
+
+def _run_multi_pipeline(state: dict, camera_configs: list[dict]) -> None:
+    """Run multi-camera CV pipeline in a background thread.
+
+    Instantiates MultiCameraPipeline instead of DartPipeline.
+    The callback on_multi_dart_detected creates hit candidates analogous
+    to the single-pipeline flow.
+    """
+    shutdown_event = state["shutdown_event"]
+    multi = None
+    try:
+        from src.cv.multi_camera import MultiCameraPipeline
+
+        def on_multi_dart_detected(score_result: dict) -> None:
+            """Callback when a dart is detected by the multi-pipeline."""
+            em = state.get("event_manager")
+            engine = state.get("game_engine")
+            lock = state.get("pending_hits_lock")
+
+            if not engine or not em:
+                return
+
+            # Build a fake detection-like object for quality scoring
+            class _FakeDetection:
+                frame_count = 3
+                area = 200.0
+                confidence = 0.7
+            detection = _FakeDetection()
+
+            quality = _compute_quality_score(detection, score_result)
+
+            candidate_id = str(uuid.uuid4())[:8]
+            candidate = {
+                "candidate_id": candidate_id,
+                "score": score_result.get("score", 0),
+                "sector": score_result.get("sector", 0),
+                "multiplier": score_result.get("multiplier", 1),
+                "ring": score_result.get("ring", "single"),
+                "roi_x": score_result.get("roi_x", 0),
+                "roi_y": score_result.get("roi_y", 0),
+                "quality": quality,
+                "source": score_result.get("source", "multi"),
+                "timestamp": time.time(),
+            }
+
+            if lock:
+                with lock:
+                    state["pending_hits"][candidate_id] = candidate
+
+            em.broadcast_sync("hit_candidate", candidate)
+            logger.info("Multi-cam hit candidate: %s (quality=%d, source=%s, %s %d)",
+                        candidate_id, quality, score_result.get("source", "?"),
+                        score_result.get("ring", "?"), score_result.get("score", 0))
+
+        multi = MultiCameraPipeline(
+            camera_configs=camera_configs,
+            on_multi_dart_detected=on_multi_dart_detected,
+        )
+
+        state["multi_pipeline"] = multi
+        state["multi_pipeline_running"] = True
+        state["active_camera_ids"] = [c["camera_id"] for c in camera_configs]
+
+        multi.start()
+        logger.info("Multi-camera pipeline started with %d cameras", len(camera_configs))
+
+        # Update per-camera annotated frames for MJPEG streams
+        while not shutdown_event.is_set():
+            pipelines = multi.get_pipelines()
+            for cam_id, pipeline in pipelines.items():
+                annotated = pipeline.get_annotated_frame()
+                if annotated is not None:
+                    state["multi_latest_frames"][cam_id] = annotated
+                    # Also update default latest_frame with first camera
+                    if state.get("latest_frame") is None or cam_id == state["active_camera_ids"][0]:
+                        state["latest_frame"] = annotated
+            shutdown_event.wait(0.033)  # ~30fps frame grab rate
+
+    except ImportError as e:
+        logger.warning("Multi-camera pipeline not available: %s", e)
+    except Exception as e:
+        logger.error("Multi-camera pipeline error: %s", e)
+    finally:
+        state["multi_pipeline_running"] = False
+        state["active_camera_ids"] = []
+        if multi is not None:
+            try:
+                multi.stop()
+            except Exception:
+                pass
+        state["multi_pipeline"] = None
+        logger.info("Multi-camera pipeline stopped")
 
 
 @asynccontextmanager

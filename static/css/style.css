@@ -771,6 +771,93 @@ body {
     animation: hit-pending-pulse 1.2s ease-in-out infinite;
 }
 
+/* Multi-Video Grid */
+.multi-video-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 8px;
+}
+
+.multi-video-cell {
+    position: relative;
+}
+
+.multi-video-label {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    padding: 2px 8px;
+    background: rgba(0, 0, 0, 0.65);
+    color: var(--text-primary);
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-radius: 4px;
+}
+
+/* Multi-Camera Modal */
+.multi-cam-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.multi-cam-entry {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.multi-cam-entry .input {
+    flex: 1;
+}
+
+.multi-cam-entry .multi-cam-src {
+    max-width: 80px;
+}
+
+.multi-status-info {
+    margin-top: 12px;
+    padding: 12px;
+    background: var(--bg-panel);
+    border-radius: var(--radius);
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    line-height: 1.6;
+}
+
+/* Stereo Calibration */
+.stereo-pair-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin: 12px 0;
+}
+
+.stereo-preview-row {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    margin: 12px 0;
+}
+
+.stereo-feed {
+    max-height: min(22vh, 180px);
+}
+
+.stereo-result {
+    margin: 12px 0;
+    padding: 12px;
+    background: var(--bg-panel);
+    border-radius: var(--radius);
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    text-align: center;
+}
+
 /* Responsive */
 @media (max-width: 1024px) {
     .main-layout {

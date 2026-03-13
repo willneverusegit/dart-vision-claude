@@ -10,11 +10,14 @@ class DartApp {
         this.state = null;
         this.calibrationPoints = [];
         this.pendingHits = new Map(); // candidate_id -> candidate
+        this.multiCamRunning = false;
+        this.activeCameraIds = [];
 
         this._bindEvents();
         this._bindWebSocket();
         this._bindKeyboard();
         this._bindOverlayToggles();
+        this._bindMultiCam();
         this.ws.connect();
         this._startStatsPolling();
     }
@@ -652,10 +655,315 @@ class DartApp {
                 const data = await response.json();
                 const fpsEl = document.getElementById("fps-display");
                 if (fpsEl) fpsEl.textContent = "FPS: " + data.fps;
+                // Track multi-cam state for UI
+                this.multiCamRunning = data.multi_pipeline_running || false;
+                this.activeCameraIds = data.active_cameras || [];
+                this._updateMultiCamUI();
             } catch (e) {
                 // Silent fail
             }
         }, 2000);
+    }
+
+    // --- Multi-Camera ---
+
+    _bindMultiCam() {
+        const btnMultiCam = document.getElementById("btn-multi-cam");
+        if (btnMultiCam) btnMultiCam.addEventListener("click", () => this._openMultiCamModal());
+
+        const btnMultiClose = document.getElementById("btn-multi-close");
+        if (btnMultiClose) btnMultiClose.addEventListener("click", () => this._closeMultiCamModal());
+
+        const btnMultiStart = document.getElementById("btn-multi-start");
+        if (btnMultiStart) btnMultiStart.addEventListener("click", () => this._startMultiPipeline());
+
+        const btnMultiStop = document.getElementById("btn-multi-stop");
+        if (btnMultiStop) btnMultiStop.addEventListener("click", () => this._stopMultiPipeline());
+
+        const btnMultiAddCam = document.getElementById("btn-multi-add-cam");
+        if (btnMultiAddCam) btnMultiAddCam.addEventListener("click", () => this._addCameraEntry());
+
+        // Stereo calibration buttons
+        const btnStereoCalibrate = document.getElementById("btn-stereo-calibrate");
+        if (btnStereoCalibrate) btnStereoCalibrate.addEventListener("click", () => this._runStereoCalibration());
+
+        const btnStereoBack = document.getElementById("btn-stereo-back");
+        if (btnStereoBack) btnStereoBack.addEventListener("click", () => {
+            document.getElementById("multi-step-stereo").style.display = "none";
+            document.getElementById("multi-step-config").style.display = "block";
+        });
+
+        // Stereo button in calibration modal
+        const btnCalStereo = document.getElementById("btn-cal-stereo");
+        if (btnCalStereo) btnCalStereo.addEventListener("click", () => {
+            this._closeCalibration();
+            this._openMultiCamModal();
+            this._showStereoStep();
+        });
+    }
+
+    _openMultiCamModal() {
+        const modal = document.getElementById("multi-cam-modal");
+        if (modal) modal.style.display = "flex";
+        this._refreshMultiCamStatus();
+    }
+
+    _closeMultiCamModal() {
+        const modal = document.getElementById("multi-cam-modal");
+        if (modal) modal.style.display = "none";
+    }
+
+    _addCameraEntry() {
+        const list = document.getElementById("multi-cam-list");
+        if (!list) return;
+        const idx = list.children.length;
+        const entry = document.createElement("div");
+        entry.className = "multi-cam-entry";
+
+        const idInput = document.createElement("input");
+        idInput.type = "text";
+        idInput.className = "input multi-cam-id";
+        idInput.placeholder = "Kamera-ID";
+        idInput.value = "cam_" + idx;
+
+        const srcInput = document.createElement("input");
+        srcInput.type = "number";
+        srcInput.className = "input multi-cam-src";
+        srcInput.placeholder = "Quelle";
+        srcInput.value = String(idx);
+        srcInput.min = "0";
+
+        const removeBtn = document.createElement("button");
+        removeBtn.className = "btn btn--small btn--reject";
+        removeBtn.textContent = "\u2717";
+        removeBtn.addEventListener("click", () => entry.remove());
+
+        entry.appendChild(idInput);
+        entry.appendChild(srcInput);
+        entry.appendChild(removeBtn);
+        list.appendChild(entry);
+    }
+
+    async _startMultiPipeline() {
+        const entries = document.querySelectorAll(".multi-cam-entry");
+        const cameras = [];
+        entries.forEach(entry => {
+            const id = entry.querySelector(".multi-cam-id").value.trim();
+            const src = parseInt(entry.querySelector(".multi-cam-src").value, 10);
+            if (id) cameras.push({ camera_id: id, src: src });
+        });
+
+        if (cameras.length < 2) {
+            alert("Mindestens 2 Kameras erforderlich.");
+            return;
+        }
+
+        try {
+            const resp = await fetch("/api/multi/start", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ cameras }),
+            });
+            const data = await resp.json();
+            if (data.ok) {
+                this.multiCamRunning = true;
+                this.activeCameraIds = data.cameras || [];
+                this._refreshMultiCamStatus();
+                this._showMultiVideoGrid();
+            } else {
+                alert("Fehler: " + (data.error || "Unbekannt"));
+            }
+        } catch (e) {
+            console.error("Multi-cam start error:", e);
+        }
+    }
+
+    async _stopMultiPipeline() {
+        try {
+            await fetch("/api/multi/stop", { method: "POST" });
+            this.multiCamRunning = false;
+            this.activeCameraIds = [];
+            this._refreshMultiCamStatus();
+            this._hideMultiVideoGrid();
+        } catch (e) {
+            console.error("Multi-cam stop error:", e);
+        }
+    }
+
+    async _refreshMultiCamStatus() {
+        try {
+            const resp = await fetch("/api/multi/status");
+            const data = await resp.json();
+            const info = document.getElementById("multi-status-info");
+            const btnStart = document.getElementById("btn-multi-start");
+            const btnStop = document.getElementById("btn-multi-stop");
+
+            if (data.running) {
+                if (btnStart) btnStart.style.display = "none";
+                if (btnStop) btnStop.style.display = "inline-block";
+                if (info) {
+                    info.style.display = "block";
+                    // Build status using safe DOM methods
+                    while (info.firstChild) info.removeChild(info.firstChild);
+                    const title = document.createElement("strong");
+                    title.textContent = "Aktive Kameras:";
+                    info.appendChild(title);
+                    data.cameras.forEach(cam => {
+                        info.appendChild(document.createElement("br"));
+                        const line = document.createTextNode(
+                            cam.camera_id + ": " + cam.fps + " FPS | Board " +
+                            (cam.board_calibrated ? "\u2705" : "\u274C") +
+                            " | Lens " +
+                            (cam.lens_calibrated ? "\u2705" : "\u274C")
+                        );
+                        info.appendChild(line);
+                    });
+                }
+                // Populate stereo dropdowns
+                this._populateStereoDropdowns(data.cameras.map(c => c.camera_id));
+            } else {
+                if (btnStart) btnStart.style.display = "inline-block";
+                if (btnStop) btnStop.style.display = "none";
+                if (info) info.style.display = "none";
+            }
+        } catch (e) {
+            console.error("Multi status error:", e);
+        }
+    }
+
+    _updateMultiCamUI() {
+        // Show/hide stereo calibration section in calibration modal
+        const stereoSection = document.getElementById("cal-stereo-section");
+        if (stereoSection) {
+            stereoSection.style.display = this.multiCamRunning ? "block" : "none";
+        }
+    }
+
+    _showMultiVideoGrid() {
+        const grid = document.getElementById("multi-video-grid");
+        const single = document.getElementById("single-video-wrapper");
+        if (!grid) return;
+
+        // Hide single, show grid
+        if (single) single.style.display = "none";
+        grid.style.display = "grid";
+        while (grid.firstChild) grid.removeChild(grid.firstChild);
+
+        this.activeCameraIds.forEach(camId => {
+            const container = document.createElement("div");
+            container.className = "video-container multi-video-cell";
+
+            const img = document.createElement("img");
+            img.src = "/video/feed/" + encodeURIComponent(camId);
+            img.alt = camId;
+            img.className = "video-feed";
+
+            const label = document.createElement("div");
+            label.className = "multi-video-label";
+            label.textContent = camId;
+
+            container.appendChild(img);
+            container.appendChild(label);
+            grid.appendChild(container);
+        });
+    }
+
+    _hideMultiVideoGrid() {
+        const grid = document.getElementById("multi-video-grid");
+        const single = document.getElementById("single-video-wrapper");
+        if (grid) {
+            grid.style.display = "none";
+            while (grid.firstChild) grid.removeChild(grid.firstChild);
+        }
+        if (single) single.style.display = "block";
+    }
+
+    _showStereoStep() {
+        document.getElementById("multi-step-config").style.display = "none";
+        document.getElementById("multi-step-stereo").style.display = "block";
+        this._populateStereoDropdowns(this.activeCameraIds);
+        this._updateStereoFeeds();
+    }
+
+    _populateStereoDropdowns(cameraIds) {
+        const selA = document.getElementById("stereo-cam-a");
+        const selB = document.getElementById("stereo-cam-b");
+        if (!selA || !selB) return;
+
+        while (selA.firstChild) selA.removeChild(selA.firstChild);
+        while (selB.firstChild) selB.removeChild(selB.firstChild);
+
+        cameraIds.forEach(id => {
+            const optA = document.createElement("option");
+            optA.value = id;
+            optA.textContent = id;
+            selA.appendChild(optA);
+
+            const optB = document.createElement("option");
+            optB.value = id;
+            optB.textContent = id;
+            selB.appendChild(optB);
+        });
+        if (cameraIds.length >= 2) {
+            selB.selectedIndex = 1;
+        }
+
+        selA.onchange = () => this._updateStereoFeeds();
+        selB.onchange = () => this._updateStereoFeeds();
+    }
+
+    _updateStereoFeeds() {
+        const camA = document.getElementById("stereo-cam-a")?.value;
+        const camB = document.getElementById("stereo-cam-b")?.value;
+        const feedA = document.getElementById("stereo-feed-a");
+        const feedB = document.getElementById("stereo-feed-b");
+        const labelA = document.getElementById("stereo-label-a");
+        const labelB = document.getElementById("stereo-label-b");
+
+        if (camA && feedA) feedA.src = "/video/feed/" + encodeURIComponent(camA);
+        if (camB && feedB) feedB.src = "/video/feed/" + encodeURIComponent(camB);
+        if (camA && labelA) labelA.textContent = camA;
+        if (camB && labelB) labelB.textContent = camB;
+    }
+
+    async _runStereoCalibration() {
+        const camA = document.getElementById("stereo-cam-a")?.value;
+        const camB = document.getElementById("stereo-cam-b")?.value;
+        if (!camA || !camB || camA === camB) {
+            alert("Bitte zwei verschiedene Kameras auswaehlen.");
+            return;
+        }
+
+        const resultEl = document.getElementById("stereo-result");
+        const btn = document.getElementById("btn-stereo-calibrate");
+        if (btn) btn.disabled = true;
+        if (resultEl) {
+            resultEl.style.display = "block";
+            resultEl.textContent = "Kalibrierung laeuft (ca. 10s)...";
+        }
+
+        try {
+            const resp = await fetch("/api/calibration/stereo", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ camera_a: camA, camera_b: camB }),
+            });
+            const data = await resp.json();
+            if (data.ok) {
+                if (resultEl) {
+                    resultEl.textContent = "\u2705 Stereo-Kalibrierung erfolgreich! Reprojektion: " +
+                        data.reprojection_error.toFixed(3) + " px, Paare: " + data.pairs_used;
+                }
+            } else {
+                if (resultEl) {
+                    resultEl.textContent = "\u274C Fehler: " + data.error;
+                }
+            }
+        } catch (e) {
+            if (resultEl) resultEl.textContent = "\u274C Verbindungsfehler";
+        } finally {
+            if (btn) btn.disabled = false;
+        }
     }
 }
 

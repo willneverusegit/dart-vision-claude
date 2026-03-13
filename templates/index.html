@@ -20,12 +20,18 @@
         <!-- Left: Video Feed -->
         <section class="panel panel--video">
             <h2 class="panel__title">Kamera</h2>
-            <div class="video-container">
-                <img id="video-feed" src="/video/feed" alt="Live Camera Feed" class="video-feed">
-                <div id="video-overlay" class="video-overlay"></div>
+            <!-- Single camera feed (default) -->
+            <div id="single-video-wrapper">
+                <div class="video-container">
+                    <img id="video-feed" src="/video/feed" alt="Live Camera Feed" class="video-feed">
+                    <div id="video-overlay" class="video-overlay"></div>
+                </div>
             </div>
+            <!-- Multi-camera video grid (hidden by default) -->
+            <div id="multi-video-grid" class="multi-video-grid" style="display:none;"></div>
             <div class="video-controls">
                 <button id="btn-calibrate" class="btn btn--secondary">Kalibrieren</button>
+                <button id="btn-multi-cam" class="btn btn--secondary">Multi-Cam</button>
                 <label class="overlay-toggle" title="Bewegungsmaske einblenden">
                     <input type="checkbox" id="toggle-motion"> Motion
                 </label>
@@ -133,6 +139,12 @@
                     <button id="btn-cal-manual" class="btn btn--primary cal-mode-btn">Board Manuell (4 Punkte)</button>
                     <button id="btn-cal-aruco" class="btn btn--primary cal-mode-btn">Board ArUco (Auto)</button>
                 </div>
+                <div id="cal-stereo-section" style="display:none;">
+                    <p class="modal__text" style="margin-top:16px;">Stereo-Kalibrierung (nur bei Multi-Kamera):</p>
+                    <div class="cal-mode-buttons">
+                        <button id="btn-cal-stereo" class="btn btn--primary cal-mode-btn">Stereo kalibrieren</button>
+                    </div>
+                </div>
             </div>
 
             <!-- Step 2: Manual Point Selection -->
@@ -174,6 +186,63 @@
             <!-- Cancel always visible -->
             <div class="modal__actions" id="cal-cancel-row">
                 <button id="btn-calibrate-cancel" class="btn btn--secondary">Abbrechen</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Multi-Camera Setup Modal -->
+    <div id="multi-cam-modal" class="modal" style="display: none;">
+        <div class="modal__content modal__content--wide">
+            <h2 class="modal__title">Multi-Kamera Setup</h2>
+
+            <!-- Step 1: Camera Config -->
+            <div id="multi-step-config" class="cal-step">
+                <p class="modal__text">Kameras konfigurieren (min. 2):</p>
+                <div id="multi-cam-list" class="multi-cam-list">
+                    <div class="multi-cam-entry">
+                        <input type="text" class="input multi-cam-id" placeholder="Kamera-ID" value="cam_left">
+                        <input type="number" class="input multi-cam-src" placeholder="Quelle (0,1,...)" value="0" min="0">
+                    </div>
+                    <div class="multi-cam-entry">
+                        <input type="text" class="input multi-cam-id" placeholder="Kamera-ID" value="cam_right">
+                        <input type="number" class="input multi-cam-src" placeholder="Quelle (0,1,...)" value="1" min="0">
+                    </div>
+                </div>
+                <div class="modal__actions">
+                    <button id="btn-multi-add-cam" class="btn btn--secondary">+ Kamera</button>
+                    <button id="btn-multi-start" class="btn btn--accent">Starten</button>
+                    <button id="btn-multi-stop" class="btn btn--warning" style="display:none;">Stoppen</button>
+                </div>
+                <div id="multi-status-info" class="multi-status-info" style="display:none;"></div>
+            </div>
+
+            <!-- Step 2: Stereo Calibration -->
+            <div id="multi-step-stereo" class="cal-step" style="display:none;">
+                <p class="modal__text">Stereo-Kalibrierung zwischen zwei Kameras:</p>
+                <div class="stereo-pair-row">
+                    <select id="stereo-cam-a" class="select"></select>
+                    <span class="modal__text" style="margin: 0 8px;">&#8596;</span>
+                    <select id="stereo-cam-b" class="select"></select>
+                </div>
+                <div class="stereo-preview-row">
+                    <div class="cal-preview-item">
+                        <p class="cal-preview-label" id="stereo-label-a">Kamera A</p>
+                        <img id="stereo-feed-a" class="cal-preview-img stereo-feed" alt="Camera A">
+                    </div>
+                    <div class="cal-preview-item">
+                        <p class="cal-preview-label" id="stereo-label-b">Kamera B</p>
+                        <img id="stereo-feed-b" class="cal-preview-img stereo-feed" alt="Camera B">
+                    </div>
+                </div>
+                <div id="stereo-result" class="stereo-result" style="display:none;"></div>
+                <div class="modal__actions">
+                    <button id="btn-stereo-calibrate" class="btn btn--accent">Stereo kalibrieren</button>
+                    <button id="btn-stereo-back" class="btn btn--secondary">Zurueck</button>
+                </div>
+            </div>
+
+            <div class="modal__actions">
+                <button id="btn-multi-close" class="btn btn--secondary">Schliessen</button>
             </div>
         </div>
     </div>
