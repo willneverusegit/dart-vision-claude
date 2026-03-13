@@ -70,6 +70,15 @@ class DartApp {
         const btnCalCancel = document.getElementById("btn-calibrate-cancel");
         if (btnCalCancel) btnCalCancel.addEventListener("click", () => this._closeCalibration());
 
+        // Toggle setup
+        const btnToggleSetup = document.getElementById("btn-toggle-setup");
+        if (btnToggleSetup) {
+            btnToggleSetup.addEventListener("click", () => {
+                const setupEl = document.getElementById("game-setup");
+                if (setupEl) setupEl.classList.toggle("game-setup--collapsed");
+            });
+        }
+
         // Winner modal close
         const btnCloseModal = document.getElementById("btn-close-modal");
         if (btnCloseModal) {
@@ -137,6 +146,15 @@ class DartApp {
         const el = document.getElementById("toggle-motion");
         if (el) {
             el.addEventListener("change", () => {
+                const container = document.getElementById("motion-container");
+                const feed = document.getElementById("motion-feed");
+                if (el.checked) {
+                    if (feed) feed.src = "/video/motion";
+                    if (container) container.style.display = "block";
+                } else {
+                    if (feed) feed.src = "";
+                    if (container) container.style.display = "none";
+                }
                 fetch("/api/overlays", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -293,6 +311,16 @@ class DartApp {
             if (dartEl) {
                 if (i <= dartsThrown) dartEl.classList.add("dart-icon--used");
                 else dartEl.classList.remove("dart-icon--used");
+            }
+        }
+
+        // Collapse game setup during active game
+        const setupEl = document.getElementById("game-setup");
+        if (setupEl) {
+            if (state.players && state.players.length > 0 && !state.winner) {
+                setupEl.classList.add("game-setup--collapsed");
+            } else {
+                setupEl.classList.remove("game-setup--collapsed");
             }
         }
 

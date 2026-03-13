@@ -3,6 +3,8 @@
 import asyncio
 import base64
 import logging
+
+import cv2
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Request
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
@@ -504,6 +506,24 @@ def setup_routes(app_state: dict) -> APIRouter:
                     jpeg = encode_frame_jpeg(frame)
                     yield make_mjpeg_frame(jpeg)
                 await asyncio.sleep(0.033)  # ~30fps max
+
+        return StreamingResponse(
+            generate(),
+            media_type="multipart/x-mixed-replace; boundary=frame",
+        )
+
+    @router.get("/video/motion")
+    async def motion_feed() -> StreamingResponse:
+        """MJPEG stream of the motion mask."""
+        async def generate():
+            while True:
+                pipeline = app_state.get("pipeline")
+                mask = pipeline._last_motion_mask if pipeline else None
+                if mask is not None:
+                    bgr = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR) if len(mask.shape) == 2 else mask
+                    jpeg = encode_frame_jpeg(bgr)
+                    yield make_mjpeg_frame(jpeg)
+                await asyncio.sleep(0.066)  # ~15fps
 
         return StreamingResponse(
             generate(),

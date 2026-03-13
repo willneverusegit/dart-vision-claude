@@ -30,6 +30,9 @@
                     <input type="checkbox" id="toggle-motion"> Motion
                 </label>
             </div>
+            <div id="motion-container" class="video-container motion-container" style="display:none;">
+                <img id="motion-feed" src="" alt="Motion Mask" class="video-feed">
+            </div>
         </section>
 
         <!-- Center: Dartboard SVG -->
@@ -50,26 +53,41 @@
         <!-- Right: Scoreboard + Controls -->
         <section class="panel panel--scoreboard">
             <h2 class="panel__title">Scoreboard</h2>
-            <div id="scoreboard" class="scoreboard"></div>
+
+            <div class="scoreboard-section">
+                <div id="scoreboard" class="scoreboard"></div>
+            </div>
 
             <!-- Hit Candidates Review -->
-            <div id="candidates-panel" class="candidates-panel" style="display:none;">
+            <div class="scoreboard-section" id="candidates-panel" style="display:none;">
                 <h3 class="candidates-title">Treffer-Kandidaten</h3>
                 <div id="candidates-list" class="candidates-list"></div>
             </div>
 
-            <div class="game-controls">
-                <button id="btn-undo" class="btn btn--warning">Undo</button>
-                <button id="btn-next" class="btn btn--primary">Weiter</button>
-                <button id="btn-remove-darts" class="btn btn--secondary">Darts entfernen</button>
-                <button id="btn-end-game" class="btn btn--danger">Spiel beenden</button>
+            <div class="scoreboard-section scoreboard-section--controls">
+                <div class="game-controls">
+                    <div class="game-controls__primary">
+                        <button id="btn-next" class="btn btn--accent btn--large">Weiter</button>
+                    </div>
+                    <div class="game-controls__secondary">
+                        <button id="btn-undo" class="btn btn--warning">Undo</button>
+                        <button id="btn-remove-darts" class="btn btn--secondary">Darts entfernen</button>
+                    </div>
+                    <div class="game-controls__destructive">
+                        <button id="btn-end-game" class="btn btn--danger btn--tiny">Spiel beenden</button>
+                    </div>
+                </div>
             </div>
         </section>
     </main>
 
     <!-- Game Setup Controls -->
-    <section class="game-setup">
-        <div class="setup-row">
+    <section id="game-setup" class="game-setup">
+        <div class="setup-header">
+            <span class="setup-header__label">Spiel-Einstellungen</span>
+            <button id="btn-toggle-setup" class="btn btn--secondary btn--tiny">Einstellungen</button>
+        </div>
+        <div class="setup-row" id="setup-row">
             <select id="game-mode" class="select">
                 <option value="x01">X01</option>
                 <option value="cricket">Cricket</option>
