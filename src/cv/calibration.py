@@ -8,9 +8,13 @@ import tempfile
 import argparse
 import logging
 import math
+import threading
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
+
+# Module-level lock for concurrent file access by multiple CalibrationManagers
+_config_file_lock = threading.Lock()
 
 BOARD_DIAMETER_MM = 340  # Standard dartboard playing area diameter
 BOARD_RADIUS_MM = 170   # Double-outer ring radius
@@ -45,12 +49,18 @@ RING_RADII_MM = {
 class CalibrationManager:
     """Manages board calibration: manual 4-point, ArUco, and frame-based."""
 
-    def __init__(self, config_path: str = "config/calibration_config.yaml") -> None:
+    def __init__(self, config_path: str = "config/calibration_config.yaml",
+                 camera_id: str = "default") -> None:
         self.config_path = config_path
+        self.camera_id = camera_id
         self._config = self._load_config()
 
     def _load_config(self) -> dict:
-        """Load config from YAML or return defaults."""
+        """Load config from YAML or return defaults.
+
+        Supports both new multi-camera format (cameras.<id>) and legacy flat format.
+        Legacy flat configs are treated as camera_id="default".
+        """
         default: dict = {
             "center_px": [200, 200],
             "radii_px": [10, 19, 106, 116, 188, 200],
@@ -64,9 +74,20 @@ class CalibrationManager:
         if os.path.exists(self.config_path):
             try:
                 with open(self.config_path, "r", encoding="utf-8") as f:
-                    loaded = yaml.safe_load(f)
-                if loaded:
-                    default.update(loaded)
+                    raw = yaml.safe_load(f) or {}
+                if "cameras" in raw and self.camera_id in raw["cameras"]:
+                    # New multi-camera format
+                    default.update(raw["cameras"][self.camera_id])
+                elif "cameras" not in raw and raw.get("valid"):
+                    # Legacy flat format — treat as "default"
+                    default.update(raw)
+                elif "cameras" in raw:
+                    # Multi-camera format but our camera_id not present yet
+                    pass
+                else:
+                    # File exists but no valid config (e.g. empty or partial)
+                    if raw:
+                        default.update(raw)
             except Exception as e:
                 logger.error("Config load error: %s", e)
         return default
@@ -532,21 +553,50 @@ class CalibrationManager:
         return self._config.get("radii_px", [10, 19, 106, 116, 188, 200])
 
     def _atomic_save(self) -> None:
-        """Atomic config write: temp file -> os.replace()."""
-        config_dir = os.path.dirname(os.path.abspath(self.config_path))
-        os.makedirs(config_dir, exist_ok=True)
-        fd, temp_path = tempfile.mkstemp(suffix=".yaml", dir=config_dir)
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                yaml.dump(self._config, f, default_flow_style=False)
-            os.replace(temp_path, self.config_path)
-            logger.info("Config saved to %s", self.config_path)
-        except Exception:
+        """Atomic config write with file lock and multi-camera format.
+
+        Reads the full file, updates the section for this camera_id,
+        and writes the entire file back. Uses a module-level lock to
+        prevent race conditions when multiple managers write concurrently.
+        """
+        with _config_file_lock:
+            config_dir = os.path.dirname(os.path.abspath(self.config_path))
+            os.makedirs(config_dir, exist_ok=True)
+
+            # Read existing full file
+            full: dict = {}
+            if os.path.exists(self.config_path):
+                try:
+                    with open(self.config_path, "r", encoding="utf-8") as f:
+                        full = yaml.safe_load(f) or {}
+                except Exception:
+                    full = {}
+
+            # Migrate legacy flat format into cameras.default
+            if "cameras" not in full:
+                old_data = {k: v for k, v in full.items()
+                            if k not in ("schema_version",)}
+                full = {"schema_version": 3, "cameras": {}}
+                if old_data:
+                    full["cameras"]["default"] = old_data
+
+            # Update our camera_id section
+            full["cameras"][self.camera_id] = dict(self._config)
+            full["schema_version"] = 3
+
+            # Atomic write
+            fd, temp_path = tempfile.mkstemp(suffix=".yaml", dir=config_dir)
             try:
-                os.unlink(temp_path)
-            except OSError:
-                pass
-            raise
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    yaml.dump(full, f, default_flow_style=False)
+                os.replace(temp_path, self.config_path)
+                logger.info("Config saved to %s (camera_id=%s)", self.config_path, self.camera_id)
+            except Exception:
+                try:
+                    os.unlink(temp_path)
+                except OSError:
+                    pass
+                raise
 
 
 def _run_manual_cli(source: int) -> None:

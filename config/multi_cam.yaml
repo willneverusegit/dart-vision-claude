@@ -1,0 +1,8 @@
+# Extrinsic stereo calibration parameters per camera pair
+schema_version: 1
+pairs: {}
+#   cam_left--cam_right:
+#     R: [[...], [...], [...]]
+#     T: [...]
+#     reprojection_error: 0.0
+#     calibrated_utc: "2026-01-01T00:00:00+00:00"

@@ -17,10 +17,12 @@ logger = logging.getLogger(__name__)
 class CameraCalibrationManager:
     """Manage lens calibration (camera matrix + distortion coefficients)."""
 
-    def __init__(self, config_path: str = "config/calibration_config.yaml") -> None:
+    def __init__(self, config_path: str = "config/calibration_config.yaml",
+                 camera_id: str = "default") -> None:
         # Reuse the existing atomic config loader/saver so both managers share one file.
-        self._config_io = CalibrationManager(config_path=config_path)
+        self._config_io = CalibrationManager(config_path=config_path, camera_id=camera_id)
         self.config_path = config_path
+        self.camera_id = camera_id
 
     def get_config(self) -> dict:
         return self._config_io.get_config()

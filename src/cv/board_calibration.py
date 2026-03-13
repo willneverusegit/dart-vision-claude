@@ -16,10 +16,13 @@ logger = logging.getLogger(__name__)
 class BoardCalibrationManager:
     """Manage board alignment (homography, radii, optical center, rotation)."""
 
-    def __init__(self, config_path: str = "config/calibration_config.yaml", roi_size: tuple[int, int] = (400, 400)) -> None:
-        self._legacy = CalibrationManager(config_path=config_path)
+    def __init__(self, config_path: str = "config/calibration_config.yaml",
+                 roi_size: tuple[int, int] = (400, 400),
+                 camera_id: str = "default") -> None:
+        self._legacy = CalibrationManager(config_path=config_path, camera_id=camera_id)
         self.config_path = config_path
         self.roi_size = roi_size
+        self.camera_id = camera_id
 
     def get_config(self) -> dict:
         return self._legacy.get_config()
