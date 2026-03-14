@@ -590,13 +590,22 @@ def setup_routes(app_state: dict) -> APIRouter:
         )
         multi_thread.start()
 
-        # Brief wait for pipeline to initialize
-        _time.sleep(0.3)
+        # Wait for pipeline to initialize (up to 3s)
+        for _ in range(30):
+            _time.sleep(0.1)
+            if app_state.get("multi_pipeline_running"):
+                break
+
+        if not app_state.get("multi_pipeline_running"):
+            return {
+                "ok": False,
+                "error": "Multi-Pipeline konnte nicht gestartet werden. Prüfe ob alle Kameras angeschlossen sind.",
+            }
 
         return {
             "ok": True,
             "cameras": [c["camera_id"] for c in cameras],
-            "running": app_state.get("multi_pipeline_running", False),
+            "running": True,
         }
 
     @router.post("/api/multi/stop")
@@ -649,10 +658,16 @@ def setup_routes(app_state: dict) -> APIRouter:
                 "lens_calibrated": lens_valid,
             })
 
+        # Include camera errors
+        camera_errors = {}
+        if hasattr(multi, "get_camera_errors"):
+            camera_errors = multi.get_camera_errors()
+
         return {
             "ok": True,
             "running": app_state.get("multi_pipeline_running", False),
             "cameras": camera_stats,
+            "camera_errors": camera_errors,
         }
 
     # --- Per-Camera Video Feeds (Multi-Camera) ---

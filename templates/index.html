@@ -32,6 +32,9 @@
             <div class="video-controls">
                 <button id="btn-calibrate" class="btn btn--secondary">Kalibrieren</button>
                 <button id="btn-multi-cam" class="btn btn--secondary">Multi-Cam</button>
+                <label class="overlay-toggle" title="Marker-Erkennung (ArUco/ChArUco)">
+                    <input type="checkbox" id="toggle-markers-main"> Marker
+                </label>
                 <label class="overlay-toggle" title="Bewegungsmaske einblenden">
                     <input type="checkbox" id="toggle-motion"> Motion
                 </label>
@@ -197,7 +200,7 @@
 
             <!-- Step 1: Camera Config -->
             <div id="multi-step-config" class="cal-step">
-                <p class="modal__text">Kameras konfigurieren (min. 2):</p>
+                <p class="modal__text">Kameras konfigurieren (min. 2). Quelle = Kamera-Index (0, 1, 2, ...):</p>
                 <div id="multi-cam-list" class="multi-cam-list">
                     <div class="multi-cam-entry">
                         <input type="text" class="input multi-cam-id" placeholder="Kamera-ID" value="cam_left">
@@ -205,7 +208,7 @@
                     </div>
                     <div class="multi-cam-entry">
                         <input type="text" class="input multi-cam-id" placeholder="Kamera-ID" value="cam_right">
-                        <input type="number" class="input multi-cam-src" placeholder="Quelle (0,1,...)" value="1" min="0">
+                        <input type="number" class="input multi-cam-src" placeholder="Quelle (0,1,...)" value="2" min="0">
                     </div>
                 </div>
                 <div class="modal__actions">

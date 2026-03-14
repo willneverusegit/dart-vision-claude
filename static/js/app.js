@@ -173,6 +173,14 @@ class DartApp {
                 }).catch(e => console.error("Overlay toggle error:", e));
             });
         }
+
+        // Marker overlay toggle (main video controls)
+        const markerMain = document.getElementById("toggle-markers-main");
+        if (markerMain) {
+            markerMain.addEventListener("change", () => {
+                this._setMarkerOverlay(markerMain.checked);
+            });
+        }
     }
 
     // --- Hit Candidate Flow ---
@@ -639,8 +647,11 @@ class DartApp {
     }
 
     _setMarkerOverlay(enabled) {
+        // Sync both marker toggles (calibration modal + main controls)
         const toggle = document.getElementById("toggle-markers");
         if (toggle) toggle.checked = enabled;
+        const toggleMain = document.getElementById("toggle-markers-main");
+        if (toggleMain) toggleMain.checked = enabled;
         fetch("/api/overlays", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -758,6 +769,12 @@ class DartApp {
             return;
         }
 
+        const btnStart = document.getElementById("btn-multi-start");
+        if (btnStart) {
+            btnStart.disabled = true;
+            btnStart.textContent = "Starte...";
+        }
+
         try {
             const resp = await fetch("/api/multi/start", {
                 method: "POST",
@@ -770,11 +787,19 @@ class DartApp {
                 this.activeCameraIds = data.cameras || [];
                 this._refreshMultiCamStatus();
                 this._showMultiVideoGrid();
+                // Close the modal so user sees the video grid
+                this._closeMultiCamModal();
             } else {
                 alert("Fehler: " + (data.error || "Unbekannt"));
             }
         } catch (e) {
             console.error("Multi-cam start error:", e);
+            alert("Verbindungsfehler beim Starten der Multi-Kamera Pipeline.");
+        } finally {
+            if (btnStart) {
+                btnStart.disabled = false;
+                btnStart.textContent = "Starten";
+            }
         }
     }
 
@@ -818,6 +843,23 @@ class DartApp {
                         );
                         info.appendChild(line);
                     });
+                    // Show camera errors if any
+                    const errors = data.camera_errors || {};
+                    const errorIds = Object.keys(errors);
+                    if (errorIds.length > 0) {
+                        info.appendChild(document.createElement("br"));
+                        const errTitle = document.createElement("strong");
+                        errTitle.style.color = "#ff4757";
+                        errTitle.textContent = "Kamera-Fehler:";
+                        info.appendChild(errTitle);
+                        errorIds.forEach(camId => {
+                            info.appendChild(document.createElement("br"));
+                            const errLine = document.createElement("span");
+                            errLine.style.color = "#ff4757";
+                            errLine.textContent = camId + ": " + errors[camId];
+                            info.appendChild(errLine);
+                        });
+                    }
                 }
                 // Populate stereo dropdowns
                 this._populateStereoDropdowns(data.cameras.map(c => c.camera_id));
