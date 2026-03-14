@@ -155,9 +155,9 @@ class TestPoint3dToBoard2d:
         assert abs(x_mm - (-100.0)) < 0.01
         assert abs(y_mm - (-50.0)) < 0.01
 
-    def test_with_none_board_normal(self):
-        """Explicit None board_normal uses Z=0 plane assumption."""
-        point_3d = np.array([0.02, 0.01, 0.0])
-        x_mm, y_mm = point_3d_to_board_2d(point_3d, board_normal=None)
+    def test_with_board_frame_point(self):
+        """Point already in board frame — Z (depth) is ignored for 2D result."""
+        point_3d = np.array([0.02, 0.01, 0.005])  # 5mm depth, irrelevant to X/Y
+        x_mm, y_mm = point_3d_to_board_2d(point_3d)
         assert abs(x_mm - 20.0) < 0.01
         assert abs(y_mm - 10.0) < 0.01

@@ -103,16 +103,30 @@ def _reproject(point_3d: np.ndarray, cam: CameraParams) -> np.ndarray:
 
 
 def point_3d_to_board_2d(
-    point_3d: np.ndarray,
-    board_normal: np.ndarray | None = None,
+    point_board: np.ndarray,
 ) -> tuple[float, float]:
-    """Project a 3D point onto the board plane to get (x_mm, y_mm).
+    """Convert a 3D point in board frame to board (x_mm, y_mm).
 
-    Assumes the board lies in the Z=0 plane (if board_normal is None).
+    Expects input already transformed into the board coordinate frame where
+    Z=0 is the board face and X, Y are in meters.
     """
-    if board_normal is None:
-        # Simple case: board at Z=0, X/Y are the board coordinates in meters
-        return (float(point_3d[0] * 1000), float(point_3d[1] * 1000))  # m -> mm
-    # General case with board normal: project onto plane
-    # (extend later if board is not at Z=0)
-    return (float(point_3d[0] * 1000), float(point_3d[1] * 1000))
+    return (float(point_board[0] * 1000), float(point_board[1] * 1000))  # m -> mm
+
+
+def transform_to_board_frame(
+    point_3d: np.ndarray,
+    R_cb: np.ndarray,
+    t_cb: np.ndarray,
+) -> np.ndarray:
+    """Transform a 3D point from camera-1 frame to dartboard frame.
+
+    Args:
+        point_3d: (X, Y, Z) in camera-1 coordinate frame (meters).
+        R_cb: 3x3 rotation matrix from camera frame to board frame.
+        t_cb: (3,) translation vector from camera frame to board frame (meters).
+
+    Returns:
+        (X, Y, Z) in board coordinate frame.
+        Z ≈ 0 is the board face; X/Y are horizontal/vertical offsets in meters.
+    """
+    return R_cb @ point_3d + t_cb.reshape(3)

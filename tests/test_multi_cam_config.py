@@ -48,7 +48,7 @@ class TestStereoPairRoundtrip:
         path = str(tmp_path / "multi.yaml")
         save_stereo_pair("a", "b", [[1, 0, 0], [0, 1, 0], [0, 0, 1]], [0, 0, 0], 0.1, path=path)
         cfg = load_multi_cam_config(path)
-        assert cfg["schema_version"] == 1
+        assert cfg["schema_version"] >= 2  # v2 added cameras + board_transform sections
 
 
 class TestCalibrationManagerCameraId:

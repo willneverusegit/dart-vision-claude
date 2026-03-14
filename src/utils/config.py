@@ -82,5 +82,44 @@ def save_stereo_pair(cam_a: str, cam_b: str, R: list, T: list,
         "reprojection_error": reprojection_error,
         "calibrated_utc": datetime.now(timezone.utc).isoformat(),
     }
-    cfg["schema_version"] = 1
+    cfg.setdefault("schema_version", 2)
     save_multi_cam_config(cfg, path)
+
+
+def get_board_transform(cam_id: str, path: str = MULTI_CAM_CONFIG_PATH) -> dict | None:
+    """Load per-camera board pose (R_cb, t_cb) from multi_cam.yaml.
+
+    Returns a dict with keys 'R_cb' and 't_cb' (as nested lists), or None
+    if the camera has not been board-pose calibrated yet.
+    """
+    cfg = load_multi_cam_config(path)
+    cam_cfg = cfg.get("cameras", {}).get(cam_id, {})
+    return cam_cfg.get("board_transform")
+
+
+def save_board_transform(cam_id: str, R_cb: list, t_cb: list,
+                         path: str = MULTI_CAM_CONFIG_PATH) -> None:
+    """Atomically save per-camera board pose transform (R_cb, t_cb)."""
+    cfg = load_multi_cam_config(path)
+    cfg.setdefault("cameras", {}).setdefault(cam_id, {})
+    cfg["cameras"][cam_id]["board_transform"] = {
+        "R_cb": R_cb,
+        "t_cb": t_cb,
+    }
+    cfg["schema_version"] = 2
+    save_multi_cam_config(cfg, path)
+    logger.info("Board transform saved for camera '%s'", cam_id)
+
+
+def get_startup_cameras(path: str = MULTI_CAM_CONFIG_PATH) -> list[dict] | None:
+    """Return camera list for multi-pipeline startup, or None for single-cam mode.
+
+    Reads the 'startup' section of multi_cam.yaml. Returns None unless
+    startup.mode == 'multi' and at least 2 cameras are configured.
+    """
+    cfg = load_multi_cam_config(path)
+    startup = cfg.get("startup", {})
+    if startup.get("mode") != "multi":
+        return None
+    cameras = startup.get("cameras", [])
+    return cameras if len(cameras) >= 2 else None

@@ -284,13 +284,27 @@ async def lifespan(app: FastAPI):
     app_state["shutdown_event"] = threading.Event()
     app_state["pending_hits_lock"] = threading.Lock()
 
-    # Start CV pipeline in background thread
-    pipeline_thread = threading.Thread(
-        target=_run_pipeline,
-        args=(app_state,),
-        daemon=True,
-        name="cv-pipeline",
-    )
+    # Start CV pipeline — single or multi camera depending on config
+    from src.utils.config import get_startup_cameras
+    startup_cameras = get_startup_cameras()
+
+    if startup_cameras:
+        pipeline_thread = threading.Thread(
+            target=_run_multi_pipeline,
+            args=(app_state, startup_cameras),
+            daemon=True,
+            name="cv-multi-pipeline",
+        )
+        logger.info("Starting multi-camera pipeline (%d cameras)", len(startup_cameras))
+    else:
+        pipeline_thread = threading.Thread(
+            target=_run_pipeline,
+            args=(app_state,),
+            daemon=True,
+            name="cv-pipeline",
+        )
+        logger.info("Starting single-camera pipeline")
+
     pipeline_thread.start()
     logger.info("Application ready")
 
