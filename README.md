@@ -1,8 +1,26 @@
-# Dart-Vision 🎯
+# Dart-Vision
 
-CPU-optimiertes Computer-Vision-System zur automatischen Dart-Treffererkennung und Scoring.
+CPU-optimiertes Computer-Vision-System zur automatischen Dart-Treffererkennung und zum Scoring.
+
+## Aktueller Stand
+
+- Single-Camera ist der stabile Hauptpfad.
+- Multi-Camera ist bereits weit entwickelt, aber noch sensibler im Betrieb.
+- Das System ist bewusst auf **CPU-only** ausgelegt.
+- Der aktuelle Projektstatus ist dokumentiert in `PROJEKTSTAND_2026-03-16.md`.
 
 ## Quickstart
+
+### Windows PowerShell
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+### Linux / macOS
 
 ```bash
 python -m venv .venv
@@ -11,62 +29,74 @@ pip install -r requirements.txt
 uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Dann im Browser öffnen: `http://localhost:8000`
+Dann im Browser oeffnen:
 
-## Für Coding Agents
+- `http://localhost:8000`
 
-Dieses Repo enthält eine vollständige Instruktion für AI Coding Agents:
+## Projektstruktur
 
-- **`AGENTS.md`** — Haupt-Instruktion (Codex CLI, Claude Code, Cursor, Copilot)
-- **`CLAUDE.md`** — Symlink auf AGENTS.md (Claude Code Kompatibilität)
-- **`agent_docs/`** — Detaillierte Modul-Spezifikationen (Progressive Disclosure)
+- `src/` - Backend, CV-Pipeline, Spiel-Engine, Web-Schicht
+- `static/` - JavaScript und CSS fuer die Weboberflaeche
+- `templates/` - HTML-Templates
+- `config/` - Kalibrierungs- und Multi-Cam-Konfiguration
+- `tests/` - Unit-, Integrations- und Benchmark-Tests
 
-### Empfohlener Workflow
+## Dokumentation
 
-```bash
-# Codex CLI
-codex "Implementiere Phase 1: CV-Core Module (src/cv/)"
+### Fuer Menschen
 
-# Claude Code
-claude "Lies AGENTS.md und implementiere Phase 1: CV-Core Module"
+- `PROJEKTSTAND_2026-03-16.md` - verifizierter Projektstatus, Hardware-Abgleich, Risiken, Prioritaeten
+- `MULTI_CAM_INSTRUCTIONS.md` - detaillierte Multi-Cam-Hinweise
+- `MULTI_CAM_WORKFLOW.md` - Multi-Cam-Workflow und Kalibrierungsablauf
+
+### Fuer Coding Agents
+
+- `AGENTS.md` - zentrale Repo-Anweisung, primar fuer Codex und allgemeine Coding Agents
+- `AGEND.md` - Alias auf `AGENTS.md`
+- `CLAUDE.md` - Claude-Code-spezifischer Einstieg
+- `agent_docs/INDEX.md` - Einstieg in die strukturierte Agent-Doku
+- `agent_docs/codex.md` - Codex-spezifische Arbeitsweise in diesem Repo
+- `agent_docs/claude_code.md` - Claude-Code-spezifische Arbeitsweise in diesem Repo
+
+## Empfohlene Lesereihenfolge fuer Agents
+
+### Codex
+
+1. `AGENTS.md`
+2. `agent_docs/INDEX.md`
+3. `agent_docs/codex.md`
+4. aufgabenspezifische Dateien in `agent_docs/`
+5. erst dann betroffene Code-Module
+
+### Claude Code
+
+1. `CLAUDE.md`
+2. `agent_docs/INDEX.md`
+3. `agent_docs/claude_code.md`
+4. aufgabenspezifische Dateien in `agent_docs/`
+5. erst dann betroffene Code-Module
+
+## Architektur in Kurzform
+
+- CV-Backend: Python + OpenCV + NumPy
+- Web: FastAPI + MJPEG + WebSocket
+- Frontend: Vanilla JS + HTML + CSS
+- Spiellogik: X01, Cricket, Free Play
+- Kalibrierung: ArUco, ChArUco, manuelle Board-Ausrichtung
+
+## Hardware-Zielbild
+
+Zielplattform ist ein normaler Laptop ohne dedizierte GPU. Die Entwicklung soll sich an konservativen CPU- und Speichergrenzen orientieren. Details stehen in:
+
+- `C:/Users/domes/OneDrive/Desktop/Laptop_hardware/hardware_constraints.md`
+- `agent_docs/hardware_constraints.md`
+
+## Typische Testkommandos
+
+```powershell
+python -m pytest -q
+python -m pytest tests/test_pipeline.py tests/test_web.py -q
+python -m pytest tests/test_multi_camera.py tests/test_multi_cam_config.py -q
+python -m tests.benchmark_pipeline --duration 5 --cameras 1
 ```
 
-## Architektur
-
-- **CV-Backend:** Python + OpenCV (klassische CV, kein Deep Learning)
-- **Web-Frontend:** FastAPI + Vanilla JS (Dark Theme, WebSocket)
-- **Spiellogik:** X01, Cricket, Free Play
-
-## Hardware-Anforderungen
-
-### Einzelkamera (Standard)
-- Standard-Laptop (CPU-only, kein GPU)
-- USB-Webcam (720p+)
-- Python 3.11+
-
-### Multi-Kamera (optional)
-- 2+ USB-Kameras (identische Modelle empfohlen)
-- USB-Hub mit ausreichend Bandbreite (USB 3.0+ empfohlen)
-- Empfohlene Platzierung: 60-90 Grad Winkel zueinander, 50-80 cm Abstand zum Board
-- Alle Kameras muessen das Dartboard vollstaendig sehen
-
-## Multi-Kamera Setup
-
-### Kalibrier-Workflow
-1. **Lens Setup** pro Kamera: ChArUco-Board vor jede Kamera halten
-2. **Board Alignment** pro Kamera: ArUco-Marker oder manuelle 4-Punkt-Auswahl
-3. **Stereo-Kalibrierung** pro Kamera-Paar: ChArUco-Board gleichzeitig in beiden Kamera-Sichtfeldern
-
-### API-Routen (Multi-Kamera)
-| Route | Methode | Beschreibung |
-|-------|---------|--------------|
-| `/api/multi/start` | POST | Multi-Pipeline starten (Body: `{"cameras": [...]}`) |
-| `/api/multi/stop` | POST | Multi-Pipeline stoppen |
-| `/api/multi/status` | GET | Status aller aktiven Kameras (FPS, Kalibrierung) |
-| `/api/calibration/stereo` | POST | Stereo-Kalibrierung zwischen zwei Kameras |
-| `/video/feed/{camera_id}` | GET | MJPEG-Stream einer spezifischen Kamera |
-
-### Frontend
-- **Multi-Cam Button**: Oeffnet Setup-Modal fuer Kamera-Konfiguration
-- **Video-Grid**: Zeigt alle aktiven Kamera-Streams nebeneinander
-- **Stereo-Kalibrierung**: Im Modal mit Live-Vorschau beider Kameras

@@ -153,6 +153,7 @@
             <!-- Step 2: Manual Point Selection -->
             <div id="cal-step-manual" class="cal-step" style="display: none;">
                 <p class="modal__text">Klicke 4 Board-Ecken im Uhrzeigersinn (OL, OR, UR, UL)</p>
+                <p id="cal-manual-hint" class="modal__text" style="font-size:0.85em; color: #aaa; min-height:1.2em;"></p>
                 <canvas id="calibration-canvas" class="calibration-canvas"></canvas>
                 <div class="modal__actions">
                     <button id="btn-calibrate-confirm" class="btn btn--accent" disabled>Kalibrieren</button>
@@ -180,6 +181,11 @@
                         <img id="cal-overlay-preview" class="cal-preview-img" alt="Field Overlay">
                     </div>
                 </div>
+                <div id="ring-deviations" class="ring-deviations" style="display:none;"></div>
+                <div class="modal__actions">
+                    <button id="btn-cal-set-center" class="btn btn--secondary">Mittelpunkt manuell setzen</button>
+                </div>
+                <p id="cal-center-hint" class="modal__text" style="font-size:0.8em; color:#aaa; display:none;">Klicke auf das ROI-Bild um den Mittelpunkt zu setzen.</p>
                 <div class="modal__actions">
                     <button id="btn-cal-accept" class="btn btn--accent">Uebernehmen</button>
                     <button id="btn-cal-retry" class="btn btn--warning">Wiederholen</button>

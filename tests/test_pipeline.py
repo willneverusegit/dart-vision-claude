@@ -1,5 +1,8 @@
 """Integration tests for the CV pipeline modules."""
 
+import time
+from unittest.mock import MagicMock, patch
+
 import numpy as np
 from src.cv.geometry import BoardGeometry, BoardPose
 from src.cv.motion import MotionDetector
@@ -131,3 +134,66 @@ class TestDetectionToScoring:
             hit = geometry.point_to_score(float(cx), float(cy))
             assert hit.score > 0
             assert hit.sector in range(1, 21)
+
+
+class TestDartPipelineD1:
+    """D1: Tests for critical DartPipeline paths."""
+
+    def test_process_frame_no_camera(self):
+        """Pipeline with no camera returns None and does not crash."""
+        from src.cv.pipeline import DartPipeline
+        pipeline = DartPipeline(camera_src=0)
+        pipeline.camera = None
+        result = pipeline.process_frame()
+        assert result is None
+
+    def test_process_frame_camera_read_fails(self):
+        """If camera.read() returns False, process_frame returns None."""
+        from src.cv.pipeline import DartPipeline
+        pipeline = DartPipeline(camera_src=0)
+        mock_cam = MagicMock()
+        mock_cam.read.return_value = (False, None)
+        pipeline.camera = mock_cam
+        result = pipeline.process_frame()
+        assert result is None
+        assert pipeline._last_raw_frame is None
+
+    def test_process_frame_with_mock_cap(self):
+        """A valid frame from a mock camera is stored in _last_raw_frame."""
+        from src.cv.pipeline import DartPipeline
+        pipeline = DartPipeline(camera_src=0)
+        fake_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        mock_cam = MagicMock()
+        mock_cam.read.return_value = (True, fake_frame)
+        pipeline.camera = mock_cam
+        # process_frame may return None (no motion), but must not crash
+        pipeline.process_frame()
+        assert pipeline._last_raw_frame is not None
+
+    def test_frame_drop_under_load(self):
+        """C1: Stale frames are skipped and _dropped_frames counter increments."""
+        from src.cv.pipeline import DartPipeline, FRAME_STALE_THRESHOLD_S
+        pipeline = DartPipeline(camera_src=0)
+        fake_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        mock_cam = MagicMock()
+
+        # Make camera.read() simulate a slow capture (> threshold)
+        def slow_read():
+            time.sleep(FRAME_STALE_THRESHOLD_S + 0.02)
+            return (True, fake_frame)
+
+        mock_cam.read.side_effect = slow_read
+        pipeline.camera = mock_cam
+
+        before = pipeline._dropped_frames
+        pipeline.process_frame()
+        assert pipeline._dropped_frames > before
+
+    def test_detect_optical_center_no_calibration(self):
+        """detect_optical_center without a prior frame returns None gracefully."""
+        from src.cv.pipeline import DartPipeline
+        pipeline = DartPipeline(camera_src=0)
+        pipeline.camera = None
+        pipeline._last_raw_frame = None
+        result = pipeline.detect_optical_center()
+        assert result is None

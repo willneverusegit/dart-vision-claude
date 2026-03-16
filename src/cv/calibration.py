@@ -35,6 +35,16 @@ ARUCO_DICT_TYPE = cv2.aruco.DICT_4X4_50
 ARUCO_EXPECTED_IDS = [0, 1, 2, 3]
 ARUCO_MARKER_SIZE_MM = 75  # Edge length of printed markers
 
+# Plausibility bounds for the computed mm/px ratio.
+# Values outside this range indicate the camera is too close, too far,
+# or that a calibration error occurred.  Typical dart cameras: 0.3–3.0 mm/px.
+MM_PER_PX_MIN = 0.3
+MM_PER_PX_MAX = 3.0
+
+# Minimum pixel distance between any two of the four manually clicked
+# calibration points.  Below this threshold the homography degenerates.
+MANUAL_MIN_POINT_DISTANCE_PX = 50
+
 # Standard dartboard ring radii in mm (from center)
 RING_RADII_MM = {
     "bull_inner": 6.35,     # Double bull (inner ring)
@@ -108,6 +118,21 @@ class CalibrationManager:
             if len(board_points) != 4:
                 return {"ok": False, "error": f"Expected 4 points, got {len(board_points)}"}
             src = np.float32(board_points)
+
+            # A4: Minimum distance check — all 6 pairwise distances must be ≥ threshold
+            for i in range(4):
+                for j in range(i + 1, 4):
+                    dist = float(np.linalg.norm(src[i] - src[j]))
+                    if dist < MANUAL_MIN_POINT_DISTANCE_PX:
+                        return {
+                            "ok": False,
+                            "error": (
+                                f"Punkte {i} und {j} sind nur {dist:.0f}px voneinander entfernt "
+                                f"(Minimum: {MANUAL_MIN_POINT_DISTANCE_PX}px). "
+                                "Bitte größere Abstände zwischen den Ecken wählen."
+                            ),
+                        }
+
             dst = np.float32([[0, 0], [roi_size[0], 0],
                               [roi_size[0], roi_size[1]], [0, roi_size[1]]])
             homography = cv2.getPerspectiveTransform(src, dst)
@@ -119,6 +144,17 @@ class CalibrationManager:
                 return {"ok": False, "error": "Board width too small (< 1px)"}
             # Clicked points span the frame inner edge (480mm)
             mm_per_px = FRAME_INNER_MM / board_width_px
+
+            # A3: Plausibility check on mm/px ratio
+            if not (MM_PER_PX_MIN <= mm_per_px <= MM_PER_PX_MAX):
+                return {
+                    "ok": False,
+                    "error": (
+                        f"Unrealistisches mm/px-Verhältnis ({mm_per_px:.3f}). "
+                        f"Erwartet: {MM_PER_PX_MIN}–{MM_PER_PX_MAX} mm/px. "
+                        "Kamera möglicherweise zu nah oder zu weit vom Board entfernt."
+                    ),
+                }
             center_x = float((src[0][0] + src[2][0]) / 2)
             center_y = float((src[0][1] + src[2][1]) / 2)
             # ROI (400px) maps the clicked area which spans FRAME_INNER_MM (480mm)
@@ -289,6 +325,17 @@ class CalibrationManager:
                     edge_lengths_px.append(edge)
             avg_edge_px = float(np.mean(edge_lengths_px)) if edge_lengths_px else 1.0
             mm_per_px = ARUCO_MARKER_SIZE_MM / avg_edge_px
+
+            # A3: Plausibility check on mm/px ratio
+            if not (MM_PER_PX_MIN <= mm_per_px <= MM_PER_PX_MAX):
+                return {
+                    "ok": False,
+                    "error": (
+                        f"Unrealistisches mm/px-Verhältnis ({mm_per_px:.3f}). "
+                        f"Erwartet: {MM_PER_PX_MIN}–{MM_PER_PX_MAX} mm/px. "
+                        "Kamera möglicherweise zu nah oder zu weit vom Board entfernt."
+                    ),
+                }
 
             # Board center in original image
             center_x = float(np.mean(src_markers[:, 0]))

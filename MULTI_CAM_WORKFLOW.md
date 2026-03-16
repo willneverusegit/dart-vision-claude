@@ -1,247 +1,200 @@
-# Multi-Kamera Implementierung — Workflow für Claude Code
+# Multi-Camera Workflow
 
-> **Zweck:** Diese Datei steuert die schrittweise Abarbeitung der Multi-Kamera-Erweiterung.
-> Die technischen Details stehen in `MULTI_CAM_INSTRUCTIONS.md` (gleicher Ordner).
->
-> **Ablauf:** Ein Step pro Claude-Code-Session. Nach jedem Step: `pytest` laufen lassen,
-> Diff reviewen, committen. Erst dann den nächsten Step starten.
+Operativer Workflow fuer Coding Agents, die am Multi-Camera-Bereich arbeiten.
 
----
+Diese Datei ist die praktische Arbeitssteuerung zu:
+
+- `MULTI_CAM_INSTRUCTIONS.md`
+- `AGENTS.md`
+- `CLAUDE.md`
+- `agent_docs/development_workflow.md`
+- `agent_docs/priorities.md`
+
+## Grundregel
+
+Nur **ein klar abgegrenztes Multi-Cam-Work-Package pro Session**.
+
+Nicht in einer Runde gleichzeitig:
+
+- Lifecycle umbauen
+- UI umbauen
+- Kalibrierung umbauen
+- Benchmarks umbauen
+
+Wenn mehrere Themen noetig sind, zuerst den risikoreichsten Block isoliert fertig machen.
 
 ## Vorbereitung
 
-1. Lege beide Dateien ins Projekt-Root:
-   ```
-   dart-vision-claude/
-   ├── MULTI_CAM_INSTRUCTIONS.md   ← Technische Spezifikation
-   ├── MULTI_CAM_WORKFLOW.md        ← Diese Datei (Workflow-Steuerung)
-   ├── AGENTS.md                    ← Bestehende Agent-Instruktionen
-   ├── CLAUDE.md → AGENTS.md        ← Symlink bleibt unverändert
-   └── ...
-   ```
+Vor jeder Multi-Cam-Arbeit:
 
-2. Stelle sicher, dass die Test-Suite vorher grün ist:
-   ```bash
-   pytest --tb=short -q
-   ```
+1. `README.md` lesen
+2. `AGENTS.md` oder `CLAUDE.md` lesen
+3. `MULTI_CAM_INSTRUCTIONS.md` lesen
+4. relevante Dateien in `agent_docs/` lesen
+5. betroffene Module und Tests oeffnen
 
-3. Erstelle einen Feature-Branch:
-   ```bash
-   git checkout -b feature/multi-camera
-   ```
+## Empfohlene Reihenfolge fuer aktuelle Weiterentwicklung
 
----
+### Phase 1: Lifecycle und Runtime-Sicherheit
 
-## Prompts (Copy-Paste für Claude Code)
+Typische Aufgaben:
 
-### Step 2: Konfigurations-Refactoring
+- Start/Stop robuster machen
+- Thread-Besitz klaeren
+- State-Umschaltung Single <-> Multi haerten
 
-```
-Lies MULTI_CAM_INSTRUCTIONS.md, Abschnitt "Step 2: Konfigurations-Refactoring".
+### Phase 2: Kamera-Konfiguration und Lastbegrenzung
 
-Setze NUR Step 2 um. Fasse die bestehende Codebase NICHT anders an als dort beschrieben.
+Typische Aufgaben:
 
-Zusammenfassung der Aufgaben:
-- CalibrationManager um camera_id Parameter erweitern (Default: "default")
-- Legacy-Config (flaches YAML) transparent migrieren auf cameras.<id>-Struktur
-- File-Level Lock für gleichzeitigen Zugriff einbauen
-- BoardCalibrationManager und CameraCalibrationManager: camera_id durchreichen
-- config/multi_cam.yaml Skelett anlegen
-- src/utils/config.py um Stereo-Paar-Funktionen erweitern
-- Neue Tests in tests/test_multi_cam_config.py schreiben
+- Aufloesung/FPS konfigurierbar machen
+- konservative Defaults
+- bessere Fehlermeldungen bei ungeeignetem Setup
 
-Qualitätskriterien:
-- pytest muss mit 0 Failures durchlaufen (bestehende + neue Tests)
-- Einzelkamera-Betrieb (camera_id="default") muss identisch funktionieren
-- Kein Breaking Change an öffentlichen APIs
+### Phase 3: Setup- und Kalibrierungs-Haertung
 
-Wenn du fertig bist, zeige mir: geänderte Dateien, neue Dateien, pytest-Ergebnis.
-```
+Typische Aufgaben:
 
-**Nach Step 2:**
-```bash
-pytest --tb=short -q
-git add -A && git commit -m "feat: multi-cam config refactoring (Step 2)
+- fehlende Intrinsics/Extrinsics sauber melden
+- bessere Route- und UI-Fehlerpfade
+- klarere Setup-Fuehrung
 
-- CalibrationManager supports camera_id parameter
-- Legacy YAML auto-migrated to cameras.<id> structure
-- File-level lock for concurrent access
-- config/multi_cam.yaml skeleton for stereo extrinsics
-- Stereo pair helpers in src/utils/config.py"
-```
+### Phase 4: Diagnose und Hardwarevalidierung
 
----
+Typische Aufgaben:
 
-### Step 3: Stereo-Kalibrierung
+- Telemetrie
+- Replay-Validierung
+- Benchmark-Auswertung
 
-```
-Lies MULTI_CAM_INSTRUCTIONS.md, Abschnitt "Step 3: Stereo-Kalibrierung implementieren".
+## Agentenspezifische Arbeitsweise
 
-Setze NUR Step 3 um. Step 2 ist bereits implementiert und committet.
+### Codex
 
-Zusammenfassung der Aufgaben:
-- src/cv/stereo_calibration.py: stereo_calibrate() und detect_charuco_corners()
-- StereoResult NamedTuple
-- Tests in tests/test_stereo_calibration.py (Fehlerhandling, Interfaces)
-- API-Stub /api/calibration/stereo in routes.py
-- __init__.py Exporte aktualisieren
+Codex sollte:
 
-Qualitätskriterien:
-- pytest muss mit 0 Failures durchlaufen
-- Keine Änderungen an Step-2-Code nötig (wenn doch: explizit benennen warum)
+- klein anfangen
+- direkt umsetzen
+- sofort die relevanten Tests ausfuehren
+- den Scope nicht unnoetig verbreitern
 
-Wenn du fertig bist, zeige mir: geänderte Dateien, neue Dateien, pytest-Ergebnis.
-```
+Empfohlener Arbeitsablauf:
 
-**Nach Step 3:**
-```bash
-pytest --tb=short -q
-git add -A && git commit -m "feat: stereo calibration module (Step 3)
+1. betroffenes Work Package festlegen
+2. Risikodateien lesen
+3. Tests lesen
+4. kleinsten wirksamen Eingriff machen
+5. gezielte Tests
+6. optional Gesamttests
 
-- stereo_calibrate() with ChArUco DICT_6X6_250
-- detect_charuco_corners() helper
-- API stub /api/calibration/stereo
-- Error handling and interface tests"
-```
+### Claude Code
 
----
+Claude Code sollte:
 
-### Step 4: Multi-Kamera-Pipeline
+- den betroffenen Bereich zuerst kurz strukturieren
+- bei High-Risk-Dateien defensiv aendern
+- den Eingriff und Restrisiken explizit benennen
 
-```
-Lies MULTI_CAM_INSTRUCTIONS.md, Abschnitt "Step 4: Multi-Kamera-Pipeline bauen".
+Empfohlener Arbeitsablauf:
 
-Setze NUR Step 4 um. Steps 2–3 sind bereits implementiert.
+1. betroffene Teilsysteme benennen
+2. relevanten Lesepfad in `agent_docs/` ziehen
+3. kleinsten sinnvollen Eingriff waehlen
+4. gezielte Verifikation
+5. offene Folgepunkte knapp benennen
 
-Zusammenfassung der Aufgaben:
-- src/cv/stereo_utils.py: CameraParams, triangulate_point(), point_3d_to_board_2d()
-- src/cv/multi_camera.py: MultiCameraPipeline mit Thread-pro-Kamera, Fusion-Thread,
-  Zeitfenster-Synchronisation (MAX_DETECTION_TIME_DIFF_S = 0.15),
-  Triangulation + Voting-Fallback
-- Tests: tests/test_stereo_utils.py (synthetische Triangulation)
-- Tests: tests/test_multi_camera.py (Lifecycle, Fallback, Buffer)
-- __init__.py Exporte
+## Copy-Paste-Auftraege fuer Agents
 
-Qualitätskriterien:
-- pytest 0 Failures
-- DartPipeline bleibt unverändert (Einzelkamera-Betrieb unberührt)
-- Thread-Safety: _buffer_lock konsequent nutzen
+Die folgenden Aufgaben sind auf den aktuellen Projektstand zugeschnitten.
 
-Wenn du fertig bist, zeige mir: geänderte Dateien, neue Dateien, pytest-Ergebnis.
+### Auftrag A: Lifecycle Hardening
+
+```text
+Lies README.md, AGENTS.md bzw. CLAUDE.md, MULTI_CAM_INSTRUCTIONS.md und die relevanten Dateien in agent_docs/.
+
+Arbeite nur am Multi-Cam-Lifecycle. Ziel:
+- sauberes Start/Stop-Verhalten
+- kein Thread-Leak beim Wechsel zwischen Single und Multi
+- keine Regression im Single-Cam-Startpfad
+
+Bearbeite nur die minimal noetigen Dateien. Fuehre danach gezielte Tests aus und nenne Restrisiken.
 ```
 
-**Nach Step 4:**
-```bash
-pytest --tb=short -q
-git add -A && git commit -m "feat: multi-camera pipeline with triangulation (Step 4)
+### Auftrag B: Kamera-Input kontrollierbar machen
 
-- CameraParams + triangulate_point() in stereo_utils
-- MultiCameraPipeline: thread-per-camera, fusion thread
-- Software sync via 150ms time window
-- Triangulation with voting fallback
-- Single-camera fallback on timeout"
+```text
+Lies README.md, AGENTS.md bzw. CLAUDE.md, MULTI_CAM_INSTRUCTIONS.md und agent_docs/hardware_constraints.md.
+
+Arbeite nur daran, die reale Kamera-Last fuer Multi-Cam vorhersehbarer zu machen. Ziel:
+- explizite Aufloesungs-/FPS-Steuerung oder konservative Defaults
+- keine unkontrollierte Mehrlast auf dem Ziel-Laptop
+- Single-Cam weiter intakt
+
+Fuehre danach die relevanten Pipeline-Tests und den Benchmark fuer 1 und 2 Kameras aus.
 ```
 
----
+### Auftrag C: Kalibrierungs- und Setup-Haertung
 
-### Step 5: API und Frontend
+```text
+Lies README.md, AGENTS.md bzw. CLAUDE.md, MULTI_CAM_INSTRUCTIONS.md und agent_docs/development_workflow.md.
 
-```
-Lies MULTI_CAM_INSTRUCTIONS.md, Abschnitt "Step 5: API und Frontend anpassen".
+Arbeite nur am Multi-Cam-Setup und an der Kalibrierungs-Haertung. Ziel:
+- bessere Fehlertexte
+- robustere Routen und Guards
+- klarere Diagnose bei fehlenden Intrinsics, Stereo-Daten oder Board-Transforms
 
-Setze NUR Step 5 um. Steps 2–4 sind bereits implementiert.
-
-Zusammenfassung der Aufgaben:
-- src/main.py: app_state erweitern, _run_multi_pipeline Funktion
-- src/web/routes.py: /api/multi/start, /api/multi/stop, /api/multi/status,
-  /api/calibration/stereo vollständig implementieren
-- WebSocket: Score-Events transparent aus Single- oder Multi-Pipeline
-- Frontend: Kamera-Auswahl UI, Multi-Video-Grid, Stereo-Kalibrierung im Modal
-- README.md: Multi-Kamera-Dokumentation (Hardware, Platzierung, Workflow)
-
-Qualitätskriterien:
-- pytest 0 Failures
-- Einzelkamera-Modus (kein /api/multi/start aufgerufen) funktioniert wie bisher
-- Frontend graceful degradation: ohne Multi-Pipeline sieht UI aus wie vorher
-
-Wenn du fertig bist, zeige mir: geänderte Dateien, neue Dateien, pytest-Ergebnis.
+Fuehre danach gezielte Kalibrierungs- und Web-Tests aus.
 ```
 
-**Nach Step 5:**
-```bash
-pytest --tb=short -q
-git add -A && git commit -m "feat: multi-camera API routes and frontend (Step 5)
+### Auftrag D: Diagnose und Telemetrie
 
-- /api/multi/start, /stop, /status endpoints
-- /api/calibration/stereo fully implemented
-- Multi-camera video grid in frontend
-- Stereo calibration UI in modal
-- README updated with multi-camera documentation"
+```text
+Lies README.md, AGENTS.md bzw. CLAUDE.md, MULTI_CAM_INSTRUCTIONS.md und agent_docs/priorities.md.
+
+Arbeite nur an Multi-Cam-Diagnose und Telemetrie. Ziel:
+- Status und Probleme auf echter Hardware besser sichtbar machen
+- keine schwere neue Runtime-Last
+- API und UI konsistent halten
+
+Fuehre danach die relevanten Web-, Multi-Cam- und Robustheitstests aus.
 ```
 
----
+## Mindest-Checks je Session
 
-### Step 6: Tests, Benchmarks, Feinschliff
+### Bei Logik in `src/cv/multi_camera.py`
 
-```
-Lies MULTI_CAM_INSTRUCTIONS.md, Abschnitt "Step 6: Tests, Benchmarks und Feinschliff".
-
-Setze NUR Step 6 um. Steps 2–5 sind bereits implementiert.
-
-Zusammenfassung der Aufgaben:
-- tests/benchmark_pipeline.py: --cameras N Parameter, neue KPIs für Mehrkamera
-- tests/test_multi_robustness.py: Kamera-Ausfall, Z<0, Timeout, Confidence-Voting
-- src/utils/logger.py: JSON-Logging-Option
-- MultiCameraPipeline: Voting-Fallback gewichten nach Confidence
-- Alle Log-Meldungen in Multi-Modulen enthalten camera_id
-
-Qualitätskriterien:
-- Gesamte Test-Suite grün
-- Benchmark mit --cameras 2 zeigt Ergebnisse
-- Kein Regression in Einzelkamera-Performance
-
-Wenn du fertig bist, zeige mir: geänderte Dateien, neue Dateien, pytest-Ergebnis,
-Benchmark-Ergebnis mit --cameras 1 und --cameras 2.
+```powershell
+python -m pytest tests/test_multi_camera.py tests/test_multi_robustness.py -q
 ```
 
-**Nach Step 6:**
-```bash
-pytest --tb=short -q
-python -m tests.benchmark_pipeline --duration 5
+### Bei Aenderungen an Konfiguration oder Stereo/Kalibrierung
+
+```powershell
+python -m pytest tests/test_multi_cam_config.py tests/test_stereo_calibration.py tests/test_stereo_utils.py -q
+```
+
+### Bei API/UI-Aenderungen
+
+```powershell
+python -m pytest tests/test_web.py tests/test_routes_extra.py tests/test_websocket.py -q
+```
+
+### Bei Last- oder Hot-Path-Aenderungen
+
+```powershell
+python -m tests.benchmark_pipeline --duration 5 --cameras 1
 python -m tests.benchmark_pipeline --duration 5 --cameras 2
-git add -A && git commit -m "feat: multi-camera benchmarks and hardening (Step 6)
-
-- Benchmark supports --cameras N parameter
-- Robustness tests for camera dropout, Z<0, timeout
-- JSON logging option
-- Confidence-weighted voting fallback
-- All multi-cam logs include camera_id"
 ```
 
----
+## Abschluss einer Multi-Cam-Session
 
-## Nach Abschluss aller Steps
+Am Ende sollte der Agent berichten:
 
-```bash
-# Feature-Branch in main mergen
-git checkout main
-git merge feature/multi-camera
+- welches Work Package bearbeitet wurde
+- welche Dateien geaendert wurden
+- welche Tests oder Benchmarks gelaufen sind
+- welche Risiken offen bleiben
 
-# Gesamte Suite nochmal
-pytest --tb=short -q
+## Was diese Datei bewusst nicht mehr ist
 
-# Optional: Tag setzen
-git tag v0.3.0-multi-cam
-```
-
----
-
-## Troubleshooting
-
-| Problem | Lösung |
-|---------|--------|
-| Claude Code will mehrere Steps gleichzeitig machen | Prompt wiederholen: "NUR Step N, nichts anderes" |
-| Bestehende Tests brechen nach Step 2 | Wahrscheinlich Migration-Bug: CalibrationManager ohne camera_id muss "default" nutzen |
-| pytest hängt in Step 4 (Threads) | Prüfe ob Threads in Tests sauber gestoppt werden (Fixtures mit Teardown) |
-| Claude Code ändert Dateien ausserhalb des Steps | Explizit sagen: "Revertiere alle Änderungen die nicht in Step N beschrieben sind" |
-| Import-Fehler nach neuem Modul | __init__.py Exporte vergessen — Claude Code daran erinnern |
+Diese Datei ist kein alter Step-2-bis-Step-6-Implementierungsplan mehr. Wenn groessere neue Multi-Cam-Funktionen geplant werden, sollten sie als neue Work Packages in dieser Datei und in `MULTI_CAM_INSTRUCTIONS.md` beschrieben werden, statt den historischen Plan wiederzubeleben.

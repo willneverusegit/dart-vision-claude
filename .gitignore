@@ -1,0 +1,18 @@
+# Python cache / artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Test / coverage artifacts
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Local environments
+.venv/
+venv/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db

@@ -6,6 +6,7 @@ import argparse
 import logging
 import math
 import os
+import time
 from typing import Callable
 
 import cv2
@@ -24,6 +25,11 @@ from src.utils.fps import FPSCounter
 from src.utils.logger import setup_logging
 
 logger = logging.getLogger(__name__)
+
+# C1: Frame-drop constants — skip expensive analysis when pipeline is overloaded
+_TARGET_FPS = 30
+_FRAME_INTERVAL_S = 1.0 / _TARGET_FPS          # ~0.0333 s per frame
+FRAME_STALE_THRESHOLD_S = _FRAME_INTERVAL_S * 1.5  # ~0.05 s tolerance
 
 
 class DartPipeline:
@@ -66,6 +72,9 @@ class DartPipeline:
         self._last_score: dict | None = None
         self._last_roi: np.ndarray | None = None
         self._last_motion_mask: np.ndarray | None = None
+
+        # C1: Frame-drop counter for monitoring
+        self._dropped_frames: int = 0
 
         # Optical center override (ROI pixel space)
         self._optical_center: tuple[float, float] | None = None
@@ -124,11 +133,19 @@ class DartPipeline:
         if self.camera is None:
             return None
 
+        t_capture = time.monotonic()
         ret, frame = self.camera.read()
         if not ret or frame is None:
             return None
         self._last_raw_frame = frame
         self.fps_counter.update()
+
+        # C1: Skip expensive analysis when pipeline is falling behind schedule.
+        # If more than FRAME_STALE_THRESHOLD_S has elapsed since we started
+        # capturing (e.g. due to prior processing overhead), discard this frame.
+        if time.monotonic() - t_capture > FRAME_STALE_THRESHOLD_S:
+            self._dropped_frames += 1
+            return None
 
         # 1) Combined remap to ROI board space
         roi_source = self.remapper.remap(frame)

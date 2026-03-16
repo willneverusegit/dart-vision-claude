@@ -5,6 +5,7 @@ import base64
 import logging
 import threading
 import time as _time
+from contextlib import nullcontext as _nullcontext
 
 import cv2
 import numpy as np
@@ -47,6 +48,14 @@ def setup_routes(app_state: dict) -> APIRouter:
         engine = app_state.get("game_engine")
         if not engine:
             return {"error": "No game engine"}
+        # A2: Guard — board must be calibrated before starting a game
+        pipeline = app_state.get("pipeline")
+        if pipeline and hasattr(pipeline, "board_calibration"):
+            if not pipeline.board_calibration.is_valid():
+                return {
+                    "ok": False,
+                    "error": "Board nicht kalibriert. Bitte zuerst die Board-Kalibrierung durchführen.",
+                }
         mode = body.get("mode", "x01")
         players = body.get("players", ["Player 1"])
         starting_score = body.get("starting_score", 501)
@@ -438,6 +447,28 @@ def setup_routes(app_state: dict) -> APIRouter:
             return {"ok": False, "error": "Could not detect optical center"}
         return {"ok": True, "optical_center": [oc[0], oc[1]]}
 
+    @router.post("/api/calibration/optical-center/manual")
+    async def set_optical_center_manual(request: Request) -> dict:
+        """Manually override the bullseye position (ROI pixel coordinates)."""
+        pipeline = app_state.get("pipeline")
+        if not pipeline:
+            return {"ok": False, "error": "No pipeline"}
+        if not (hasattr(pipeline, "board_calibration") and pipeline.board_calibration.is_valid()):
+            return {"ok": False, "error": "Board nicht kalibriert"}
+        body = await request.json()
+        x = body.get("x")
+        y = body.get("y")
+        if x is None or y is None:
+            return {"ok": False, "error": "x und y erforderlich"}
+        try:
+            x, y = float(x), float(y)
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "x und y müssen Zahlen sein"}
+        pipeline.board_calibration.store_optical_center((x, y))
+        if hasattr(pipeline, "_refresh_geometry"):
+            pipeline._refresh_geometry()
+        return {"ok": True, "optical_center": [x, y]}
+
     @router.get("/api/calibration/overlay")
     async def field_overlay() -> JSONResponse:
         """Return ROI frame with field boundaries drawn as base64 JPEG."""
@@ -719,15 +750,16 @@ def setup_routes(app_state: dict) -> APIRouter:
             if "camera_id" not in cam:
                 return {"ok": False, "error": "Each camera must have a camera_id"}
 
-        # Stop the existing single pipeline if running
-        shutdown_ev = app_state.get("shutdown_event")
-        if app_state.get("pipeline_running") and app_state.get("pipeline"):
-            try:
-                app_state["pipeline"].stop()
-            except Exception:
-                pass
-            app_state["pipeline_running"] = False
-            app_state["pipeline"] = None
+        # A1: Stop the existing single pipeline under the lifecycle lock
+        _pl = app_state.get("pipeline_lock")
+        with (_pl if _pl else _nullcontext()):
+            if app_state.get("pipeline_running") and app_state.get("pipeline"):
+                try:
+                    app_state["pipeline"].stop()
+                except Exception:
+                    pass
+                app_state["pipeline_running"] = False
+                app_state["pipeline"] = None
 
         # Start multi-pipeline in a background thread
         from src.main import _run_multi_pipeline
@@ -769,10 +801,13 @@ def setup_routes(app_state: dict) -> APIRouter:
         except Exception as e:
             logger.error("Error stopping multi-pipeline: %s", e)
 
-        app_state["multi_pipeline"] = None
-        app_state["multi_pipeline_running"] = False
-        app_state["active_camera_ids"] = []
-        app_state["multi_latest_frames"] = {}
+        # A1: Mutate pipeline state under the lifecycle lock
+        _pl = app_state.get("pipeline_lock")
+        with (_pl if _pl else _nullcontext()):
+            app_state["multi_pipeline"] = None
+            app_state["multi_pipeline_running"] = False
+            app_state["active_camera_ids"] = []
+            app_state["multi_latest_frames"] = {}
 
         return {"ok": True}
 
@@ -861,6 +896,9 @@ def setup_routes(app_state: dict) -> APIRouter:
         if lock:
             with lock:
                 pending_count = len(app_state.get("pending_hits", {}))
+        board_calibrated = False
+        if pipeline and hasattr(pipeline, "board_calibration"):
+            board_calibrated = pipeline.board_calibration.is_valid()
         return {
             "fps": round(fps, 1),
             "connections": em.connection_count if em else 0,
@@ -868,6 +906,7 @@ def setup_routes(app_state: dict) -> APIRouter:
             "multi_pipeline_running": app_state.get("multi_pipeline_running", False),
             "active_cameras": app_state.get("active_camera_ids", []),
             "pending_hits": pending_count,
+            "board_calibrated": board_calibrated,
         }
 
     # --- Video Stream ---

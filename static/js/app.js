@@ -11,6 +11,8 @@ class DartApp {
         this.calibrationPoints = [];
         this.pendingHits = new Map(); // candidate_id -> candidate
         this.multiCamRunning = false;
+        this.calibrationValid = false;
+        this._pickingCenter = false;
         this.activeCameraIds = [];
 
         this._bindEvents();
@@ -68,6 +70,12 @@ class DartApp {
         if (btnCalAccept) btnCalAccept.addEventListener("click", () => this._closeCalibration());
         const btnCalRetry = document.getElementById("btn-cal-retry");
         if (btnCalRetry) btnCalRetry.addEventListener("click", () => this._showCalStep("cal-step-mode"));
+
+        // B1: Manual optical center override
+        const btnSetCenter = document.getElementById("btn-cal-set-center");
+        if (btnSetCenter) btnSetCenter.addEventListener("click", () => this._startManualCenterPick());
+        const roiImg = document.getElementById("cal-roi-preview");
+        if (roiImg) roiImg.addEventListener("click", (e) => this._onRoiImageClick(e));
 
         // Cancel
         const btnCalCancel = document.getElementById("btn-calibrate-cancel");
@@ -392,6 +400,12 @@ class DartApp {
                 body: JSON.stringify({ mode, players, starting_score: startingScore }),
             });
             const data = await response.json();
+            if (data.ok === false) {
+                // A2: Show calibration error to user
+                const msg = data.error || "Spiel konnte nicht gestartet werden.";
+                alert("⚠ " + msg);
+                return;
+            }
             this._updateState(data);
         } catch (e) {
             console.error("New game error:", e);
@@ -535,6 +549,7 @@ class DartApp {
     }
 
     _setupCalibrationClicks(canvas, ctx, img) {
+        const MIN_POINT_DIST_PX = 50;
         const self = this;
         canvas.onclick = function(event) {
             if (self.calibrationPoints.length >= 4) return;
@@ -543,6 +558,26 @@ class DartApp {
             const scaleY = canvas.height / rect.height;
             const x = (event.clientX - rect.left) * scaleX;
             const y = (event.clientY - rect.top) * scaleY;
+
+            // A4: Warn if new point is too close to an existing point
+            const hint = document.getElementById("cal-manual-hint");
+            let tooClose = false;
+            for (const pt of self.calibrationPoints) {
+                const dist = Math.hypot(x - pt[0], y - pt[1]);
+                if (dist < MIN_POINT_DIST_PX) {
+                    tooClose = true;
+                    break;
+                }
+            }
+            if (tooClose) {
+                if (hint) {
+                    hint.textContent = `⚠ Punkt zu nah an einem bestehenden Punkt (min. ${MIN_POINT_DIST_PX}px Abstand).`;
+                    hint.style.color = "#ff6b6b";
+                }
+                return;  // reject the click
+            }
+            if (hint) { hint.textContent = ""; hint.style.color = "#aaa"; }
+
             self.calibrationPoints.push([x, y]);
 
             ctx.beginPath();
@@ -636,9 +671,112 @@ class DartApp {
         } catch (e) {
             console.error("Overlay preview error:", e);
         }
+
+        // B2: Fetch and render ring deviation table
+        try {
+            const ringResp = await fetch("/api/calibration/verify-rings", { method: "POST" });
+            const ringData = await ringResp.json();
+            this._renderRingDeviations(ringData);
+        } catch (e) {
+            console.error("Ring verify error:", e);
+        }
+    }
+
+    _renderRingDeviations(data) {
+        const container = document.getElementById("ring-deviations");
+        if (!container) return;
+        container.textContent = "";
+        if (!data.ok || !data.deviations || Object.keys(data.deviations).length === 0) {
+            container.style.display = "none";
+            return;
+        }
+
+        const label = document.createElement("p");
+        label.style.cssText = "margin:8px 0 4px; font-size:0.85em; color:#aaa;";
+        label.textContent = "Ring-Abweichungen (Soll vs. Ist):";
+        container.appendChild(label);
+
+        const table = document.createElement("table");
+        table.style.cssText = "font-size:0.85em; border-collapse:collapse; width:100%;";
+
+        for (const [ring, devMm] of Object.entries(data.deviations)) {
+            const abs = Math.abs(devMm);
+            let color = "#4caf50"; // green: ≤1mm
+            if (abs > 3) color = "#f44336";      // red: >3mm
+            else if (abs > 1) color = "#ff9800"; // orange: 1–3mm
+
+            const tr = document.createElement("tr");
+
+            const tdRing = document.createElement("td");
+            tdRing.style.padding = "2px 8px";
+            tdRing.textContent = ring;
+
+            const tdDev = document.createElement("td");
+            tdDev.style.cssText = "padding:2px 8px; font-weight:bold; color:" + color + ";";
+            tdDev.textContent = (devMm >= 0 ? "+" : "") + devMm.toFixed(1) + " mm";
+
+            tr.appendChild(tdRing);
+            tr.appendChild(tdDev);
+            table.appendChild(tr);
+        }
+
+        container.appendChild(table);
+        container.style.display = "block";
+    }
+
+    // B1: Manual optical center picking on ROI preview image
+    _startManualCenterPick() {
+        this._pickingCenter = true;
+        const hint = document.getElementById("cal-center-hint");
+        if (hint) hint.style.display = "block";
+        const roiImg = document.getElementById("cal-roi-preview");
+        if (roiImg) roiImg.style.cursor = "crosshair";
+    }
+
+    async _onRoiImageClick(event) {
+        if (!this._pickingCenter) return;
+        this._pickingCenter = false;
+
+        const hint = document.getElementById("cal-center-hint");
+        if (hint) hint.style.display = "none";
+        const roiImg = document.getElementById("cal-roi-preview");
+        if (roiImg) roiImg.style.cursor = "";
+
+        // Map click position to image natural coordinates
+        const rect = roiImg.getBoundingClientRect();
+        const scaleX = (roiImg.naturalWidth || roiImg.clientWidth) / rect.width;
+        const scaleY = (roiImg.naturalHeight || roiImg.clientHeight) / rect.height;
+        const x = (event.clientX - rect.left) * scaleX;
+        const y = (event.clientY - rect.top) * scaleY;
+
+        try {
+            const resp = await fetch("/api/calibration/optical-center/manual", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ x, y }),
+            });
+            const data = await resp.json();
+            if (data.ok) {
+                if (hint) {
+                    hint.textContent = "Mittelpunkt gesetzt: (" + x.toFixed(0) + ", " + y.toFixed(0) + ")";
+                    hint.style.color = "#4caf50";
+                    hint.style.display = "block";
+                }
+            } else {
+                console.error("Set optical center failed:", data.error);
+                if (hint) {
+                    hint.textContent = "Fehler: " + (data.error || "Unbekannt");
+                    hint.style.color = "#f44336";
+                    hint.style.display = "block";
+                }
+            }
+        } catch (e) {
+            console.error("Optical center manual error:", e);
+        }
     }
 
     _closeCalibration() {
+        this._pickingCenter = false;
         const modal = document.getElementById("calibration-modal");
         if (modal) modal.style.display = "none";
         this.calibrationPoints = [];
@@ -670,10 +808,25 @@ class DartApp {
                 this.multiCamRunning = data.multi_pipeline_running || false;
                 this.activeCameraIds = data.active_cameras || [];
                 this._updateMultiCamUI();
+                // A2: Update calibration validity and "New Game" button state
+                this.calibrationValid = data.board_calibrated || false;
+                this._updateNewGameButton();
             } catch (e) {
                 // Silent fail
             }
         }, 2000);
+    }
+
+    _updateNewGameButton() {
+        const btn = document.getElementById("btn-new-game");
+        if (!btn) return;
+        if (this.calibrationValid) {
+            btn.disabled = false;
+            btn.title = "";
+        } else {
+            btn.disabled = true;
+            btn.title = "Board nicht kalibriert — bitte zuerst kalibrieren";
+        }
     }
 
     // --- Multi-Camera ---

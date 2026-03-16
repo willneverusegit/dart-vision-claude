@@ -37,6 +37,9 @@ app_state: dict = {
     "multi_pipeline_running": False,
     "active_camera_ids": [],        # List of active camera IDs
     "multi_latest_frames": {},      # {camera_id: frame} for per-camera MJPEG
+    # A1: Lock protecting pipeline lifecycle mutations accessed by both the
+    # CV background thread and HTTP route handlers.
+    "pipeline_lock": None,
 }
 
 
@@ -283,6 +286,7 @@ async def lifespan(app: FastAPI):
     app_state["event_manager"] = em
     app_state["shutdown_event"] = threading.Event()
     app_state["pending_hits_lock"] = threading.Lock()
+    app_state["pipeline_lock"] = threading.Lock()  # A1: pipeline lifecycle guard
 
     # Start CV pipeline — single or multi camera depending on config
     from src.utils.config import get_startup_cameras
