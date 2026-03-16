@@ -11,7 +11,15 @@ from src.cv.geometry import BoardGeometry, BoardHit, BoardPose, CameraIntrinsics
 from src.cv.pipeline import DartPipeline
 from src.cv.remapping import CombinedRemapper
 from src.cv.replay import ReplayCamera
-from src.cv.stereo_calibration import StereoResult, stereo_calibrate, detect_charuco_corners
+from src.cv.stereo_calibration import (
+    CharucoBoardSpec,
+    DEFAULT_CHARUCO_BOARD_SPEC,
+    LARGE_MARKER_CHARUCO_BOARD_SPEC,
+    StereoResult,
+    detect_charuco_corners,
+    resolve_charuco_board_spec,
+    stereo_calibrate,
+)
 from src.cv.stereo_utils import CameraParams, TriangulationResult, triangulate_point, point_3d_to_board_2d
 from src.cv.multi_camera import MultiCameraPipeline
 
@@ -32,9 +40,13 @@ __all__ = [
     "PolarCoord",
     "CombinedRemapper",
     "DartPipeline",
+    "CharucoBoardSpec",
+    "DEFAULT_CHARUCO_BOARD_SPEC",
+    "LARGE_MARKER_CHARUCO_BOARD_SPEC",
     "StereoResult",
     "stereo_calibrate",
     "detect_charuco_corners",
+    "resolve_charuco_board_spec",
     "CameraParams",
     "TriangulationResult",
     "triangulate_point",

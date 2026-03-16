@@ -3,12 +3,18 @@
 import pytest
 import os
 import numpy as np
+import yaml
 from src.cv.calibration import (
     CalibrationManager,
     MANUAL_MIN_POINT_DISTANCE_PX,
     MM_PER_PX_MIN,
     MM_PER_PX_MAX,
     FRAME_INNER_MM,
+)
+from src.cv.camera_calibration import CameraCalibrationManager
+from src.cv.stereo_calibration import (
+    DEFAULT_CHARUCO_BOARD_SPEC,
+    LARGE_MARKER_CHARUCO_BOARD_SPEC,
 )
 
 
@@ -126,3 +132,77 @@ class TestManualCalibrationValidation:
         result = calib_manager.manual_calibration(points)
         assert result["ok"]
         assert MM_PER_PX_MIN <= result["mm_per_px"] <= MM_PER_PX_MAX
+
+
+class TestCameraCharucoBoardConfig:
+    def test_camera_calibration_manager_uses_default_board_spec(self, tmp_path):
+        path = str(tmp_path / "cal.yaml")
+        manager = CameraCalibrationManager(config_path=path)
+        assert manager.get_charuco_board_spec() == DEFAULT_CHARUCO_BOARD_SPEC
+
+    def test_camera_calibration_manager_reads_saved_board_spec(self, tmp_path):
+        path = tmp_path / "cal.yaml"
+        path.write_text(
+            yaml.dump(
+                {
+                    "schema_version": 3,
+                    "cameras": {
+                        "default": {
+                            "charuco_preset": "40x28",
+                            "charuco_squares_x": 7,
+                            "charuco_squares_y": 5,
+                            "charuco_square_length_m": 0.04,
+                            "charuco_marker_length_m": 0.028,
+                        }
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        manager = CameraCalibrationManager(config_path=str(path))
+        assert manager.get_charuco_board_spec() == LARGE_MARKER_CHARUCO_BOARD_SPEC
+
+    def test_charuco_calibration_persists_board_geometry(self, tmp_path, monkeypatch):
+        path = str(tmp_path / "cal.yaml")
+        manager = CameraCalibrationManager(config_path=path)
+        frames = [np.zeros((120, 160, 3), dtype=np.uint8) for _ in range(3)]
+
+        class DummyDetector:
+            def detectMarkers(self, _gray):
+                corners = [np.zeros((1, 4, 2), dtype=np.float32)]
+                ids = np.array([[0], [1], [2], [3]], dtype=np.int32)
+                return corners, ids, None
+
+        def fake_interpolate(_corners, _ids, _gray, _board):
+            return 4, np.zeros((4, 1, 2), dtype=np.float32), np.arange(4, dtype=np.int32).reshape(-1, 1)
+
+        def fake_calibrate(_corners, _ids, _board, _image_size, _camera_matrix, _dist_coeffs):
+            return 0.25, np.eye(3, dtype=np.float64), np.zeros((5, 1), dtype=np.float64), [], []
+
+        monkeypatch.setattr(
+            "src.cv.camera_calibration.cv2.aruco.ArucoDetector",
+            lambda _dictionary: DummyDetector(),
+        )
+        monkeypatch.setattr(
+            "src.cv.camera_calibration.cv2.aruco.interpolateCornersCharuco",
+            fake_interpolate,
+        )
+        monkeypatch.setattr(
+            "src.cv.camera_calibration.cv2.aruco.calibrateCameraCharuco",
+            fake_calibrate,
+        )
+
+        result = manager.charuco_calibration(
+            frames,
+            square_length=0.04,
+            marker_length=0.028,
+        )
+
+        assert result["ok"]
+        assert result["charuco_board"]["marker_length_mm"] == pytest.approx(28.0)
+
+        with open(path, "r", encoding="utf-8") as f:
+            raw = yaml.safe_load(f)
+        cfg = raw["cameras"]["default"]
+        assert cfg["charuco_preset"] == "40x28"
+        assert cfg["charuco_marker_length_m"] == pytest.approx(0.028)

@@ -24,6 +24,28 @@ templates = Jinja2Templates(directory="templates")
 def setup_routes(app_state: dict) -> APIRouter:
     """Create router with access to shared app state."""
 
+    async def _optional_json_body(request: Request | None) -> dict:
+        if request is None:
+            return {}
+        try:
+            return await request.json()
+        except Exception:
+            return {}
+
+    def _charuco_override_fields(body: dict | None) -> dict:
+        body = body if isinstance(body, dict) else {}
+        return {
+            "preset": body.get("preset") or body.get("charuco_preset"),
+            "squares_x": body.get("squares_x"),
+            "squares_y": body.get("squares_y"),
+            "square_length_mm": body.get("square_length_mm"),
+            "marker_length_mm": body.get("marker_length_mm"),
+        }
+
+    def _has_charuco_override(body: dict | None) -> bool:
+        fields = _charuco_override_fields(body)
+        return any(value is not None for value in fields.values())
+
     # --- Page ---
 
     @router.get("/", response_class=HTMLResponse)
@@ -363,15 +385,19 @@ def setup_routes(app_state: dict) -> APIRouter:
             return {"ok": False, "error": "No frame available"}
         return await _run_aruco_board_alignment(frame)
 
-    async def _run_lens_charuco_calibration() -> dict:
+    async def _run_lens_charuco_calibration(request: Request | None = None) -> dict:
         """Capture latest raw frames and calibrate camera intrinsics."""
         pipeline = app_state.get("pipeline")
         if not pipeline or not hasattr(pipeline, "camera_calibration"):
             return {"ok": False, "error": "No pipeline/camera calibration manager"}
         if not pipeline.camera:
             return {"ok": False, "error": "Camera not available"}
-
-        import time as _time
+        body = await _optional_json_body(request)
+        overrides = _charuco_override_fields(body)
+        try:
+            board_spec = pipeline.camera_calibration.get_charuco_board_spec(**overrides)
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
 
         frames = []
         for _ in range(30):
@@ -382,20 +408,20 @@ def setup_routes(app_state: dict) -> APIRouter:
 
         if len(frames) < 3:
             return {"ok": False, "error": f"Only captured {len(frames)} frames, need at least 3"}
-        result = pipeline.camera_calibration.charuco_calibration(frames)
+        result = pipeline.camera_calibration.charuco_calibration(frames, board_spec=board_spec)
         if result.get("ok"):
             pipeline.refresh_remapper()
         return result
 
     @router.post("/api/calibration/charuco")
-    async def charuco_calibration() -> dict:
+    async def charuco_calibration(request: Request) -> dict:
         """Legacy endpoint: now performs lens setup via ChArUco."""
-        return await _run_lens_charuco_calibration()
+        return await _run_lens_charuco_calibration(request)
 
     @router.post("/api/calibration/lens/charuco")
-    async def lens_charuco_calibration() -> dict:
+    async def lens_charuco_calibration(request: Request) -> dict:
         """Lens setup: estimate camera intrinsics with ChArUco."""
-        return await _run_lens_charuco_calibration()
+        return await _run_lens_charuco_calibration(request)
 
     @router.get("/api/calibration/lens/info")
     async def lens_info() -> dict:
@@ -404,12 +430,14 @@ def setup_routes(app_state: dict) -> APIRouter:
         if not pipeline or not hasattr(pipeline, "camera_calibration"):
             return {"ok": False, "error": "No camera calibration manager"}
         cfg = pipeline.camera_calibration.get_config()
+        board_spec = pipeline.camera_calibration.get_charuco_board_spec()
         return {
             "ok": True,
             "valid": bool(cfg.get("lens_valid", False)),
             "method": cfg.get("lens_method"),
             "image_size": cfg.get("lens_image_size"),
             "reprojection_error": cfg.get("lens_reprojection_error"),
+            "charuco_board": board_spec.to_api_payload(),
         }
 
     @router.get("/api/calibration/roi-preview")
@@ -554,10 +582,29 @@ def setup_routes(app_state: dict) -> APIRouter:
 
         # Run stereo calibration
         from src.cv.stereo_calibration import stereo_calibrate
+        try:
+            if _has_charuco_override(body):
+                board_spec = pipe_a.camera_calibration.get_charuco_board_spec(
+                    **_charuco_override_fields(body),
+                )
+            else:
+                board_spec = pipe_a.camera_calibration.get_charuco_board_spec()
+                board_spec_b = pipe_b.camera_calibration.get_charuco_board_spec()
+                if board_spec != board_spec_b:
+                    return {
+                        "ok": False,
+                        "error": (
+                            "Configured ChArUco board differs between cameras. "
+                            "Provide an explicit preset or board geometry for stereo calibration."
+                        ),
+                    }
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
         result = stereo_calibrate(
             frames_a, frames_b,
             intr_a.camera_matrix, intr_a.dist_coeffs,
             intr_b.camera_matrix, intr_b.dist_coeffs,
+            board_spec=board_spec,
         )
 
         if not result.ok:
@@ -586,6 +633,7 @@ def setup_routes(app_state: dict) -> APIRouter:
             "pairs_used": len(frames_a),
             "camera_a": cam_a,
             "camera_b": cam_b,
+            "charuco_board": board_spec.to_api_payload(),
         }
 
     @router.post("/api/calibration/stereo/reload")

@@ -14,12 +14,16 @@ class DartApp {
         this.calibrationValid = false;
         this._pickingCenter = false;
         this.activeCameraIds = [];
+        this.charucoPreset = "40x20";
 
         this._bindEvents();
         this._bindWebSocket();
         this._bindKeyboard();
         this._bindOverlayToggles();
         this._bindMultiCam();
+        this._bindCharucoBoardSelectors();
+        this._syncCharucoBoardSelectors(this.charucoPreset);
+        this._refreshCharucoBoardPresetFromServer();
         this.ws.connect();
         this._startStatsPolling();
     }
@@ -188,6 +192,54 @@ class DartApp {
             markerMain.addEventListener("change", () => {
                 this._setMarkerOverlay(markerMain.checked);
             });
+        }
+    }
+
+    _bindCharucoBoardSelectors() {
+        const selectors = document.querySelectorAll(".charuco-board-select");
+        selectors.forEach((selector) => {
+            selector.addEventListener("change", () => {
+                this._syncCharucoBoardSelectors(selector.value || "40x20");
+            });
+        });
+    }
+
+    _normalizeCharucoPreset(value) {
+        return value === "40x28" ? "40x28" : "40x20";
+    }
+
+    _syncCharucoBoardSelectors(value) {
+        const preset = this._normalizeCharucoPreset(value);
+        this.charucoPreset = preset;
+        const selectors = document.querySelectorAll(".charuco-board-select");
+        selectors.forEach((selector) => {
+            if (selector.value !== preset) {
+                selector.value = preset;
+            }
+        });
+    }
+
+    _getSelectedCharucoPreset() {
+        const selector = document.getElementById("charuco-board-preset") ||
+            document.getElementById("stereo-charuco-board-preset");
+        return this._normalizeCharucoPreset(selector?.value || this.charucoPreset || "40x20");
+    }
+
+    _describeCharucoPreset(preset) {
+        if (preset === "40x28") return "7x5 / 40x28 mm";
+        return "7x5 / 40x20 mm";
+    }
+
+    async _refreshCharucoBoardPresetFromServer() {
+        try {
+            const response = await fetch("/api/calibration/lens/info");
+            const data = await response.json();
+            const preset = data?.charuco_board?.preset;
+            if (preset) {
+                this._syncCharucoBoardSelectors(preset);
+            }
+        } catch (e) {
+            console.error("Charuco board info error:", e);
         }
     }
 
@@ -467,6 +519,7 @@ class DartApp {
         if (!modal) return;
         modal.style.display = "flex";
         this._showCalStep("cal-step-mode");
+        this._refreshCharucoBoardPresetFromServer();
         // Enable marker overlay by default when calibration modal opens
         this._setMarkerOverlay(true);
     }
@@ -530,12 +583,23 @@ class DartApp {
     async _startLensCalibration() {
         this._showCalStep("cal-step-auto");
         const statusEl = document.getElementById("cal-auto-status");
-        if (statusEl) statusEl.textContent = "Lens Setup per ChArUco (ca. 3 Sekunden)...";
+        const preset = this._getSelectedCharucoPreset();
+        if (statusEl) {
+            statusEl.textContent =
+                "Lens Setup per ChArUco (" + this._describeCharucoPreset(preset) + ", ca. 3 Sekunden)...";
+        }
 
         try {
-            const response = await fetch("/api/calibration/lens/charuco", { method: "POST" });
+            const response = await fetch("/api/calibration/lens/charuco", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ preset }),
+            });
             const data = await response.json();
             if (data.ok) {
+                if (data.charuco_board?.preset) {
+                    this._syncCharucoBoardSelectors(data.charuco_board.preset);
+                }
                 await this._showCalibrationResult("Lens Setup erfolgreich!");
             } else {
                 if (statusEl) statusEl.textContent = "Fehler: " + (data.error || "Unbekannt");
@@ -869,6 +933,7 @@ class DartApp {
     _openMultiCamModal() {
         const modal = document.getElementById("multi-cam-modal");
         if (modal) modal.style.display = "flex";
+        this._refreshCharucoBoardPresetFromServer();
         this._refreshMultiCamStatus();
     }
 
@@ -1076,6 +1141,7 @@ class DartApp {
     _showStereoStep() {
         document.getElementById("multi-step-config").style.display = "none";
         document.getElementById("multi-step-stereo").style.display = "block";
+        this._refreshCharucoBoardPresetFromServer();
         this._populateStereoDropdowns(this.activeCameraIds);
         this._updateStereoFeeds();
     }
@@ -1124,6 +1190,7 @@ class DartApp {
     async _runStereoCalibration() {
         const camA = document.getElementById("stereo-cam-a")?.value;
         const camB = document.getElementById("stereo-cam-b")?.value;
+        const preset = this._getSelectedCharucoPreset();
         if (!camA || !camB || camA === camB) {
             alert("Bitte zwei verschiedene Kameras auswaehlen.");
             return;
@@ -1134,20 +1201,25 @@ class DartApp {
         if (btn) btn.disabled = true;
         if (resultEl) {
             resultEl.style.display = "block";
-            resultEl.textContent = "Kalibrierung laeuft (ca. 10s)...";
+            resultEl.textContent =
+                "Kalibrierung laeuft (" + this._describeCharucoPreset(preset) + ", ca. 10s)...";
         }
 
         try {
             const resp = await fetch("/api/calibration/stereo", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ camera_a: camA, camera_b: camB }),
+                body: JSON.stringify({ camera_a: camA, camera_b: camB, preset }),
             });
             const data = await resp.json();
             if (data.ok) {
+                if (data.charuco_board?.preset) {
+                    this._syncCharucoBoardSelectors(data.charuco_board.preset);
+                }
                 if (resultEl) {
                     resultEl.textContent = "\u2705 Stereo-Kalibrierung erfolgreich! Reprojektion: " +
-                        data.reprojection_error.toFixed(3) + " px, Paare: " + data.pairs_used;
+                        data.reprojection_error.toFixed(3) + " px, Paare: " + data.pairs_used +
+                        " | Board: " + this._describeCharucoPreset(data.charuco_board?.preset || preset);
                 }
             } else {
                 if (resultEl) {

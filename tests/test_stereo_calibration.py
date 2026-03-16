@@ -5,7 +5,12 @@ import cv2
 import pytest
 
 from src.cv.stereo_calibration import (
-    stereo_calibrate, detect_charuco_corners, StereoResult,
+    DEFAULT_CHARUCO_BOARD_SPEC,
+    LARGE_MARKER_CHARUCO_BOARD_SPEC,
+    StereoResult,
+    detect_charuco_corners,
+    resolve_charuco_board_spec,
+    stereo_calibrate,
     STEREO_CHARUCO_DICT, STEREO_SQUARES_X, STEREO_SQUARES_Y,
     STEREO_SQUARE_LENGTH, STEREO_MARKER_LENGTH,
 )
@@ -90,3 +95,31 @@ class TestStereoCalibration:
         assert STEREO_SQUARE_LENGTH > 0
         assert STEREO_MARKER_LENGTH > 0
         assert STEREO_MARKER_LENGTH < STEREO_SQUARE_LENGTH
+
+    def test_charuco_large_marker_preset_defined(self):
+        assert LARGE_MARKER_CHARUCO_BOARD_SPEC.squares_x == 7
+        assert LARGE_MARKER_CHARUCO_BOARD_SPEC.squares_y == 5
+        assert LARGE_MARKER_CHARUCO_BOARD_SPEC.square_length_m == pytest.approx(0.04)
+        assert LARGE_MARKER_CHARUCO_BOARD_SPEC.marker_length_m == pytest.approx(0.028)
+        assert LARGE_MARKER_CHARUCO_BOARD_SPEC.preset_name == "40x28"
+
+    def test_resolve_charuco_board_from_preset(self):
+        spec = resolve_charuco_board_spec(preset="40x28")
+        assert spec == LARGE_MARKER_CHARUCO_BOARD_SPEC
+
+    def test_resolve_charuco_board_from_config(self):
+        spec = resolve_charuco_board_spec(
+            config={"charuco_preset": "40x28"}
+        )
+        assert spec == LARGE_MARKER_CHARUCO_BOARD_SPEC
+
+    def test_resolve_charuco_board_with_mm_override(self):
+        spec = resolve_charuco_board_spec(
+            config=DEFAULT_CHARUCO_BOARD_SPEC.to_config_fragment(),
+            marker_length_mm=28,
+        )
+        assert spec == LARGE_MARKER_CHARUCO_BOARD_SPEC
+
+    def test_resolve_charuco_board_rejects_invalid_geometry(self):
+        with pytest.raises(ValueError):
+            resolve_charuco_board_spec(square_length_mm=40, marker_length_mm=40)

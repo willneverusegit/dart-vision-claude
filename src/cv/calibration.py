@@ -11,6 +11,8 @@ import math
 import threading
 from datetime import datetime, timezone
 
+from src.cv.stereo_calibration import resolve_charuco_board_spec
+
 logger = logging.getLogger(__name__)
 
 # Module-level lock for concurrent file access by multiple CalibrationManagers
@@ -505,16 +507,22 @@ class CalibrationManager:
         return (refined_cx, refined_cy)
 
     def charuco_calibration(self, frames: list[np.ndarray],
-                            squares_x: int = 7, squares_y: int = 5,
-                            square_length: float = 0.04,
-                            marker_length: float = 0.02) -> dict:
+                            squares_x: int | None = None, squares_y: int | None = None,
+                            square_length: float | None = None,
+                            marker_length: float | None = None) -> dict:
         """ChArUco-based calibration from multiple frames."""
         try:
             if len(frames) < 3:
                 return {"ok": False, "error": f"Need at least 3 frames, got {len(frames)}"}
-            dictionary = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_6X6_250)
-            board = cv2.aruco.CharucoBoard(
-                (squares_x, squares_y), square_length, marker_length, dictionary)
+            board_spec = resolve_charuco_board_spec(
+                config=self._config,
+                squares_x=squares_x,
+                squares_y=squares_y,
+                square_length_m=square_length,
+                marker_length_m=marker_length,
+            )
+            dictionary = board_spec.create_dictionary()
+            board = board_spec.create_board(dictionary)
             detector = cv2.aruco.ArucoDetector(dictionary)
             all_charuco_corners: list = []
             all_charuco_ids: list = []
@@ -545,7 +553,7 @@ class CalibrationManager:
                 return {"ok": False, "error": "Camera calibration failed"}
             h, w = frames[0].shape[:2]
             homography = np.eye(3)
-            mm_per_px = float(square_length * 1000 / (w / squares_x))
+            mm_per_px = float(board_spec.square_length_m * 1000 / (w / board_spec.squares_x))
             self._config.update({
                 "center_px": [w / 2.0, h / 2.0],
                 "mm_per_px": mm_per_px,
@@ -556,11 +564,13 @@ class CalibrationManager:
                 "valid": True,
                 "method": "charuco",
                 "reprojection_error": float(ret),
+                **board_spec.to_config_fragment(),
             })
             self._atomic_save()
             logger.info("ChArUco calibration complete (RMS=%.4f)", ret)
             return {"ok": True, "homography": homography.tolist(),
-                    "mm_per_px": mm_per_px, "reprojection_error": float(ret)}
+                    "mm_per_px": mm_per_px, "reprojection_error": float(ret),
+                    "charuco_board": board_spec.to_api_payload()}
         except Exception as e:
             logger.error("ChArUco calibration failed: %s", e)
             return {"ok": False, "error": str(e)}

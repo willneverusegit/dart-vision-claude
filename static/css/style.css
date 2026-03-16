@@ -422,6 +422,47 @@ body {
     margin-top: 16px;
 }
 
+.charuco-board-panel {
+    max-width: 520px;
+    margin: 0 auto 16px;
+    padding: 14px 16px;
+    background: rgba(15, 52, 96, 0.55);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+
+.charuco-board-panel__title {
+    font-size: 0.82rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    margin-bottom: 10px;
+}
+
+.charuco-board-control {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: 320px;
+    margin: 0 auto;
+}
+
+.charuco-board-control--inline {
+    margin: 0 auto 8px;
+}
+
+.charuco-board-note {
+    margin: 10px 0 0;
+    text-align: center;
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+}
+
+.charuco-board-note--inline {
+    margin-bottom: 12px;
+}
+
 .cal-mode-btn {
     min-width: 180px;
     padding: 16px 24px;

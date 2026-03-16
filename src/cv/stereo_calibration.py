@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import NamedTuple
 
 import cv2
@@ -19,6 +20,148 @@ STEREO_SQUARE_LENGTH = 0.04   # meters
 STEREO_MARKER_LENGTH = 0.02   # meters
 
 
+@dataclass(frozen=True)
+class CharucoBoardSpec:
+    """Physical ChArUco board geometry used for calibration and overlays."""
+
+    squares_x: int
+    squares_y: int
+    square_length_m: float
+    marker_length_m: float
+    dictionary_id: int = STEREO_CHARUCO_DICT
+    preset_name: str = "custom"
+
+    def __post_init__(self) -> None:
+        if self.squares_x < 2 or self.squares_y < 2:
+            raise ValueError("ChArUco board must have at least 2x2 squares")
+        if self.square_length_m <= 0 or self.marker_length_m <= 0:
+            raise ValueError("ChArUco square and marker length must be positive")
+        if self.marker_length_m >= self.square_length_m:
+            raise ValueError("ChArUco marker length must be smaller than square length")
+
+    def create_dictionary(self):
+        return cv2.aruco.getPredefinedDictionary(self.dictionary_id)
+
+    def create_board(self, dictionary=None):
+        dictionary = dictionary or self.create_dictionary()
+        return cv2.aruco.CharucoBoard(
+            (self.squares_x, self.squares_y),
+            self.square_length_m,
+            self.marker_length_m,
+            dictionary,
+        )
+
+    def to_config_fragment(self) -> dict:
+        return {
+            "charuco_preset": self.preset_name,
+            "charuco_squares_x": int(self.squares_x),
+            "charuco_squares_y": int(self.squares_y),
+            "charuco_square_length_m": float(self.square_length_m),
+            "charuco_marker_length_m": float(self.marker_length_m),
+        }
+
+    def to_api_payload(self) -> dict:
+        return {
+            "preset": self.preset_name,
+            "squares_x": int(self.squares_x),
+            "squares_y": int(self.squares_y),
+            "square_length_mm": float(self.square_length_m * 1000.0),
+            "marker_length_mm": float(self.marker_length_m * 1000.0),
+            "dictionary": "DICT_6X6_250",
+        }
+
+
+DEFAULT_CHARUCO_BOARD_SPEC = CharucoBoardSpec(
+    squares_x=STEREO_SQUARES_X,
+    squares_y=STEREO_SQUARES_Y,
+    square_length_m=STEREO_SQUARE_LENGTH,
+    marker_length_m=STEREO_MARKER_LENGTH,
+    preset_name="40x20",
+)
+
+LARGE_MARKER_CHARUCO_BOARD_SPEC = CharucoBoardSpec(
+    squares_x=STEREO_SQUARES_X,
+    squares_y=STEREO_SQUARES_Y,
+    square_length_m=STEREO_SQUARE_LENGTH,
+    marker_length_m=0.028,
+    preset_name="40x28",
+)
+
+_CHARUCO_BOARD_PRESETS = {
+    "default": DEFAULT_CHARUCO_BOARD_SPEC,
+    "40x20": DEFAULT_CHARUCO_BOARD_SPEC,
+    "40x28": LARGE_MARKER_CHARUCO_BOARD_SPEC,
+    "large_markers_40x28": LARGE_MARKER_CHARUCO_BOARD_SPEC,
+}
+
+
+def _canonical_preset_name(spec: CharucoBoardSpec) -> str:
+    for preset in (DEFAULT_CHARUCO_BOARD_SPEC, LARGE_MARKER_CHARUCO_BOARD_SPEC):
+        if (
+            spec.squares_x == preset.squares_x
+            and spec.squares_y == preset.squares_y
+            and np.isclose(spec.square_length_m, preset.square_length_m)
+            and np.isclose(spec.marker_length_m, preset.marker_length_m)
+            and spec.dictionary_id == preset.dictionary_id
+        ):
+            return preset.preset_name
+    return "custom"
+
+
+def resolve_charuco_board_spec(
+    *,
+    config: dict | None = None,
+    preset: str | None = None,
+    squares_x: int | None = None,
+    squares_y: int | None = None,
+    square_length_m: float | None = None,
+    marker_length_m: float | None = None,
+    square_length_mm: float | None = None,
+    marker_length_mm: float | None = None,
+    board_spec: CharucoBoardSpec | None = None,
+) -> CharucoBoardSpec:
+    """Resolve a ChArUco board spec from preset/config/explicit overrides."""
+    if board_spec is not None:
+        base = board_spec
+    else:
+        config = config or {}
+        preset_name = preset or config.get("charuco_preset")
+        if preset_name is not None:
+            key = str(preset_name).strip().lower()
+            if key not in _CHARUCO_BOARD_PRESETS:
+                known = ", ".join(sorted(_CHARUCO_BOARD_PRESETS))
+                raise ValueError(f"Unknown ChArUco preset '{preset_name}'. Known presets: {known}")
+            base = _CHARUCO_BOARD_PRESETS[key]
+        else:
+            base = DEFAULT_CHARUCO_BOARD_SPEC
+
+        squares_x = config.get("charuco_squares_x", squares_x)
+        squares_y = config.get("charuco_squares_y", squares_y)
+        square_length_m = config.get("charuco_square_length_m", square_length_m)
+        marker_length_m = config.get("charuco_marker_length_m", marker_length_m)
+
+    if square_length_mm is not None:
+        square_length_m = float(square_length_mm) / 1000.0
+    if marker_length_mm is not None:
+        marker_length_m = float(marker_length_mm) / 1000.0
+
+    resolved = CharucoBoardSpec(
+        squares_x=int(base.squares_x if squares_x is None else squares_x),
+        squares_y=int(base.squares_y if squares_y is None else squares_y),
+        square_length_m=float(base.square_length_m if square_length_m is None else square_length_m),
+        marker_length_m=float(base.marker_length_m if marker_length_m is None else marker_length_m),
+        dictionary_id=base.dictionary_id,
+    )
+    return CharucoBoardSpec(
+        squares_x=resolved.squares_x,
+        squares_y=resolved.squares_y,
+        square_length_m=resolved.square_length_m,
+        marker_length_m=resolved.marker_length_m,
+        dictionary_id=resolved.dictionary_id,
+        preset_name=_canonical_preset_name(resolved),
+    )
+
+
 class StereoResult(NamedTuple):
     ok: bool
     R: np.ndarray | None           # 3x3 rotation matrix
@@ -31,18 +174,17 @@ def detect_charuco_corners(
     frame: np.ndarray,
     dictionary=None,
     board=None,
+    board_spec: CharucoBoardSpec | None = None,
 ) -> tuple[np.ndarray | None, np.ndarray | None]:
     """Detect ChArUco corners in a single frame.
 
     Returns (charuco_corners, charuco_ids) or (None, None) if detection fails.
     """
+    board_spec = resolve_charuco_board_spec(board_spec=board_spec)
     if dictionary is None:
-        dictionary = cv2.aruco.getPredefinedDictionary(STEREO_CHARUCO_DICT)
+        dictionary = board_spec.create_dictionary()
     if board is None:
-        board = cv2.aruco.CharucoBoard(
-            (STEREO_SQUARES_X, STEREO_SQUARES_Y),
-            STEREO_SQUARE_LENGTH, STEREO_MARKER_LENGTH, dictionary,
-        )
+        board = board_spec.create_board(dictionary)
 
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if len(frame.shape) == 3 else frame
     detector = cv2.aruco.ArucoDetector(dictionary)
@@ -68,6 +210,7 @@ def stereo_calibrate(
     camera_matrix_2: np.ndarray,
     dist_coeffs_2: np.ndarray,
     image_size: tuple[int, int] | None = None,
+    board_spec: CharucoBoardSpec | None = None,
 ) -> StereoResult:
     """Compute extrinsic parameters between two cameras from synchronous ChArUco frames.
 
@@ -90,11 +233,9 @@ def stereo_calibrate(
         return StereoResult(False, None, None, 0.0,
                             f"Need at least 5 frame pairs, got {len(frames_cam1)}")
 
-    dictionary = cv2.aruco.getPredefinedDictionary(STEREO_CHARUCO_DICT)
-    board = cv2.aruco.CharucoBoard(
-        (STEREO_SQUARES_X, STEREO_SQUARES_Y),
-        STEREO_SQUARE_LENGTH, STEREO_MARKER_LENGTH, dictionary,
-    )
+    board_spec = resolve_charuco_board_spec(board_spec=board_spec)
+    dictionary = board_spec.create_dictionary()
+    board = board_spec.create_board(dictionary)
 
     obj_points_all: list[np.ndarray] = []
     img_points_1_all: list[np.ndarray] = []
@@ -105,8 +246,8 @@ def stereo_calibrate(
             h, w = f1.shape[:2]
             image_size = (w, h)
 
-        cc1, ci1 = detect_charuco_corners(f1, dictionary, board)
-        cc2, ci2 = detect_charuco_corners(f2, dictionary, board)
+        cc1, ci1 = detect_charuco_corners(f1, dictionary, board, board_spec=board_spec)
+        cc2, ci2 = detect_charuco_corners(f2, dictionary, board, board_spec=board_spec)
 
         if cc1 is None or cc2 is None:
             logger.debug("Frame pair %d: detection failed in one camera, skipping", i)

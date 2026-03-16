@@ -20,6 +20,7 @@ from src.cv.geometry import BoardGeometry, BoardHit, RING_BOUNDARIES
 from src.cv.motion import MotionDetector
 from src.cv.remapping import CombinedRemapper
 from src.cv.replay import ReplayCamera
+from src.cv.stereo_calibration import DEFAULT_CHARUCO_BOARD_SPEC
 from src.cv.roi import ROIProcessor
 from src.utils.fps import FPSCounter
 from src.utils.logger import setup_logging
@@ -404,9 +405,10 @@ class DartPipeline:
                                                borderColor=(0, 255, 255))
 
                 # Try to interpolate ChArUco corners for extra feedback
-                board = cv2.aruco.CharucoBoard(
-                    (7, 5), 0.04, 0.02, charuco_dict,
-                )
+                board_spec = DEFAULT_CHARUCO_BOARD_SPEC
+                if hasattr(self, "camera_calibration") and self.camera_calibration is not None:
+                    board_spec = self.camera_calibration.get_charuco_board_spec()
+                board = board_spec.create_board(charuco_dict)
                 ret, ch_corners, ch_ids = cv2.aruco.interpolateCornersCharuco(
                     charuco_corners, charuco_ids, gray, board,
                 )

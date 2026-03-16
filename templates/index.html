@@ -133,6 +133,17 @@
                         <span class="modal__text" style="margin: 0;">Marker-Erkennung im Live-Bild anzeigen</span>
                     </label>
                 </div>
+                <div class="charuco-board-panel">
+                    <p class="charuco-board-panel__title">ChArUco-Board fuer Lens- und Stereo-Kalibrierung</p>
+                    <label class="charuco-board-control">
+                        <span class="modal__text" style="margin: 0;">Gedrucktes Board</span>
+                        <select id="charuco-board-preset" class="select charuco-board-select">
+                            <option value="40x20">7x5 Standard (40 / 20 mm)</option>
+                            <option value="40x28">7x5 Groessere Marker (40 / 28 mm)</option>
+                        </select>
+                    </label>
+                    <p class="charuco-board-note">Die Auswahl muss zur gedruckten Vorlage passen.</p>
+                </div>
                 <p class="modal__text">Kalibrierung ist jetzt in zwei getrennte Workflows aufgeteilt:</p>
                 <div class="cal-mode-buttons">
                     <button id="btn-cal-lens" class="btn btn--primary cal-mode-btn">Lens Setup (ChArUco)</button>
@@ -228,6 +239,14 @@
             <!-- Step 2: Stereo Calibration -->
             <div id="multi-step-stereo" class="cal-step" style="display:none;">
                 <p class="modal__text">Stereo-Kalibrierung zwischen zwei Kameras:</p>
+                <label class="charuco-board-control charuco-board-control--inline">
+                    <span class="modal__text" style="margin: 0;">ChArUco-Board</span>
+                    <select id="stereo-charuco-board-preset" class="select charuco-board-select">
+                        <option value="40x20">7x5 Standard (40 / 20 mm)</option>
+                        <option value="40x28">7x5 Groessere Marker (40 / 28 mm)</option>
+                    </select>
+                </label>
+                <p class="charuco-board-note charuco-board-note--inline">Nutze dieselbe Auswahl wie beim gedruckten Board.</p>
                 <div class="stereo-pair-row">
                     <select id="stereo-cam-a" class="select"></select>
                     <span class="modal__text" style="margin: 0 8px;">&#8596;</span>

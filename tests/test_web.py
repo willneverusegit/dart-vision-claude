@@ -16,6 +16,8 @@ class TestWebEndpoints:
         response = client.get("/")
         assert response.status_code == 200
         assert "Dart-Vision" in response.text
+        assert 'id="charuco-board-preset"' in response.text
+        assert 'id="stereo-charuco-board-preset"' in response.text
 
     def test_get_state_idle(self, client):
         response = client.get("/api/state")
@@ -92,3 +94,5 @@ class TestWebEndpoints:
         response = client.get("/static/js/app.js")
         assert response.status_code == 200
         assert "DartApp" in response.text
+        assert "40x28" in response.text
+        assert "charuco-board-select" in response.text
