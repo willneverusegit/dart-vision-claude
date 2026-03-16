@@ -40,6 +40,12 @@ app_state: dict = {
     # A1: Lock protecting pipeline lifecycle mutations accessed by both the
     # CV background thread and HTTP route handlers.
     "pipeline_lock": None,
+    # Per-pipeline thread lifecycle: each pipeline thread gets its own stop
+    # event so it can be individually terminated without affecting the app.
+    "pipeline_stop_event": None,       # threading.Event for single pipeline thread
+    "multi_pipeline_stop_event": None, # threading.Event for multi pipeline thread
+    "pipeline_thread": None,           # threading.Thread handle
+    "multi_pipeline_thread": None,     # threading.Thread handle
 }
 
 
@@ -85,13 +91,19 @@ def _compute_quality_score(detection, score_result: dict) -> int:
     return min(quality, 100)
 
 
-def _run_pipeline(state: dict) -> None:
+def _run_pipeline(state: dict, stop_event: threading.Event | None = None) -> None:
     """Run CV pipeline in a background thread.
 
     Captures frames, runs detection, and creates hit candidates.
     Graceful degradation: if no camera available, logs warning and exits.
+
+    Args:
+        state: Shared application state dict.
+        stop_event: Per-thread stop signal. Falls back to state["shutdown_event"].
     """
     shutdown_event = state["shutdown_event"]
+    if stop_event is None:
+        stop_event = shutdown_event
     pipeline = None
     try:
         from src.cv.pipeline import DartPipeline
@@ -154,7 +166,10 @@ def _run_pipeline(state: dict) -> None:
         state["pipeline_running"] = True
         logger.info("CV Pipeline started")
 
-        while not shutdown_event.is_set():
+        def _should_stop() -> bool:
+            return stop_event.is_set() or shutdown_event.is_set()
+
+        while not _should_stop():
             try:
                 pipeline.process_frame()
                 # Store annotated frame for MJPEG stream
@@ -164,7 +179,7 @@ def _run_pipeline(state: dict) -> None:
             except Exception as frame_err:
                 logger.debug("Frame processing error: %s", frame_err)
 
-            shutdown_event.wait(0.001)
+            stop_event.wait(0.001)
 
     except ImportError as e:
         logger.warning("CV Pipeline not available: %s", e)
@@ -180,14 +195,22 @@ def _run_pipeline(state: dict) -> None:
         logger.info("CV Pipeline stopped")
 
 
-def _run_multi_pipeline(state: dict, camera_configs: list[dict]) -> None:
+def _run_multi_pipeline(state: dict, camera_configs: list[dict],
+                        stop_event: threading.Event | None = None) -> None:
     """Run multi-camera CV pipeline in a background thread.
 
     Instantiates MultiCameraPipeline instead of DartPipeline.
     The callback on_multi_dart_detected creates hit candidates analogous
     to the single-pipeline flow.
+
+    Args:
+        state: Shared application state dict.
+        camera_configs: List of camera configuration dicts.
+        stop_event: Per-thread stop signal. Falls back to state["shutdown_event"].
     """
     shutdown_event = state["shutdown_event"]
+    if stop_event is None:
+        stop_event = shutdown_event
     multi = None
     try:
         from src.cv.multi_camera import MultiCameraPipeline
@@ -245,8 +268,11 @@ def _run_multi_pipeline(state: dict, camera_configs: list[dict]) -> None:
         multi.start()
         logger.info("Multi-camera pipeline started with %d cameras", len(camera_configs))
 
+        def _should_stop() -> bool:
+            return stop_event.is_set() or shutdown_event.is_set()
+
         # Update per-camera annotated frames for MJPEG streams
-        while not shutdown_event.is_set():
+        while not _should_stop():
             pipelines = multi.get_pipelines()
             for cam_id, pipeline in pipelines.items():
                 annotated = pipeline.get_annotated_frame()
@@ -255,7 +281,7 @@ def _run_multi_pipeline(state: dict, camera_configs: list[dict]) -> None:
                     # Also update default latest_frame with first camera
                     if state.get("latest_frame") is None or cam_id == state["active_camera_ids"][0]:
                         state["latest_frame"] = annotated
-            shutdown_event.wait(0.033)  # ~30fps frame grab rate
+            stop_event.wait(0.033)  # ~30fps frame grab rate
 
     except ImportError as e:
         logger.warning("Multi-camera pipeline not available: %s", e)
@@ -271,6 +297,37 @@ def _run_multi_pipeline(state: dict, camera_configs: list[dict]) -> None:
                 pass
         state["multi_pipeline"] = None
         logger.info("Multi-camera pipeline stopped")
+
+
+def stop_pipeline_thread(state: dict, kind: str = "single", timeout: float = 5.0) -> None:
+    """Signal a pipeline thread to stop and wait for it to exit.
+
+    Args:
+        state: Shared application state dict.
+        kind: "single" or "multi".
+        timeout: Max seconds to wait for thread to join.
+    """
+    if kind == "single":
+        stop_evt = state.get("pipeline_stop_event")
+        thread = state.get("pipeline_thread")
+    else:
+        stop_evt = state.get("multi_pipeline_stop_event")
+        thread = state.get("multi_pipeline_thread")
+
+    if stop_evt is not None:
+        stop_evt.set()
+    if thread is not None and thread.is_alive():
+        thread.join(timeout=timeout)
+        if thread.is_alive():
+            logger.warning("%s pipeline thread did not exit within %.1fs", kind, timeout)
+
+    # Clear handles
+    if kind == "single":
+        state["pipeline_stop_event"] = None
+        state["pipeline_thread"] = None
+    else:
+        state["multi_pipeline_stop_event"] = None
+        state["multi_pipeline_thread"] = None
 
 
 @asynccontextmanager
@@ -293,20 +350,26 @@ async def lifespan(app: FastAPI):
     startup_cameras = get_startup_cameras()
 
     if startup_cameras:
+        stop_evt = threading.Event()
+        app_state["multi_pipeline_stop_event"] = stop_evt
         pipeline_thread = threading.Thread(
             target=_run_multi_pipeline,
-            args=(app_state, startup_cameras),
+            args=(app_state, startup_cameras, stop_evt),
             daemon=True,
             name="cv-multi-pipeline",
         )
+        app_state["multi_pipeline_thread"] = pipeline_thread
         logger.info("Starting multi-camera pipeline (%d cameras)", len(startup_cameras))
     else:
+        stop_evt = threading.Event()
+        app_state["pipeline_stop_event"] = stop_evt
         pipeline_thread = threading.Thread(
             target=_run_pipeline,
-            args=(app_state,),
+            args=(app_state, stop_evt),
             daemon=True,
             name="cv-pipeline",
         )
+        app_state["pipeline_thread"] = pipeline_thread
         logger.info("Starting single-camera pipeline")
 
     pipeline_thread.start()
@@ -314,10 +377,11 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # Shutdown
+    # Shutdown: signal all threads via both app-level and per-thread events
     logger.info("Dart-Vision shutting down...")
     app_state["shutdown_event"].set()
-    pipeline_thread.join(timeout=5.0)
+    stop_pipeline_thread(app_state, "single", timeout=5.0)
+    stop_pipeline_thread(app_state, "multi", timeout=5.0)
     logger.info("Shutdown complete")
 
 

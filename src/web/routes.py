@@ -798,10 +798,12 @@ def setup_routes(app_state: dict) -> APIRouter:
             if "camera_id" not in cam:
                 return {"ok": False, "error": "Each camera must have a camera_id"}
 
-        # A1: Stop the existing single pipeline under the lifecycle lock
+        # Stop the existing single pipeline thread cleanly
+        from src.main import stop_pipeline_thread
         _pl = app_state.get("pipeline_lock")
         with (_pl if _pl else _nullcontext()):
-            if app_state.get("pipeline_running") and app_state.get("pipeline"):
+            stop_pipeline_thread(app_state, "single", timeout=5.0)
+            if app_state.get("pipeline"):
                 try:
                     app_state["pipeline"].stop()
                 except Exception:
@@ -809,14 +811,17 @@ def setup_routes(app_state: dict) -> APIRouter:
                 app_state["pipeline_running"] = False
                 app_state["pipeline"] = None
 
-        # Start multi-pipeline in a background thread
+        # Start multi-pipeline in a background thread with its own stop event
         from src.main import _run_multi_pipeline
+        stop_evt = threading.Event()
+        app_state["multi_pipeline_stop_event"] = stop_evt
         multi_thread = threading.Thread(
             target=_run_multi_pipeline,
-            args=(app_state, cameras),
+            args=(app_state, cameras, stop_evt),
             daemon=True,
             name="cv-multi-pipeline",
         )
+        app_state["multi_pipeline_thread"] = multi_thread
         multi_thread.start()
 
         # Wait for pipeline to initialize (up to 3s)
@@ -844,17 +849,14 @@ def setup_routes(app_state: dict) -> APIRouter:
         if multi is None:
             return {"ok": False, "error": "Multi-pipeline not running"}
 
-        try:
-            multi.stop()
-        except Exception as e:
-            logger.error("Error stopping multi-pipeline: %s", e)
-
-        # A1: Mutate pipeline state under the lifecycle lock
+        # Signal the multi thread to stop and wait for it to exit
+        from src.main import stop_pipeline_thread
         _pl = app_state.get("pipeline_lock")
         with (_pl if _pl else _nullcontext()):
-            app_state["multi_pipeline"] = None
-            app_state["multi_pipeline_running"] = False
-            app_state["active_camera_ids"] = []
+            stop_pipeline_thread(app_state, "multi", timeout=5.0)
+            # The finally block in _run_multi_pipeline already cleans up
+            # multi_pipeline_running, active_camera_ids, and multi_pipeline.
+            # Clear frames explicitly.
             app_state["multi_latest_frames"] = {}
 
         return {"ok": True}
