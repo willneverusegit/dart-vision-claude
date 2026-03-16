@@ -42,11 +42,17 @@ class DartPipeline:
         on_dart_detected: Callable | None = None,
         on_dart_removed: Callable[[], None] | None = None,
         debug: bool = False,
+        capture_width: int | None = None,
+        capture_height: int | None = None,
+        capture_fps: int | None = None,
     ) -> None:
         self.camera_src = camera_src
         self.on_dart_detected = on_dart_detected
         self.on_dart_removed = on_dart_removed
         self.debug = debug
+        self._capture_width = capture_width
+        self._capture_height = capture_height
+        self._capture_fps = capture_fps
 
         # Modules
         self.camera: ThreadedCamera | ReplayCamera | None = None
@@ -114,7 +120,12 @@ class DartPipeline:
         if isinstance(self.camera_src, str) and os.path.isfile(self.camera_src):
             logger.info("Using replay source: %s", self.camera_src)
             return ReplayCamera(self.camera_src, loop=True)
-        return ThreadedCamera(src=self.camera_src)
+        return ThreadedCamera(
+            src=self.camera_src,
+            width=self._capture_width,
+            height=self._capture_height,
+            fps=self._capture_fps,
+        )
 
     def refresh_remapper(self) -> None:
         """Refresh combined remap tables after lens/board calibration changes."""

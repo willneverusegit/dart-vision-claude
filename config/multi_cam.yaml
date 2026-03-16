@@ -8,6 +8,9 @@
 #   cameras:
 #     - camera_id: cam_left
 #       src: 0           # OpenCV capture index or RTSP URL
+#       capture_width: 640    # optional, default 640
+#       capture_height: 480   # optional, default 480
+#       capture_fps: 30       # optional, default 30
 #     - camera_id: cam_right
 #       src: 1
 #

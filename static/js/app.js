@@ -20,6 +20,7 @@ class DartApp {
         this._bindWebSocket();
         this._bindKeyboard();
         this._bindOverlayToggles();
+        this._bindCaptureSettings();
         this._bindMultiCam();
         this._bindCharucoBoardSelectors();
         this._syncCharucoBoardSelectors(this.charucoPreset);
@@ -859,6 +860,193 @@ class DartApp {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ markers: enabled }),
         }).catch(e => console.error("Marker overlay toggle error:", e));
+    }
+
+    // --- Capture Settings ---
+
+    _bindCaptureSettings() {
+        const btn = document.getElementById("btn-capture-settings");
+        const panel = document.getElementById("capture-settings");
+        if (btn && panel) {
+            btn.addEventListener("click", () => {
+                const visible = panel.style.display !== "none";
+                panel.style.display = visible ? "none" : "block";
+                if (!visible) this._loadCaptureConfig();
+            });
+        }
+        const btnApply = document.getElementById("btn-apply-capture");
+        if (btnApply) btnApply.addEventListener("click", () => this._applyCaptureSettings());
+
+        // Camera ID selector: reload settings when changed
+        const camSel = document.getElementById("capture-camera-id");
+        if (camSel) camSel.addEventListener("change", () => this._onCameraIdChanged());
+
+        // Single-cam switch button
+        const btnSingle = document.getElementById("btn-switch-single");
+        if (btnSingle) btnSingle.addEventListener("click", () => this._switchToSingle());
+    }
+
+    async _loadCaptureConfig() {
+        const info = document.getElementById("capture-info");
+        try {
+            const res = await fetch("/api/capture/config");
+            const data = await res.json();
+            if (!data.ok) {
+                if (info) info.textContent = data.error || "Keine Kamera";
+                return;
+            }
+            const camIds = Object.keys(data.cameras);
+            if (camIds.length === 0) return;
+
+            // Populate camera ID selector
+            const camSel = document.getElementById("capture-camera-id");
+            if (camSel) {
+                const prevValue = camSel.value;
+                while (camSel.firstChild) camSel.removeChild(camSel.firstChild);
+                camIds.forEach(id => {
+                    const opt = document.createElement("option");
+                    opt.value = id;
+                    opt.textContent = id;
+                    camSel.appendChild(opt);
+                });
+                // Restore previous selection if still valid
+                if (camIds.includes(prevValue)) camSel.value = prevValue;
+            }
+
+            // Store all camera configs for quick access
+            this._captureConfigs = data.cameras;
+
+            // Show selected camera's config
+            this._showCameraConfig(camSel ? camSel.value : camIds[0]);
+        } catch (e) {
+            if (info) info.textContent = "Fehler beim Laden";
+        }
+    }
+
+    _onCameraIdChanged() {
+        const camSel = document.getElementById("capture-camera-id");
+        if (camSel && this._captureConfigs) {
+            this._showCameraConfig(camSel.value);
+        }
+    }
+
+    _showCameraConfig(camId) {
+        const info = document.getElementById("capture-info");
+        const cfg = this._captureConfigs && this._captureConfigs[camId];
+        if (!cfg) return;
+
+        const actual = cfg.actual;
+        const requested = cfg.requested;
+
+        const resSel = document.getElementById("capture-resolution");
+        if (resSel) resSel.value = requested.width + "x" + requested.height;
+        const fpsSel = document.getElementById("capture-fps");
+        if (fpsSel) fpsSel.value = String(requested.fps);
+
+        if (info) {
+            if (cfg.mismatch) {
+                info.textContent = camId + ": Kamera liefert " + actual.width + "x" + actual.height +
+                    " (angefordert: " + requested.width + "x" + requested.height + ")";
+                info.className = "capture-settings__info capture-settings__info--mismatch";
+            } else {
+                info.textContent = camId + ": " + actual.width + "x" + actual.height + " @ " + actual.fps + " fps";
+                info.className = "capture-settings__info";
+            }
+        }
+    }
+
+    async _applyCaptureSettings() {
+        const info = document.getElementById("capture-info");
+        const resSel = document.getElementById("capture-resolution");
+        const fpsSel = document.getElementById("capture-fps");
+        const camSel = document.getElementById("capture-camera-id");
+        if (!resSel || !fpsSel) return;
+
+        const [w, h] = resSel.value.split("x").map(Number);
+        const fps = Number(fpsSel.value);
+        const cameraId = camSel ? camSel.value : "default";
+
+        if (info) {
+            info.textContent = "Wird angewendet...";
+            info.className = "capture-settings__info";
+        }
+
+        try {
+            const res = await fetch("/api/capture/config", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ camera_id: cameraId, width: w, height: h, fps }),
+            });
+            const data = await res.json();
+            if (data.ok) {
+                const actual = data.actual;
+                const label = cameraId + ": ";
+                if (data.mismatch) {
+                    info.textContent = label + "Kamera liefert " + actual.width + "x" + actual.height +
+                        " statt " + w + "x" + h + " — Hardware unterstuetzt diese Aufloesung nicht";
+                    info.className = "capture-settings__info capture-settings__info--mismatch";
+                } else {
+                    info.textContent = label + actual.width + "x" + actual.height + " @ " + actual.fps + " fps";
+                    info.className = "capture-settings__info";
+                }
+                // Update cached config
+                if (this._captureConfigs) {
+                    this._captureConfigs[cameraId] = { requested: { width: w, height: h, fps }, actual, mismatch: data.mismatch };
+                }
+            } else {
+                if (info) info.textContent = "Fehler: " + (data.error || "Unbekannt");
+            }
+        } catch (e) {
+            if (info) info.textContent = "Fehler beim Anwenden";
+        }
+    }
+
+    async _switchToSingle() {
+        const info = document.getElementById("capture-info");
+        const srcInput = document.getElementById("single-cam-src");
+        const src = srcInput ? parseInt(srcInput.value, 10) : 0;
+
+        if (info) {
+            info.textContent = "Wechsle zu Single-Cam (Quelle " + src + ")...";
+            info.className = "capture-settings__info";
+        }
+
+        try {
+            // If multi is running, stop it first (auto-restarts single)
+            if (this.multiCamRunning) {
+                const resp = await fetch("/api/multi/stop", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ restart_single: true, single_src: src }),
+                });
+                const data = await resp.json();
+                if (data.ok) {
+                    this.multiCamRunning = false;
+                    this.activeCameraIds = [];
+                    this._hideMultiVideoGrid();
+                    if (info) info.textContent = "Single-Cam aktiv (Quelle " + src + ")";
+                } else {
+                    if (info) info.textContent = "Fehler: " + (data.error || "Unbekannt");
+                }
+            } else {
+                // Just restart single with new source
+                const resp = await fetch("/api/single/start", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ src }),
+                });
+                const data = await resp.json();
+                if (data.ok) {
+                    if (info) info.textContent = "Single-Cam aktiv (Quelle " + src + ")";
+                } else {
+                    if (info) info.textContent = "Fehler: " + (data.error || "Unbekannt");
+                }
+            }
+            // Reload capture config after switch
+            setTimeout(() => this._loadCaptureConfig(), 1000);
+        } catch (e) {
+            if (info) info.textContent = "Fehler beim Wechsel";
+        }
     }
 
     _startStatsPolling() {

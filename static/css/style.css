@@ -931,3 +931,42 @@ body {
         max-height: calc(100vh - 16px);
     }
 }
+
+/* Capture Settings Panel */
+.capture-settings {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 8px 12px;
+    margin-top: 8px;
+}
+.capture-settings__row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.capture-settings__label {
+    color: var(--text-secondary);
+    font-size: 0.85em;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.capture-settings__info {
+    color: var(--text-muted);
+    font-size: 0.8em;
+    margin: 4px 0 0;
+    min-height: 1.2em;
+}
+.capture-settings__info--mismatch {
+    color: var(--warning);
+}
+.select--small {
+    padding: 2px 6px;
+    font-size: 0.85em;
+}
+.input--small {
+    padding: 2px 6px;
+    font-size: 0.85em;
+}

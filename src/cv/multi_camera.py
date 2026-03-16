@@ -81,6 +81,9 @@ class MultiCameraPipeline:
                 camera_src=src,
                 on_dart_detected=lambda score, det, _id=cam_id: self._on_single_detection(_id, score, det),
                 debug=self.debug,
+                capture_width=cfg.get("capture_width"),
+                capture_height=cfg.get("capture_height"),
+                capture_fps=cfg.get("capture_fps"),
             )
 
             # Configure pipeline with camera-specific calibration

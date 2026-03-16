@@ -319,6 +319,94 @@ def setup_routes(app_state: dict) -> APIRouter:
             "markers": pipeline.show_overlay_markers if pipeline else False,
         }
 
+    # --- Capture Settings ---
+
+    def _get_camera_from_pipeline():
+        """Get the active ThreadedCamera instance (single or first multi)."""
+        pipeline = app_state.get("pipeline")
+        if pipeline and hasattr(pipeline, "camera") and pipeline.camera is not None:
+            return pipeline.camera, "single"
+        multi = app_state.get("multi_pipeline")
+        if multi is not None:
+            pipelines = multi.get_pipelines()
+            for cam_id, pipe in pipelines.items():
+                if hasattr(pipe, "camera") and pipe.camera is not None:
+                    return pipe.camera, cam_id
+        return None, None
+
+    @router.get("/api/capture/config")
+    async def get_capture_config() -> dict:
+        """Get current capture resolution and FPS (requested vs actual)."""
+        from src.cv.capture import ThreadedCamera
+        pipeline = app_state.get("pipeline")
+        result = {"ok": True, "cameras": {}}
+
+        # Single pipeline
+        if pipeline and hasattr(pipeline, "camera") and pipeline.camera is not None:
+            cam = pipeline.camera
+            if isinstance(cam, ThreadedCamera):
+                result["cameras"]["default"] = cam.get_capture_config()
+
+        # Multi pipeline
+        multi = app_state.get("multi_pipeline")
+        if multi is not None:
+            for cam_id, pipe in multi.get_pipelines().items():
+                if hasattr(pipe, "camera") and pipe.camera is not None:
+                    cam = pipe.camera
+                    if isinstance(cam, ThreadedCamera):
+                        result["cameras"][cam_id] = cam.get_capture_config()
+
+        if not result["cameras"]:
+            return {"ok": False, "error": "Keine aktive Kamera verfuegbar"}
+        return result
+
+    @router.post("/api/capture/config")
+    async def set_capture_config(request: Request) -> dict:
+        """Apply new capture resolution/FPS to an active camera.
+
+        Body: {"camera_id": "default", "width": 640, "height": 480, "fps": 30}
+        camera_id is optional — defaults to "default" (single pipeline).
+        """
+        from src.cv.capture import ThreadedCamera
+        body = await request.json()
+        cam_id = body.get("camera_id", "default")
+        width = body.get("width")
+        height = body.get("height")
+        fps = body.get("fps")
+
+        if not any([width, height, fps]):
+            return {"ok": False, "error": "Mindestens width, height oder fps angeben"}
+
+        # Find the target camera
+        target_cam = None
+        if cam_id == "default":
+            pipeline = app_state.get("pipeline")
+            if pipeline and hasattr(pipeline, "camera") and pipeline.camera is not None:
+                target_cam = pipeline.camera
+        else:
+            multi = app_state.get("multi_pipeline")
+            if multi is not None:
+                pipelines = multi.get_pipelines()
+                pipe = pipelines.get(cam_id)
+                if pipe and hasattr(pipe, "camera") and pipe.camera is not None:
+                    target_cam = pipe.camera
+
+        if target_cam is None or not isinstance(target_cam, ThreadedCamera):
+            return {"ok": False, "error": f"Kamera '{cam_id}' nicht gefunden oder kein Live-Capture"}
+
+        # Apply — use current values as fallback for unspecified fields
+        cur = target_cam.get_capture_config()["requested"]
+        new_w = width if width is not None else cur["width"]
+        new_h = height if height is not None else cur["height"]
+        new_fps = fps if fps is not None else cur["fps"]
+
+        try:
+            config = target_cam.apply_settings(new_w, new_h, new_fps)
+        except RuntimeError as e:
+            return {"ok": False, "error": str(e)}
+
+        return {"ok": True, "camera_id": cam_id, **config}
+
     # --- Calibration ---
 
     async def _run_manual_board_alignment(points: list[list[float]]) -> dict:
@@ -776,6 +864,68 @@ def setup_routes(app_state: dict) -> APIRouter:
             "reprojection_error_px": reproj_err,
         }
 
+    # --- Single-Camera Pipeline Routes ---
+
+    @router.post("/api/single/start")
+    async def single_start(request: Request) -> dict:
+        """Start (or restart) single-camera pipeline with a chosen camera source.
+
+        Body: {"src": 0}  — camera index (default 0).
+        Stops any running multi or single pipeline first.
+        """
+        from src.main import stop_pipeline_thread, start_single_pipeline
+        body = await _optional_json_body(request)
+        camera_src = body.get("src", 0)
+
+        _pl = app_state.get("pipeline_lock")
+        with (_pl if _pl else _nullcontext()):
+            # Stop multi if running
+            if app_state.get("multi_pipeline_running"):
+                stop_pipeline_thread(app_state, "multi", timeout=5.0)
+                app_state["multi_latest_frames"] = {}
+            # Stop existing single if running
+            if app_state.get("pipeline_running") and app_state.get("pipeline"):
+                try:
+                    app_state["pipeline"].stop()
+                except Exception:
+                    pass
+                app_state["pipeline_running"] = False
+                app_state["pipeline"] = None
+            stop_pipeline_thread(app_state, "single", timeout=5.0)
+
+        start_single_pipeline(app_state, camera_src=camera_src)
+
+        # Wait for pipeline to initialize (up to 3s)
+        for _ in range(30):
+            _time.sleep(0.1)
+            if app_state.get("pipeline_running"):
+                break
+
+        if not app_state.get("pipeline_running"):
+            return {"ok": False, "error": "Single-Pipeline konnte nicht gestartet werden."}
+
+        return {"ok": True, "src": camera_src}
+
+    @router.post("/api/single/stop")
+    async def single_stop() -> dict:
+        """Stop single-camera pipeline."""
+        from src.main import stop_pipeline_thread
+        if not app_state.get("pipeline_running"):
+            return {"ok": False, "error": "Single-pipeline not running"}
+
+        _pl = app_state.get("pipeline_lock")
+        with (_pl if _pl else _nullcontext()):
+            stop_pipeline_thread(app_state, "single", timeout=5.0)
+            if app_state.get("pipeline"):
+                try:
+                    app_state["pipeline"].stop()
+                except Exception:
+                    pass
+                app_state["pipeline_running"] = False
+                app_state["pipeline"] = None
+
+        return {"ok": True}
+
     # --- Multi-Camera Pipeline Routes ---
 
     @router.post("/api/multi/start")
@@ -843,23 +993,40 @@ def setup_routes(app_state: dict) -> APIRouter:
         }
 
     @router.post("/api/multi/stop")
-    async def multi_stop() -> dict:
-        """Stop multi-camera pipeline."""
+    async def multi_stop(request: Request) -> dict:
+        """Stop multi-camera pipeline.
+
+        Body (optional): {"restart_single": true, "single_src": 0}
+        If restart_single is true, starts a single pipeline after stopping multi.
+        """
         multi = app_state.get("multi_pipeline")
         if multi is None:
             return {"ok": False, "error": "Multi-pipeline not running"}
 
+        body = await _optional_json_body(request)
+        restart_single = body.get("restart_single", True)
+        single_src = body.get("single_src", 0)
+
         # Signal the multi thread to stop and wait for it to exit
-        from src.main import stop_pipeline_thread
+        from src.main import stop_pipeline_thread, start_single_pipeline
         _pl = app_state.get("pipeline_lock")
         with (_pl if _pl else _nullcontext()):
             stop_pipeline_thread(app_state, "multi", timeout=5.0)
-            # The finally block in _run_multi_pipeline already cleans up
-            # multi_pipeline_running, active_camera_ids, and multi_pipeline.
-            # Clear frames explicitly.
             app_state["multi_latest_frames"] = {}
 
-        return {"ok": True}
+        result = {"ok": True}
+
+        # Auto-restart single pipeline so the user isn't left without a camera
+        if restart_single:
+            start_single_pipeline(app_state, camera_src=single_src)
+            for _ in range(30):
+                _time.sleep(0.1)
+                if app_state.get("pipeline_running"):
+                    break
+            result["single_restarted"] = app_state.get("pipeline_running", False)
+            result["single_src"] = single_src
+
+        return result
 
     @router.get("/api/multi/status")
     async def multi_status() -> dict:

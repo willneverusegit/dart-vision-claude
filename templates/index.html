@@ -38,9 +38,42 @@
                 <label class="overlay-toggle" title="Bewegungsmaske einblenden">
                     <input type="checkbox" id="toggle-motion"> Motion
                 </label>
+                <button id="btn-capture-settings" class="btn btn--secondary btn--tiny" title="Kamera-Aufloesung und FPS">Capture</button>
             </div>
             <div id="motion-container" class="video-container motion-container" style="display:none;">
                 <img id="motion-feed" src="" alt="Motion Mask" class="video-feed">
+            </div>
+            <!-- Capture Settings (collapsible) -->
+            <div id="capture-settings" class="capture-settings" style="display:none;">
+                <div class="capture-settings__row">
+                    <label class="capture-settings__label">Kamera
+                        <select id="capture-camera-id" class="select select--small">
+                            <option value="default">default (0)</option>
+                        </select>
+                    </label>
+                    <label class="capture-settings__label">Aufloesung
+                        <select id="capture-resolution" class="select select--small">
+                            <option value="320x240">320x240</option>
+                            <option value="640x480" selected>640x480</option>
+                            <option value="800x600">800x600</option>
+                            <option value="1280x720">1280x720</option>
+                        </select>
+                    </label>
+                    <label class="capture-settings__label">FPS
+                        <select id="capture-fps" class="select select--small">
+                            <option value="15">15</option>
+                            <option value="30" selected>30</option>
+                        </select>
+                    </label>
+                    <button id="btn-apply-capture" class="btn btn--secondary btn--tiny">Anwenden</button>
+                </div>
+                <div class="capture-settings__row" style="margin-top:6px;">
+                    <label class="capture-settings__label">Single-Cam Quelle
+                        <input id="single-cam-src" type="number" class="input input--small" value="0" min="0" style="width:50px;">
+                    </label>
+                    <button id="btn-switch-single" class="btn btn--secondary btn--tiny">Single starten</button>
+                </div>
+                <p id="capture-info" class="capture-settings__info"></p>
             </div>
         </section>
 

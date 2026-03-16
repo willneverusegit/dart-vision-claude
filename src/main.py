@@ -91,7 +91,8 @@ def _compute_quality_score(detection, score_result: dict) -> int:
     return min(quality, 100)
 
 
-def _run_pipeline(state: dict, stop_event: threading.Event | None = None) -> None:
+def _run_pipeline(state: dict, stop_event: threading.Event | None = None,
+                   camera_src: int | str = 0) -> None:
     """Run CV pipeline in a background thread.
 
     Captures frames, runs detection, and creates hit candidates.
@@ -100,6 +101,7 @@ def _run_pipeline(state: dict, stop_event: threading.Event | None = None) -> Non
     Args:
         state: Shared application state dict.
         stop_event: Per-thread stop signal. Falls back to state["shutdown_event"].
+        camera_src: Camera index or path to use.
     """
     shutdown_event = state["shutdown_event"]
     if stop_event is None:
@@ -108,7 +110,7 @@ def _run_pipeline(state: dict, stop_event: threading.Event | None = None) -> Non
     try:
         from src.cv.pipeline import DartPipeline
 
-        pipeline = DartPipeline(camera_src=0, debug=False)
+        pipeline = DartPipeline(camera_src=camera_src, debug=False)
 
         def on_dart_detected(score_result: dict, detection=None) -> None:
             """Callback when a dart is detected by the pipeline.
@@ -330,6 +332,25 @@ def stop_pipeline_thread(state: dict, kind: str = "single", timeout: float = 5.0
         state["multi_pipeline_thread"] = None
 
 
+def start_single_pipeline(state: dict, camera_src: int | str = 0) -> None:
+    """Start a single pipeline in a new background thread.
+
+    Stops any existing single pipeline first.
+    """
+    stop_pipeline_thread(state, "single", timeout=5.0)
+    stop_evt = threading.Event()
+    state["pipeline_stop_event"] = stop_evt
+    thread = threading.Thread(
+        target=_run_pipeline,
+        args=(state, stop_evt, camera_src),
+        daemon=True,
+        name="cv-pipeline",
+    )
+    state["pipeline_thread"] = thread
+    thread.start()
+    logger.info("Single pipeline started (camera_src=%s)", camera_src)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan: start/stop pipeline and game engine."""
@@ -359,20 +380,11 @@ async def lifespan(app: FastAPI):
             name="cv-multi-pipeline",
         )
         app_state["multi_pipeline_thread"] = pipeline_thread
+        pipeline_thread.start()
         logger.info("Starting multi-camera pipeline (%d cameras)", len(startup_cameras))
     else:
-        stop_evt = threading.Event()
-        app_state["pipeline_stop_event"] = stop_evt
-        pipeline_thread = threading.Thread(
-            target=_run_pipeline,
-            args=(app_state, stop_evt),
-            daemon=True,
-            name="cv-pipeline",
-        )
-        app_state["pipeline_thread"] = pipeline_thread
-        logger.info("Starting single-camera pipeline")
+        start_single_pipeline(app_state, camera_src=0)
 
-    pipeline_thread.start()
     logger.info("Application ready")
 
     yield
