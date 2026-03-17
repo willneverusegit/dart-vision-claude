@@ -38,7 +38,8 @@ class DartWebSocket {
         };
 
         this.ws.onerror = (error) => {
-            console.error("WebSocket error:", error);
+            const errorType = error?.type || "unbekannt";
+            console.error(`WebSocket Fehler (Typ: ${errorType}):`, error);
         };
 
         this.ws.onmessage = (event) => {
