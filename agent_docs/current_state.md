@@ -27,6 +27,8 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 - Kalibrierungs-UX mit Statusanzeige und gefuehrten Schritten
 - Telemetrie im Header (FPS, Dropped Frames, Queue-Druck, RAM)
 - Idempotentes Logging mit Session-ID, optionalem File-Rotation-Log (`DARTVISION_LOG_FILE`)
+- Windows-Startskript (`start.bat`) mit venv, Dependency-Check, Diagnose
+- Diagnose-CLI (`python -m src.diagnose`): Python, Deps, Kameras, Config, Kalibrierung
 - Deutsche Fehlermeldungen in allen Kalibrierungs-Endpunkten
 
 ## Was heute als fortgeschritten, aber noch sensibel gilt
@@ -39,7 +41,7 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 
 ## Verifizierte Kennzahlen
 
-- `405` Tests bestanden (Stand 2026-03-17)
+- `415` Tests bestanden (Stand 2026-03-17)
 - Gesamt-Coverage `70%`
 - Wichtige Module: main.py 78%, routes.py 66%, pipeline.py 68%, multi_camera.py 62%, capture.py 72%
 - synthetische Pipeline-Benchmarks fuer `1`, `2` und `3` Kameras innerhalb der definierten KPI-Grenzen

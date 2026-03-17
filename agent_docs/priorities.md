@@ -68,7 +68,9 @@ Typische Arbeiten:
 - konsistente Session-ID in Logs (Start bis Stop)
 - Kamera-ID-Kontext in Multi-Cam-Logs
 
-## Prioritaet 5: Windows-Inbetriebnahme vereinfachen (MITTEL)
+## Prioritaet 5: Windows-Inbetriebnahme vereinfachen (✅ ERLEDIGT 2026-03-17)
+
+**Umsetzung:** `start.bat` mit automatischer venv-Erstellung, Dependency-Check und Server-Start. Diagnose-Modul `python -m src.diagnose` prueft Python-Version, alle Abhaengigkeiten, verfuegbare Kameras (Index 0-4 mit Aufloesung/FPS), Konfigurationsdateien und Kalibrierungsstatus. `start.bat` fuehrt Diagnose automatisch vor Server-Start aus. 10 neue Tests. Geaenderte Dateien: `start.bat`, `src/diagnose.py`, `tests/test_diagnose.py`.
 
 Ziel:
 
