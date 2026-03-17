@@ -28,6 +28,14 @@ Waechst organisch — jeder Agent fuegt neue Erkenntnisse hinzu.
 - **Pfade:** Immer mit Forward-Slashes oder `os.path.join` arbeiten, nie hartcodierte Backslashes
 - **USB-Kameras:** Koennen beim Standby disconnecten — Reconnect-Logik ist Pflicht
 
+## CV / Frame-Diff-Detektor
+
+- **Motion-Gate vor frame_diff_detector.update():** SETTLING-State braucht bewegungsfreie Frames zum Herunterzaehlen. update() MUSS vor dem Motion-Gate-Early-Return aufgerufen werden.
+- **settle_frames zu niedrig:** Dart wackelt noch wenn Diff berechnet wird → falsche Position. Empfehlung: 5 Frames bei 30fps (~167ms Wartezeit).
+- **diff_threshold zu niedrig (<30):** Beleuchtungsrauschen erzeugt False Positives. Empfehlung: 50 als Startwert, bei dunkler Umgebung auf 30 senken.
+- **Baseline nach Kalibrierungswechsel veraltet:** Nach Homographie-Aenderung muss frame_diff_detector.reset() aufgerufen werden. reset_turn() deckt das ab solange pipeline.refresh_remapper() danach auch reset_turn() triggert.
+- **Nur Grayscale-Frames:** FrameDiffDetector erwartet 2D-Arrays (Grayscale). Farb-Frames loesen einen ValueError aus. Die Pipeline uebergibt bereits den CLAHE-enhanced Grayscale-Frame.
+
 ---
 
 *Neue Eintraege immer unter der passenden Kategorie einfuegen. Neue Kategorie anlegen wenn noetig.*

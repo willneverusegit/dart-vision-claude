@@ -1,6 +1,6 @@
 # Current State
 
-Stand dieser Zusammenfassung: 2026-03-17 (P7, P13-P17 erledigt)
+Stand dieser Zusammenfassung: 2026-03-17 (P7, P13-P19 erledigt)
 
 ## Technischer Kern
 
@@ -25,6 +25,7 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 - Frontend-Warnbanner bei Kamera-Ausfall (Echtzeit via WebSocket + Polling-Fallback)
 - Kamera-Input konfigurierbar (Aufloesung, FPS)
 - 4-stufige ArUco-Erkennung (robust gegen Beleuchtungsschwankungen)
+- Frame-Diff-basierte Treffererkennung: Before/After-Diff statt MOG2-Centroid (P19)
 - Kalibrier-Qualitaetsmetrik (quality 0-100, Ringradien-Abweichung in mm)
 - Optische-Mittelpunkt-Erkennung mit Intensity-Fallback
 - Kalibrierungs-UX mit Statusanzeige und gefuehrten Schritten
@@ -54,7 +55,7 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 
 ## Verifizierte Kennzahlen
 
-- `494` Tests bestanden (Stand 2026-03-17)
+- `512` Tests bestanden (Stand 2026-03-17)
 - Gesamt-Coverage ~73%
 - Wichtige Module: main.py 78%, routes.py 66%, pipeline.py 68%, multi_camera.py 62%, capture.py 72%
 - synthetische Pipeline-Benchmarks fuer `1`, `2` und `3` Kameras innerhalb der definierten KPI-Grenzen
