@@ -1,6 +1,6 @@
 # Current State
 
-Stand dieser Zusammenfassung: 2026-03-16
+Stand dieser Zusammenfassung: 2026-03-17
 
 ## Technischer Kern
 
@@ -19,33 +19,42 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 - Board-Geometrie und Scoring
 - WebSocket-Eventfluss
 - Hit-Candidate-Review statt sofortiger Auto-Buchung
+- Pipeline-Lifecycle (Start/Stop/Umschalten) mit Stop-Events und Thread-Handles
+- Kamera-Input konfigurierbar (Aufloesung, FPS)
+- Kalibrierungs-UX mit Statusanzeige und gefuehrten Schritten
+- Telemetrie im Header (FPS, Dropped Frames, Queue-Druck, RAM)
+- Deutsche Fehlermeldungen in allen Kalibrierungs-Endpunkten
 
 ## Was heute als fortgeschritten, aber noch sensibel gilt
 
-- Multi-Camera-Pipeline
+- Multi-Camera-Pipeline (gehaertet: Readiness-Diagnose, Config-Persistenz, Setup-Wizard)
 - Stereo-Kalibrierung
 - Board-Pose-Kalibrierung
 - Triangulation und Voting-Fallback
-- Umschalten zwischen Single- und Multi-Cam
+- Umschalten zwischen Single- und Multi-Cam (Fix: Kamera-Release-Timing)
 
 ## Verifizierte Kennzahlen
 
-- `209` Tests bestanden
-- Gesamt-Coverage `54%`
+- `351` Tests bestanden
+- Gesamt-Coverage `70%`
+- Wichtige Module: main.py 78%, routes.py 66%, pipeline.py 68%, multi_camera.py 62%, capture.py 72%
 - synthetische Pipeline-Benchmarks fuer `1`, `2` und `3` Kameras innerhalb der definierten KPI-Grenzen
 
 ## Wichtige Projektfakten
 
 - `config/calibration_config.yaml` enthaelt eine gueltige Kalibrierung fuer `default`
-- `config/multi_cam.yaml` ist strukturell vorbereitet, aber aktuell weitgehend leer
-- `multi_cam.yaml` startet standardmaessig im Modus `single`
+- `config/multi_cam.yaml` speichert jetzt auch `last_cameras` fuer schnellen Multi-Cam-Neustart
+- Telemetrie-Endpunkt `/api/stats` liefert FPS, Dropped Frames, Queue-Druck, RAM
+- `/api/multi/readiness` liefert pro-Kamera-Diagnose fuer Multi-Cam-Setup
+- Alle API-Fehlermeldungen sind deutsch und handlungsorientiert
 
 ## Arbeitsannahmen fuer Agents
 
 1. Single-Cam ist der reale Hauptpfad.
-2. Multi-Cam ist wichtig, aber braucht defensive Aenderungen.
+2. Multi-Cam ist gehaertet, aber braucht weiterhin defensive Aenderungen.
 3. Hardware ist begrenzt. Performance und Stabilitaet gehen vor Feature-Breite.
 4. Kalibrierung ist kein Nebenthema, sondern Kernfunktion.
+5. Windows ist die Zielplattform — Kamera-Release-Timing beachten.
 
 ## Was Agents nicht annehmen sollten
 
@@ -54,9 +63,7 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 - dass synthetische Benchmarks reale USB-Last komplett abbilden
 - dass ungetestete Lifecycle-Aenderungen harmlos sind
 
-## Referenzdokument
+## Referenzdokumente
 
-Fuer die volle technische Einordnung siehe:
-
-- `PROJEKTSTAND_2026-03-16.md`
-
+- `SESSION_2026-03-17.md` — ausfuehrliche Session-Doku aller Aenderungen
+- `PROJEKTSTAND_2026-03-16.md` — vorige technische Einordnung

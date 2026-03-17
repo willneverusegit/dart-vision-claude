@@ -521,8 +521,28 @@ class DartApp {
         modal.style.display = "flex";
         this._showCalStep("cal-step-mode");
         this._refreshCharucoBoardPresetFromServer();
+        this._refreshCalibrationStatus();
         // Enable marker overlay by default when calibration modal opens
         this._setMarkerOverlay(true);
+    }
+
+    async _refreshCalibrationStatus() {
+        try {
+            const resp = await fetch("/api/calibration/info");
+            const data = await resp.json();
+            const lensEl = document.getElementById("cal-status-lens");
+            const boardEl = document.getElementById("cal-status-board");
+            if (lensEl) {
+                const hasLens = !!data.lens_valid;
+                lensEl.textContent = hasLens ? "Lens ✓" : "Lens ✗";
+                lensEl.className = "cal-status-item " + (hasLens ? "cal-status-item--done" : "cal-status-item--pending");
+            }
+            if (boardEl) {
+                const hasBoard = !!data.board_valid;
+                boardEl.textContent = hasBoard ? "Board ✓" : "Board ✗";
+                boardEl.className = "cal-status-item " + (hasBoard ? "cal-status-item--done" : "cal-status-item--pending");
+            }
+        } catch (e) { /* silent */ }
     }
 
     _showCalStep(stepId) {

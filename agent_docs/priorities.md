@@ -1,92 +1,53 @@
 # Priorities
 
-Diese Liste beschreibt die bevorzugte Weiterentwicklung aus Sicht des aktuellen Projektstands.
+Diese Liste beschreibt die empfohlene Weiterentwicklung aus Sicht des Projektstands 2026-03-17.
+Prio 1–7 der vorherigen Liste sind abgeschlossen.
 
-## Prioritaet 1: Pipeline-Lifecycle stabilisieren
-
-Ziel:
-
-- Single- und Multi-Camera sauber start- und stoppbar machen
-- keine halbaktiven Hintergrundthreads beim Umschalten
-
-Typische Arbeiten:
-
-- Thread-Handles sauber verwalten
-- getrennte Stop-Signale
-- Tests fuer wiederholtes Start/Stop
-
-## Prioritaet 2: Kamera-Input kontrollierbar machen
+## Prioritaet 1: Replay-basierte E2E-Validierung (KRITISCH)
 
 Ziel:
 
-- Laufzeit auf Zielhardware vorhersagbar halten
+- sicherstellen, dass die Treffererkennung auf echtem Videomaterial korrekt funktioniert
+- Regressionsschutz fuer CV-Aenderungen
 
 Typische Arbeiten:
 
-- Default-Aufloesung/FPS konfigurierbar machen
-- konservative Defaults setzen
-- Fehlermeldungen fuer ungeeignete Kamera-Setups verbessern
+- Referenz-Clips mit Ground-Truth-Annotation anlegen (z.B. 10 bekannte Wuerfe)
+- Replay-Pipeline automatisiert gegen Ground Truth laufen lassen
+- Accuracy-Metriken berechnen: Trefferquote, Sektorgenauigkeit, Ringgenauigkeit
+- CI-faehigen Accuracy-Test schreiben
 
-## Prioritaet 3: Testabdeckung fuer betriebsnahe Pfade erhoehen
+Warum kritisch: Ohne E2E-Validierung auf echtem Material gibt es keinen Beweis, dass das System tatsaechlich funktioniert.
+
+## Prioritaet 2: Kamera-Reconnect und Fehlerbehandlung (KRITISCH)
 
 Ziel:
 
-- Lifecycle-, API-, Kalibrierungs- und Multi-Cam-Pfade besser absichern
+- System ueberlebt Kamera-Ausfall, USB-Wackler, Laptop-Standby graceful
 
 Typische Arbeiten:
 
-- neue Tests fuer `main.py`, `routes.py`, `pipeline.py`, `multi_camera.py`
-- Fehlerpfade und Reconnect-Pfade abdecken
+- `ThreadedCamera`: Reconnect-Logik mit exponentiellem Backoff testen und absichern
+- UI-Feedback bei Kamera-Ausfall (Warnbanner statt schwarzes Bild)
+- Pipeline-State korrekt auf "degraded" setzen statt crashen
+- Tests fuer Reconnect-Szenarien
 
-## Prioritaet 4: End-to-End-Verifikation mit Replay verbessern
+Warum kritisch: Im realen Einsatz am Laptop passieren USB-Probleme regelmaessig.
+
+## Prioritaet 3: Multi-Cam Stereo-Triangulation validieren (HOCH)
 
 Ziel:
 
-- echte Nutzbarkeit auf Referenzmaterial absichern
+- Triangulation auf echte Genauigkeit pruefen, nicht nur synthetische Tests
 
 Typische Arbeiten:
 
-- Replay-Clips strukturieren
-- Ground Truth erweitern
-- Accuracy-Checks fuer Trefferbewertung hinzufuegen
+- Stereo-Kalibrierung mit zwei echten Kameras durchfuehren und Reprojektion messen
+- Triangulierte 3D-Punkte gegen bekannte Board-Positionen vergleichen
+- Schwellwerte fuer `max_reproj_error` und Z-Plausibilitaet empirisch validieren
+- Doku: welche Kamera-Geometrie (Abstand, Winkel) brauchbare Ergebnisse liefert
 
-## Prioritaet 5: Multi-Camera haerten
-
-Ziel:
-
-- Multi-Cam von "funktional vorhanden" zu "robust nutzbar" bringen
-
-Typische Arbeiten:
-
-- Setup-Flow fuehren
-- Konfigurationspersistenz verbessern
-- bessere Diagnose bei fehlender Stereo-/Board-Pose
-
-## Prioritaet 6: Telemetrie und Diagnose ausbauen
-
-Ziel:
-
-- Laufzeitprobleme auf echter Hardware sichtbar machen
-
-Typische Arbeiten:
-
-- Dropped Frames zaehlen und exponieren
-- CPU/RAM/Queue-Druck sichtbar machen
-- Status-Endpunkte erweitern
-
-## Prioritaet 7: Kalibrierungs-UX verbessern
-
-Ziel:
-
-- Kalibrierung fuer reale Nutzer reproduzierbarer machen
-
-Typische Arbeiten:
-
-- gefuehrte Schrittfolgen
-- bessere Fehlermeldungen
-- klarere Erfolgskriterien
-
-## Prioritaet 8: Logging betriebstauglicher machen
+## Prioritaet 4: Logging betriebstauglicher machen (HOCH)
 
 Ziel:
 
@@ -94,35 +55,93 @@ Ziel:
 
 Typische Arbeiten:
 
-- idempotentes Logging-Setup
-- optional Rotation/File-Logging
-- konsistentere Session- und Kamera-Kontexte in Logs
+- idempotentes Logging-Setup (kein doppeltes Handler-Registrieren)
+- optional Rotation/File-Logging fuer Langzeitbetrieb
+- konsistente Session-ID in Logs (Start bis Stop)
+- Kamera-ID-Kontext in Multi-Cam-Logs
 
-## Prioritaet 9: Windows-Inbetriebnahme glatter machen
-
-Ziel:
-
-- Setup und Start auf dem Ziel-Laptop vereinfachen
-
-Typische Arbeiten:
-
-- Startskripte
-- Diagnose-Checkliste
-- klarer Installationspfad
-
-## Prioritaet 10: Bedienbarkeit feinpolieren
+## Prioritaet 5: Windows-Inbetriebnahme vereinfachen (MITTEL)
 
 Ziel:
 
-- weniger Expertenwissen in der UI voraussetzen
+- Setup und Start auf dem Ziel-Laptop ohne Expertenwissen moeglich machen
 
 Typische Arbeiten:
 
-- klarere Texte
-- bessere Defaults
-- gefuehrte Problemloesung in Modal-Dialogen
+- `start.bat` oder PowerShell-Startskript mit venv-Aktivierung
+- Diagnose-Checkliste als CLI-Befehl (`python -m src.diagnose`)
+- Kamera-Erkennung: verfuegbare Kameras auflisten vor Pipeline-Start
+- klarer Installationspfad in README
+
+## Prioritaet 6: Dartboard-Erkennung verbessern (MITTEL)
+
+Ziel:
+
+- hoehere Treffsicherheit bei der automatischen Board-Erkennung
+
+Typische Arbeiten:
+
+- ArUco-Board-Alignment robuster gegen Beleuchtungsschwankungen machen
+- Optischer Mittelpunkt: bessere Auto-Erkennung (aktuell oft manuell noetig)
+- Board-Geometrie-Fit: Ringradien-Abweichung als Qualitaetsmetrik exponieren
+- Kalibrier-Vorschau mit mehr visuellen Hinweisen (z.B. erkannte Marker hervorheben)
+
+## Prioritaet 7: Spielablauf-UX verbessern (MITTEL)
+
+Ziel:
+
+- weniger Klicks, klarere Rueckmeldung waehrend des Spiels
+
+Typische Arbeiten:
+
+- Hit-Candidate-Timeout: automatisches Ablehnen nach X Sekunden ohne Bestaetigung
+- Audio-Feedback bei erkanntem Treffer (optional, Browser Web Audio API)
+- Wurf-Historie mit Undo sichtbarer gestalten
+- Scoreboard: aktueller Spieler visuell hervorheben
+- Checkout-Vorschlaege bei X01 (z.B. "T20 D16" bei 76 Restpunkten)
+
+## Prioritaet 8: Performance-Monitoring und Alerting (NIEDRIG)
+
+Ziel:
+
+- Engpaesse frueh erkennen, bevor sie den Spielbetrieb stoeren
+
+Typische Arbeiten:
+
+- Telemetrie-Historie: FPS/Drop/Queue ueber Zeit als Chart (nicht nur aktuellen Wert)
+- Warnung wenn FPS unter 15 faellt oder Queue-Druck > 80% bleibt
+- CPU-Last pro Pipeline-Thread messen (Windows: `psutil` optional)
+- Telemetrie optional in Logfile schreiben fuer Post-Mortem-Analyse
+
+## Prioritaet 9: Multi-Cam UX weiter verbessern (NIEDRIG)
+
+Ziel:
+
+- Multi-Cam-Setup fuer Nicht-Experten bedienbar machen
+
+Typische Arbeiten:
+
+- Kamera-Vorschau im Multi-Cam-Modal (Live-Thumbnails pro Kamera)
+- Drag-and-Drop Kamera-Anordnung
+- Stereo-Kalibrierung: Fortschrittsanzeige mit Frame-Counter
+- Board-Pose: visuelles Feedback (erkannte Marker im Bild einblenden)
+- Setup-Wizard: automatisch zum naechsten Schritt wechseln wenn ein Schritt erledigt ist
+
+## Prioritaet 10: UI-Design und Responsiveness (NIEDRIG)
+
+Ziel:
+
+- Oberflaeche auf verschiedenen Bildschirmgroessen nutzbar und optisch ansprechend
+
+Typische Arbeiten:
+
+- Mobile/Tablet-Layout (Responsive Breakpoints)
+- Dark/Light-Theme-Umschaltung
+- Scoreboard-Bereich: kompakteres Layout fuer kleinere Bildschirme
+- Kamera-Feed: Aspektverhaeltnis beibehalten statt strecken
+- Ladeanimation beim Pipeline-Start (Spinner statt schwarzes Bild)
+- Tastaturkuerzel fuer haeufige Aktionen (Treffer bestaetigen/ablehnen)
 
 ## Arbeitsregel fuer Agents
 
 Wenn der User nur allgemein nach "weiterentwickeln" fragt und keine andere Richtung vorgibt, beginne oben in der Liste und arbeite nach unten.
-

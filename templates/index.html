@@ -163,6 +163,15 @@
 
             <!-- Step 1: Mode Selection -->
             <div id="cal-step-mode" class="cal-step">
+                <!-- Calibration status overview -->
+                <div id="cal-status-overview" class="cal-status-overview">
+                    <p class="cal-status-overview__title">Aktueller Status:</p>
+                    <div class="cal-status-row">
+                        <span id="cal-status-lens" class="cal-status-item cal-status-item--pending">Lens</span>
+                        <span id="cal-status-board" class="cal-status-item cal-status-item--pending">Board</span>
+                    </div>
+                </div>
+
                 <div class="cal-marker-toggle" style="margin-bottom: 12px;">
                     <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
                         <input type="checkbox" id="toggle-markers" checked>
@@ -180,11 +189,13 @@
                     </label>
                     <p class="charuco-board-note">Die Auswahl muss zur gedruckten Vorlage passen.</p>
                 </div>
-                <p class="modal__text">Kalibrierung ist jetzt in zwei getrennte Workflows aufgeteilt:</p>
+                <p class="modal__text"><strong>Schritt 1:</strong> Lens-Kalibrierung — korrigiert Verzerrung der Kamera.</p>
+                <p class="modal__text cal-hint-text">ChArUco-Board vor die Kamera halten und gut sichtbar positionieren.</p>
                 <div class="cal-mode-buttons">
                     <button id="btn-cal-lens" class="btn btn--primary cal-mode-btn">Lens Setup (ChArUco)</button>
                 </div>
-                <p class="modal__text">Board Alignment (bei Stativ-/Board-Verschiebung neu ausfuehren):</p>
+                <p class="modal__text"><strong>Schritt 2:</strong> Board Alignment — bestimmt die Position des Dartboards im Bild.</p>
+                <p class="modal__text cal-hint-text">Bei Stativ- oder Board-Verschiebung neu ausfuehren.</p>
                 <div class="cal-mode-buttons">
                     <button id="btn-cal-manual" class="btn btn--primary cal-mode-btn">Board Manuell (4 Punkte)</button>
                     <button id="btn-cal-aruco" class="btn btn--primary cal-mode-btn">Board ArUco (Auto)</button>

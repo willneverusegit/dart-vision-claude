@@ -412,7 +412,7 @@ def setup_routes(app_state: dict) -> APIRouter:
     async def _run_manual_board_alignment(points: list[list[float]]) -> dict:
         pipeline = app_state.get("pipeline")
         if not pipeline or not hasattr(pipeline, "board_calibration"):
-            return {"ok": False, "error": "No pipeline/board calibration manager"}
+            return {"ok": False, "error": "Pipeline nicht aktiv — bitte zuerst die Kamera starten."}
         result = pipeline.board_calibration.manual_calibration(points)
         if result.get("ok"):
             pipeline.refresh_remapper()
@@ -440,12 +440,12 @@ def setup_routes(app_state: dict) -> APIRouter:
             jpeg = encode_frame_jpeg(frame, quality=90)
             b64 = base64.b64encode(jpeg).decode("ascii")
             return JSONResponse({"ok": True, "image": "data:image/jpeg;base64," + b64})
-        return JSONResponse({"ok": False, "error": "No frame available"})
+        return JSONResponse({"ok": False, "error": "Kein Kamerabild verfuegbar — ist die Kamera gestartet?"})
 
     async def _run_aruco_board_alignment(frame) -> dict:
         pipeline = app_state.get("pipeline")
         if not pipeline or not hasattr(pipeline, "board_calibration"):
-            return {"ok": False, "error": "No pipeline/board calibration manager"}
+            return {"ok": False, "error": "Pipeline nicht aktiv — bitte zuerst die Kamera starten."}
         result = pipeline.board_calibration.aruco_calibration(frame)
         if result.get("ok"):
             pipeline.refresh_remapper()
@@ -459,7 +459,7 @@ def setup_routes(app_state: dict) -> APIRouter:
         if frame is None:
             frame = app_state.get("latest_frame")
         if frame is None:
-            return {"ok": False, "error": "No frame available"}
+            return {"ok": False, "error": "Kein Kamerabild verfuegbar — ist die Kamera gestartet?"}
         return await _run_aruco_board_alignment(frame)
 
     @router.post("/api/calibration/board/aruco")
@@ -470,16 +470,16 @@ def setup_routes(app_state: dict) -> APIRouter:
         if frame is None:
             frame = app_state.get("latest_frame")
         if frame is None:
-            return {"ok": False, "error": "No frame available"}
+            return {"ok": False, "error": "Kein Kamerabild verfuegbar — ist die Kamera gestartet?"}
         return await _run_aruco_board_alignment(frame)
 
     async def _run_lens_charuco_calibration(request: Request | None = None) -> dict:
         """Capture latest raw frames and calibrate camera intrinsics."""
         pipeline = app_state.get("pipeline")
         if not pipeline or not hasattr(pipeline, "camera_calibration"):
-            return {"ok": False, "error": "No pipeline/camera calibration manager"}
+            return {"ok": False, "error": "Pipeline nicht aktiv — bitte zuerst die Kamera starten."}
         if not pipeline.camera:
-            return {"ok": False, "error": "Camera not available"}
+            return {"ok": False, "error": "Kamera nicht verfuegbar — bitte Verbindung pruefen."}
         body = await _optional_json_body(request)
         overrides = _charuco_override_fields(body)
         try:
@@ -495,7 +495,7 @@ def setup_routes(app_state: dict) -> APIRouter:
             _time.sleep(0.1)
 
         if len(frames) < 3:
-            return {"ok": False, "error": f"Only captured {len(frames)} frames, need at least 3"}
+            return {"ok": False, "error": f"Nur {len(frames)} Frames erfasst (mind. 3 noetig) — Kamera pruefen."}
         result = pipeline.camera_calibration.charuco_calibration(frames, board_spec=board_spec)
         if result.get("ok"):
             pipeline.refresh_remapper()
@@ -516,7 +516,7 @@ def setup_routes(app_state: dict) -> APIRouter:
         """Get lens calibration metadata."""
         pipeline = app_state.get("pipeline")
         if not pipeline or not hasattr(pipeline, "camera_calibration"):
-            return {"ok": False, "error": "No camera calibration manager"}
+            return {"ok": False, "error": "Pipeline nicht aktiv — bitte zuerst die Kamera starten."}
         cfg = pipeline.camera_calibration.get_config()
         board_spec = pipeline.camera_calibration.get_charuco_board_spec()
         return {
@@ -538,17 +538,17 @@ def setup_routes(app_state: dict) -> APIRouter:
                 jpeg = encode_frame_jpeg(roi, quality=90)
                 b64 = base64.b64encode(jpeg).decode("ascii")
                 return JSONResponse({"ok": True, "image": "data:image/jpeg;base64," + b64})
-        return JSONResponse({"ok": False, "error": "No ROI available"})
+        return JSONResponse({"ok": False, "error": "Keine ROI-Vorschau — Board-Kalibrierung zuerst durchfuehren."})
 
     @router.post("/api/calibration/verify-rings")
     async def verify_rings() -> dict:
         """Verify calibrated ring radii against expected dartboard dimensions."""
         pipeline = app_state.get("pipeline")
         if not pipeline:
-            return {"ok": False, "error": "No pipeline"}
+            return {"ok": False, "error": "Pipeline nicht aktiv — bitte zuerst die Kamera starten."}
         roi = pipeline.get_roi_preview()
         if roi is None:
-            return {"ok": False, "error": "No ROI frame available"}
+            return {"ok": False, "error": "Kein ROI-Frame — Board-Kalibrierung zuerst durchfuehren."}
         result = pipeline.board_calibration.verify_rings(roi)
         return result
 
@@ -557,10 +557,10 @@ def setup_routes(app_state: dict) -> APIRouter:
         """Detect the true bullseye position via color thresholding."""
         pipeline = app_state.get("pipeline")
         if not pipeline:
-            return {"ok": False, "error": "No pipeline"}
+            return {"ok": False, "error": "Pipeline nicht aktiv — bitte zuerst die Kamera starten."}
         oc = pipeline.detect_optical_center()
         if oc is None:
-            return {"ok": False, "error": "Could not detect optical center"}
+            return {"ok": False, "error": "Mittelpunkt konnte nicht erkannt werden — manuell setzen."}
         return {"ok": True, "optical_center": [oc[0], oc[1]]}
 
     @router.post("/api/calibration/optical-center/manual")
@@ -568,7 +568,7 @@ def setup_routes(app_state: dict) -> APIRouter:
         """Manually override the bullseye position (ROI pixel coordinates)."""
         pipeline = app_state.get("pipeline")
         if not pipeline:
-            return {"ok": False, "error": "No pipeline"}
+            return {"ok": False, "error": "Pipeline nicht aktiv — bitte zuerst die Kamera starten."}
         if not (hasattr(pipeline, "board_calibration") and pipeline.board_calibration.is_valid()):
             return {"ok": False, "error": "Board nicht kalibriert"}
         body = await request.json()
@@ -595,14 +595,14 @@ def setup_routes(app_state: dict) -> APIRouter:
                 jpeg = encode_frame_jpeg(overlay, quality=90)
                 b64 = base64.b64encode(jpeg).decode("ascii")
                 return JSONResponse({"ok": True, "image": "data:image/jpeg;base64," + b64})
-        return JSONResponse({"ok": False, "error": "No overlay available"})
+        return JSONResponse({"ok": False, "error": "Kein Overlay verfuegbar — Board-Kalibrierung zuerst durchfuehren."})
 
     @router.get("/api/calibration/info")
     async def calibration_info() -> dict:
         """Get combined calibration metadata (board + lens)."""
         pipeline = app_state.get("pipeline")
         if not pipeline or not hasattr(pipeline, "board_calibration"):
-            return {"ok": False, "error": "No calibration manager"}
+            return {"ok": False, "error": "Pipeline nicht aktiv — bitte zuerst die Kamera starten."}
         config = pipeline.board_calibration.get_config()
         lens_cfg = pipeline.camera_calibration.get_config() if hasattr(pipeline, "camera_calibration") else {}
         return {
@@ -893,6 +893,7 @@ def setup_routes(app_state: dict) -> APIRouter:
                 app_state["pipeline"] = None
             stop_pipeline_thread(app_state, "single", timeout=5.0)
 
+        _time.sleep(0.5)  # Windows needs time after camera release
         start_single_pipeline(app_state, camera_src=camera_src)
 
         # Wait for pipeline to initialize (up to 3s)
@@ -1054,13 +1055,14 @@ def setup_routes(app_state: dict) -> APIRouter:
         _pl = app_state.get("pipeline_lock")
         with (_pl if _pl else _nullcontext()):
             stop_pipeline_thread(app_state, "single", timeout=5.0)
+            # Thread's finally block already calls pipeline.stop() + camera.release().
+            # Only clean up state here — no redundant stop() call.
             if app_state.get("pipeline"):
-                try:
-                    app_state["pipeline"].stop()
-                except Exception:
-                    pass
                 app_state["pipeline_running"] = False
                 app_state["pipeline"] = None
+
+        # Windows needs a moment after camera release before re-opening
+        _time.sleep(0.5)
 
         # Start multi-pipeline in a background thread with its own stop event
         from src.main import _run_multi_pipeline
@@ -1146,6 +1148,7 @@ def setup_routes(app_state: dict) -> APIRouter:
 
         # Auto-restart single pipeline so the user isn't left without a camera
         if restart_single:
+            _time.sleep(0.5)  # Windows needs time after camera release
             start_single_pipeline(app_state, camera_src=single_src)
             for _ in range(30):
                 _time.sleep(0.1)
@@ -1223,7 +1226,7 @@ def setup_routes(app_state: dict) -> APIRouter:
         """Expose canonical board geometry used by scoring/rendering."""
         pipeline = app_state.get("pipeline")
         if not pipeline or not hasattr(pipeline, "get_geometry_info"):
-            return {"ok": False, "error": "No pipeline geometry available"}
+            return {"ok": False, "error": "Board-Geometrie nicht verfuegbar — Board-Kalibrierung zuerst durchfuehren."}
         return {"ok": True, **pipeline.get_geometry_info()}
 
     # --- Stats ---

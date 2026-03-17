@@ -124,8 +124,10 @@ class ThreadedCamera:
         self._running = False
         if self._thread is not None:
             self._thread.join(timeout=5.0)
-        self.capture.release()
-        logger.info("Camera capture stopped")
+            self._thread = None
+        if self.capture is not None and self.capture.isOpened():
+            self.capture.release()
+            logger.info("Camera capture stopped")
 
     def is_running(self) -> bool:
         """Check if capture thread is active."""
