@@ -51,7 +51,11 @@ class DartImpactDetector:
         self._confirmed: list[DartDetection] = []
 
     def detect(self, roi_frame: np.ndarray, motion_mask: np.ndarray) -> DartDetection | None:
-        """Analyze motion mask for dart-shaped objects. Returns confirmed detection or None."""
+        """Analyze motion mask for dart-shaped objects. Returns confirmed detection or None.
+
+        Note: Not called by the single-camera pipeline since P19 (which uses FrameDiffDetector).
+        Kept for multi-camera paths and direct testing.
+        """
         shapes = self._find_dart_shapes(motion_mask)
         if not shapes:
             self._decay_candidates()

@@ -181,4 +181,6 @@ class FrameDiffDetector:
 
         confidence = min(area / 500.0, 1.0)
         logger.info("FrameDiff: Dart bei (%d, %d) area=%.0f conf=%.2f", cx, cy, area, confidence)
+        # frame_count repurposed here as "settle duration" (== settle_frames at this callsite).
+        # P20 will replace this with tip-detection and can clean up the field semantics then.
         return DartDetection(center=(cx, cy), area=area, confidence=confidence, frame_count=self.settle_frames)
