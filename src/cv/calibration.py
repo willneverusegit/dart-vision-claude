@@ -228,13 +228,31 @@ class CalibrationManager:
 
             detector = cv2.aruco.ArucoDetector(dictionary, params)
 
-            # Try with CLAHE enhancement if normal detection fails
+            # Multi-stage detection: try progressively stronger enhancement
             corners, ids, rejected = detector.detectMarkers(gray)
+            detection_method = "raw"
+
             if ids is None or len(ids) < 4:
-                # Retry with CLAHE contrast enhancement
+                # Stage 2: Mild CLAHE
                 clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
                 enhanced = clahe.apply(gray)
                 corners, ids, rejected = detector.detectMarkers(enhanced)
+                detection_method = "clahe_3.0"
+
+            if ids is None or len(ids) < 4:
+                # Stage 3: Aggressive CLAHE for very uneven lighting
+                clahe_strong = cv2.createCLAHE(clipLimit=6.0, tileGridSize=(4, 4))
+                enhanced_strong = clahe_strong.apply(gray)
+                corners, ids, rejected = detector.detectMarkers(enhanced_strong)
+                detection_method = "clahe_6.0"
+
+            if ids is None or len(ids) < 4:
+                # Stage 4: Gaussian blur + CLAHE (reduces noise in dark scenes)
+                blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+                clahe_blur = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8, 8))
+                enhanced_blur = clahe_blur.apply(blurred)
+                corners, ids, rejected = detector.detectMarkers(enhanced_blur)
+                detection_method = "blur_clahe"
 
             if ids is None or len(ids) < 4:
                 found = 0 if ids is None else len(ids)
@@ -366,8 +384,8 @@ class CalibrationManager:
                 "method": "aruco",
             })
             self._atomic_save()
-            logger.info("ArUco calibration complete (mm/px=%.3f, markers=%s)",
-                        mm_per_px, flat_ids)
+            logger.info("ArUco calibration complete (mm/px=%.3f, markers=%s, method=%s)",
+                        mm_per_px, flat_ids, detection_method)
             return {
                 "ok": True,
                 "homography": homography.tolist(),
@@ -375,6 +393,7 @@ class CalibrationManager:
                 "corners_px": ordered,
                 "radii_px": radii_px,
                 "detected_ids": flat_ids,
+                "detection_method": detection_method,
             }
 
         except Exception as e:
@@ -407,11 +426,28 @@ class CalibrationManager:
 
         stored_radii = self._config.get("radii_px", [])
 
+        # Compute per-ring deviation and overall quality score
+        deviations_px = []
+        if stored_radii and len(stored_radii) == len(expected_radii):
+            for stored, expected in zip(stored_radii, expected_radii):
+                deviations_px.append(round(abs(stored - expected), 1))
+            max_dev_px = max(deviations_px)
+            max_dev_mm = round(max_dev_px * roi_mm_per_px, 1)
+            # Quality: 100 = perfect, 0 = 5+ px deviation on worst ring
+            quality = max(0, round(100 - max_dev_px * 20))
+        else:
+            deviations_px = []
+            max_dev_mm = 0.0
+            quality = 0
+
         return {
             "ok": True,
             "radii_px": stored_radii,
             "expected_radii_px": expected_radii,
             "roi_mm_per_px": roi_mm_per_px,
+            "deviations_px": deviations_px,
+            "max_deviation_mm": max_dev_mm,
+            "quality": quality,
         }
 
     def find_optical_center(self, roi_frame: np.ndarray,
@@ -477,6 +513,18 @@ class CalibrationManager:
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL,
                                        cv2.CHAIN_APPROX_SIMPLE)
         if not contours:
+            # Intensity fallback: find darkest/brightest spot as potential bull
+            gray_patch = cv2.cvtColor(patch, cv2.COLOR_BGR2GRAY)
+            blurred_patch = cv2.GaussianBlur(gray_patch, (11, 11), 0)
+            _, _, _, max_loc = cv2.minMaxLoc(blurred_patch)
+            # Only use if the bright spot is reasonably centered
+            px, py = max_loc
+            ph, pw = patch.shape[:2]
+            if abs(px - pw / 2) < pw * 0.3 and abs(py - ph / 2) < ph * 0.3:
+                refined_cx = x1 + px
+                refined_cy = y1 + py
+                logger.info("Optical center via intensity fallback: (%.1f, %.1f)", refined_cx, refined_cy)
+                return (refined_cx, refined_cy)
             logger.debug("No bullseye blob found, using geometric center")
             return (geo_cx, geo_cy)
 

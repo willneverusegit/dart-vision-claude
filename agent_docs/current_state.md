@@ -24,6 +24,9 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 - Kamera-Health-API (`/api/camera/health`) und WebSocket-Event (`camera_state`)
 - Frontend-Warnbanner bei Kamera-Ausfall (Echtzeit via WebSocket + Polling-Fallback)
 - Kamera-Input konfigurierbar (Aufloesung, FPS)
+- 4-stufige ArUco-Erkennung (robust gegen Beleuchtungsschwankungen)
+- Kalibrier-Qualitaetsmetrik (quality 0-100, Ringradien-Abweichung in mm)
+- Optische-Mittelpunkt-Erkennung mit Intensity-Fallback
 - Kalibrierungs-UX mit Statusanzeige und gefuehrten Schritten
 - Telemetrie im Header (FPS, Dropped Frames, Queue-Druck, RAM)
 - Idempotentes Logging mit Session-ID, optionalem File-Rotation-Log (`DARTVISION_LOG_FILE`)
@@ -41,7 +44,7 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 
 ## Verifizierte Kennzahlen
 
-- `415` Tests bestanden (Stand 2026-03-17)
+- `426` Tests bestanden (Stand 2026-03-17)
 - Gesamt-Coverage `70%`
 - Wichtige Module: main.py 78%, routes.py 66%, pipeline.py 68%, multi_camera.py 62%, capture.py 72%
 - synthetische Pipeline-Benchmarks fuer `1`, `2` und `3` Kameras innerhalb der definierten KPI-Grenzen

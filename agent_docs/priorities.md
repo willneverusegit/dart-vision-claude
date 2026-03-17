@@ -83,7 +83,9 @@ Typische Arbeiten:
 - Kamera-Erkennung: verfuegbare Kameras auflisten vor Pipeline-Start
 - klarer Installationspfad in README
 
-## Prioritaet 6: Dartboard-Erkennung verbessern (MITTEL)
+## Prioritaet 6: Dartboard-Erkennung verbessern (✅ ERLEDIGT 2026-03-17)
+
+**Umsetzung:** 4-stufige ArUco-Erkennung (raw → CLAHE 3.0 → CLAHE 6.0 → Blur+CLAHE) fuer robustere Marker-Detektion bei schwieriger Beleuchtung. Intensity-Fallback fuer optische Mittelpunkt-Erkennung wenn HSV-Farbsuche fehlschlaegt. Kalibrier-Qualitaetsmetrik: verify_rings liefert jetzt deviations_px, max_deviation_mm und quality (0-100). detection_method im ArUco-Calibration-Response. 11 neue Tests. Geaenderte Dateien: `src/cv/calibration.py`, `tests/test_board_detection_p6.py`.
 
 Ziel:
 
