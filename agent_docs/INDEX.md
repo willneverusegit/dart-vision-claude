@@ -59,8 +59,11 @@ Dies ist der Einstiegspunkt fuer progressive Detaildokumentation.
 - `pitfalls.md`
   Bekannte Stolpersteine: "Wenn X dann Y"-Regeln aus geloesten Bugs.
 
-- `decisions.md`
+- `decisions.md` / `decision_log.md`
   Architektur-Entscheidungen (ADRs): warum X so geloest wurde und nicht anders.
+
+- `weakness_log.md`
+  Offene und erledigte Schwaechen unterhalb der Prioritaetsebene.
 
 - `session_logs/`
   Kurze Protokolle nach jeder Agent-Session (was gemacht, was gelernt).

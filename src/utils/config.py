@@ -20,6 +20,85 @@ MULTI_CAM_CONFIG_PATH = os.path.join(
 )
 
 
+def validate_matrix_shape(data, expected_rows: int, expected_cols: int,
+                          name: str) -> str | None:
+    """Return error string if data doesn't match expected matrix shape, None if OK."""
+    if not isinstance(data, list) or len(data) != expected_rows:
+        return f"{name}: expected {expected_rows} rows, got {type(data).__name__} len={len(data) if isinstance(data, list) else '?'}"
+    for i, row in enumerate(data):
+        if not isinstance(row, list) or len(row) != expected_cols:
+            row_len = len(row) if isinstance(row, list) else "?"
+            return f"{name}[{i}]: expected {expected_cols} cols, got {row_len}"
+        for j, val in enumerate(row):
+            if not isinstance(val, (int, float)):
+                return f"{name}[{i}][{j}]: expected number, got {type(val).__name__}"
+    return None
+
+
+def validate_calibration_config(config: dict) -> list[str]:
+    """Validate calibration config structure. Returns list of warnings/errors."""
+    errors: list[str] = []
+    if not isinstance(config, dict):
+        return [f"Config root is not a dict: {type(config).__name__}"]
+
+    cameras = config.get("cameras")
+    if cameras is None:
+        return errors  # no cameras section, nothing to validate
+    if not isinstance(cameras, dict):
+        return [f"'cameras' is not a dict: {type(cameras).__name__}"]
+
+    for profile_name, profile in cameras.items():
+        if not isinstance(profile, dict):
+            errors.append(f"Profile '{profile_name}' is not a dict")
+            continue
+
+        # camera_matrix: 3x3
+        if "camera_matrix" in profile:
+            err = validate_matrix_shape(profile["camera_matrix"], 3, 3,
+                                        f"profiles.{profile_name}.camera_matrix")
+            if err:
+                errors.append(err)
+
+        # dist_coeffs: list of floats (flat) or list of lists of floats
+        if "dist_coeffs" in profile:
+            dc = profile["dist_coeffs"]
+            if isinstance(dc, list):
+                for i, item in enumerate(dc):
+                    if isinstance(item, list):
+                        for j, v in enumerate(item):
+                            if not isinstance(v, (int, float)):
+                                errors.append(
+                                    f"profiles.{profile_name}.dist_coeffs[{i}][{j}]: "
+                                    f"expected number, got {type(v).__name__}"
+                                )
+                    elif not isinstance(item, (int, float)):
+                        errors.append(
+                            f"profiles.{profile_name}.dist_coeffs[{i}]: "
+                            f"expected number or list, got {type(item).__name__}"
+                        )
+            else:
+                errors.append(f"profiles.{profile_name}.dist_coeffs: expected list")
+
+        # board_transform: R_cb 3x3, t_cb 3x1
+        if "board_transform" in profile:
+            bt = profile["board_transform"]
+            if isinstance(bt, dict):
+                if "R_cb" in bt:
+                    err = validate_matrix_shape(bt["R_cb"], 3, 3,
+                                                f"profiles.{profile_name}.board_transform.R_cb")
+                    if err:
+                        errors.append(err)
+                if "t_cb" in bt:
+                    err = validate_matrix_shape(bt["t_cb"], 3, 1,
+                                                f"profiles.{profile_name}.board_transform.t_cb")
+                    if err:
+                        errors.append(err)
+            else:
+                errors.append(f"profiles.{profile_name}.board_transform: expected dict")
+
+    return errors
+
+
 def load_config(path: str = DEFAULT_CONFIG_PATH) -> dict:
     """Load YAML config from file. Returns empty dict if file doesn't exist."""
     if not os.path.exists(path):
@@ -27,7 +106,11 @@ def load_config(path: str = DEFAULT_CONFIG_PATH) -> dict:
         return {}
     with open(path, "r", encoding="utf-8") as f:
         data = yaml.safe_load(f)
-    return data if data else {}
+    result = data if data else {}
+    warnings = validate_calibration_config(result)
+    for w in warnings:
+        logger.warning("Config validation: %s", w)
+    return result
 
 
 def save_config(data: dict, path: str = DEFAULT_CONFIG_PATH) -> None:
@@ -71,6 +154,18 @@ def save_stereo_pair(cam_a: str, cam_b: str, R: list, T: list,
                      reprojection_error: float,
                      path: str = MULTI_CAM_CONFIG_PATH) -> None:
     """Save extrinsics for a camera pair."""
+    err = validate_matrix_shape(R, 3, 3, "R")
+    if err:
+        raise ValueError(err)
+    # T: accept 3x1 nested or flat length-3
+    if isinstance(T, list) and len(T) == 3 and all(isinstance(v, (int, float)) for v in T):
+        pass  # flat [x, y, z] is fine
+    else:
+        err = validate_matrix_shape(T, 3, 1, "T")
+        if err:
+            raise ValueError(err)
+    if not isinstance(reprojection_error, (int, float)) or reprojection_error < 0:
+        raise ValueError(f"reprojection_error must be >= 0, got {reprojection_error}")
     from datetime import datetime, timezone
     cfg = load_multi_cam_config(path)
     if "pairs" not in cfg:
@@ -100,6 +195,16 @@ def get_board_transform(cam_id: str, path: str = MULTI_CAM_CONFIG_PATH) -> dict 
 def save_board_transform(cam_id: str, R_cb: list, t_cb: list,
                          path: str = MULTI_CAM_CONFIG_PATH) -> None:
     """Atomically save per-camera board pose transform (R_cb, t_cb)."""
+    err = validate_matrix_shape(R_cb, 3, 3, "R_cb")
+    if err:
+        raise ValueError(err)
+    # t_cb: accept 3x1 nested or flat length-3
+    if isinstance(t_cb, list) and len(t_cb) == 3 and all(isinstance(v, (int, float)) for v in t_cb):
+        pass
+    else:
+        err = validate_matrix_shape(t_cb, 3, 1, "t_cb")
+        if err:
+            raise ValueError(err)
     cfg = load_multi_cam_config(path)
     cfg.setdefault("cameras", {}).setdefault(cam_id, {})
     cfg["cameras"][cam_id]["board_transform"] = {

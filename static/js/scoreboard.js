@@ -51,11 +51,16 @@ class Scoreboard {
         nameEl.textContent = player.name;
         leftDiv.appendChild(nameEl);
 
-        // Show current turn throws
+        // Show current turn throws as badges
         if (isActive && player.current_turn && player.current_turn.length > 0) {
             const turnEl = document.createElement("div");
-            turnEl.className = "player-turn";
-            turnEl.textContent = "Wurf: " + player.current_turn.join(", ");
+            turnEl.className = "player-turn-badges";
+            player.current_turn.forEach(score => {
+                const badge = document.createElement("span");
+                badge.className = "throw-badge";
+                badge.textContent = score;
+                turnEl.appendChild(badge);
+            });
             leftDiv.appendChild(turnEl);
         }
 

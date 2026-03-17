@@ -48,6 +48,7 @@ class DartboardRenderer {
     async _loadCalibration() {
         try {
             const resp = await fetch("/api/board/geometry");
+            if (!resp.ok) return;
             const data = await resp.json();
             if (data.ok && data.radii_px && data.radii_px.length === 6) {
                 const roiDoubleOuter = data.radii_px[5]; // double_outer in ROI pixels

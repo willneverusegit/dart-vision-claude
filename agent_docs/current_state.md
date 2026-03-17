@@ -1,6 +1,6 @@
 # Current State
 
-Stand dieser Zusammenfassung: 2026-03-17 (P2 erledigt)
+Stand dieser Zusammenfassung: 2026-03-17 (P7, P13-P17 erledigt)
 
 ## Technischer Kern
 
@@ -33,6 +33,16 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 - Windows-Startskript (`start.bat`) mit venv, Dependency-Check, Diagnose
 - Diagnose-CLI (`python -m src.diagnose`): Python, Deps, Kameras, Config, Kalibrierung
 - Deutsche Fehlermeldungen in allen Kalibrierungs-Endpunkten
+- Input-Validierung in Web-Routes (score, sector, multiplier, ring, game params)
+- Game-Engine: Schutz gegen fehlende Keys, >3 Darts, ungueltige starting_score
+- CV-Pipeline: Parameter-Validierung (area bounds, thresholds), inclusive Boundary-Check, Kandidaten-Limit
+- Frontend: response.ok-Checks auf allen fetch-Aufrufen, Error-Toast bei HTTP-Fehlern
+- Config-Schema-Validierung beim Laden (Warn-Logging) und Speichern (ValueError)
+- Hit-Candidate Auto-Timeout (30s) mit Countdown-Anzeige
+- Audio-Feedback bei bestaetigtem Treffer (Web Audio API)
+- Wurf-Badges im Scoreboard statt Klartext
+- Pulsierender Glow-Effekt fuer aktiven Spieler
+- X01-Checkout-Vorschlaege (Scores 2-170) mit Backend-Lookup
 
 ## Was heute als fortgeschritten, aber noch sensibel gilt
 
@@ -44,8 +54,8 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 
 ## Verifizierte Kennzahlen
 
-- `426` Tests bestanden (Stand 2026-03-17)
-- Gesamt-Coverage `70%`
+- `494` Tests bestanden (Stand 2026-03-17)
+- Gesamt-Coverage ~73%
 - Wichtige Module: main.py 78%, routes.py 66%, pipeline.py 68%, multi_camera.py 62%, capture.py 72%
 - synthetische Pipeline-Benchmarks fuer `1`, `2` und `3` Kameras innerhalb der definierten KPI-Grenzen
 - E2E-Replay-Tests: 90% Hit Rate, 100% Score Accuracy auf synthetischen Clips (6 Tests)

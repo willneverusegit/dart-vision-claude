@@ -73,6 +73,17 @@ class GameState(BaseModel):
             return sum(t.score for t in self.current_player.current_turn)
         return 0
 
+    def _get_checkout_suggestion(self) -> list[str]:
+        """Get checkout suggestions for current player in X01."""
+        if self.mode != GameMode.X01 or not self.current_player:
+            return []
+        remaining = self.current_player.score
+        darts_left = self.darts_remaining
+        if remaining > 170 or remaining < 2 or darts_left == 0:
+            return []
+        from src.game.checkout import get_checkout
+        return get_checkout(remaining, darts_left)
+
     def to_api_dict(self) -> dict:
         """Serialize for API/WebSocket."""
         cp = self.current_player
@@ -97,4 +108,5 @@ class GameState(BaseModel):
             "darts_remaining": self.darts_remaining,
             "round": self.round_number,
             "winner": self.winner,
+            "checkout": self._get_checkout_suggestion(),
         }

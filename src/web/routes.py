@@ -46,6 +46,31 @@ def setup_routes(app_state: dict) -> APIRouter:
         fields = _charuco_override_fields(body)
         return any(value is not None for value in fields.values())
 
+    VALID_RINGS = {"single", "double", "triple", "inner_bull", "outer_bull", "miss"}
+    VALID_SECTORS = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 25, 50}
+
+    def _validate_score_input(body: dict) -> tuple[dict | None, str | None]:
+        """Validate score/sector/multiplier/ring from request body.
+        Returns (validated_dict, error_msg). If error_msg is not None, validation failed."""
+        errors = []
+        score = body.get("score", 0)
+        sector = body.get("sector", 0)
+        multiplier = body.get("multiplier", 1)
+        ring = body.get("ring", "single")
+
+        if not isinstance(score, int) or score < 0 or score > 180:
+            errors.append(f"score must be int 0-180, got {score!r}")
+        if not isinstance(sector, int) or sector not in VALID_SECTORS:
+            errors.append(f"sector must be int in {sorted(VALID_SECTORS)}, got {sector!r}")
+        if not isinstance(multiplier, int) or multiplier not in {1, 2, 3}:
+            errors.append(f"multiplier must be 1, 2, or 3, got {multiplier!r}")
+        if not isinstance(ring, str) or ring not in VALID_RINGS:
+            errors.append(f"ring must be one of {sorted(VALID_RINGS)}, got {ring!r}")
+
+        if errors:
+            return None, "; ".join(errors)
+        return {"score": score, "sector": sector, "multiplier": multiplier, "ring": ring}, None
+
     # --- Page ---
 
     @router.get("/", response_class=HTMLResponse)
@@ -79,8 +104,14 @@ def setup_routes(app_state: dict) -> APIRouter:
                     "error": "Board nicht kalibriert. Bitte zuerst die Board-Kalibrierung durchführen.",
                 }
         mode = body.get("mode", "x01")
+        if mode not in ("x01", "cricket", "free"):
+            mode = "x01"
         players = body.get("players", ["Player 1"])
+        if not isinstance(players, list) or len(players) == 0 or not all(isinstance(p, str) for p in players):
+            players = ["Player 1"]
         starting_score = body.get("starting_score", 501)
+        if not isinstance(starting_score, int) or starting_score < 2 or starting_score > 10000:
+            starting_score = 501
         engine.new_game(mode=mode, players=players, starting_score=starting_score)
         state = engine.get_state()
         em = app_state.get("event_manager")
@@ -241,23 +272,23 @@ def setup_routes(app_state: dict) -> APIRouter:
         if candidate is None:
             return {"ok": False, "error": f"Candidate {candidate_id} not found"}
 
-        # Apply corrections
-        corrected_score = body.get("score", candidate["score"])
-        corrected_sector = body.get("sector", candidate["sector"])
-        corrected_multiplier = body.get("multiplier", candidate["multiplier"])
-        corrected_ring = body.get("ring", candidate["ring"])
+        # Apply corrections — merge candidate defaults with body overrides
+        merged = {
+            "score": body.get("score", candidate["score"]),
+            "sector": body.get("sector", candidate["sector"]),
+            "multiplier": body.get("multiplier", candidate["multiplier"]),
+            "ring": body.get("ring", candidate["ring"]),
+        }
+        validated, err = _validate_score_input(merged)
+        if err:
+            return {"ok": False, "error": f"Invalid score input: {err}"}
 
         engine = app_state.get("game_engine")
         em = app_state.get("event_manager")
         if not engine:
             return {"ok": False, "error": "No game engine"}
 
-        score_result = {
-            "score": corrected_score,
-            "sector": corrected_sector,
-            "multiplier": corrected_multiplier,
-            "ring": corrected_ring,
-        }
+        score_result = validated
         game_state = engine.register_throw(score_result)
 
         corrected_candidate = {**candidate, **score_result, "corrected": True}
@@ -266,7 +297,7 @@ def setup_routes(app_state: dict) -> APIRouter:
             em.broadcast_sync("game_state", game_state)
 
         logger.info("Hit corrected: %s -> %s %d", candidate_id,
-                     corrected_ring, corrected_score)
+                     score_result["ring"], score_result["score"])
         return {"ok": True, "game_state": game_state}
 
     # --- Manual Score Entry ---
@@ -280,12 +311,15 @@ def setup_routes(app_state: dict) -> APIRouter:
         if not engine:
             return {"error": "No game engine"}
 
-        score_result = {
+        raw = {
             "score": body.get("score", 0),
             "sector": body.get("sector", 0),
             "multiplier": body.get("multiplier", 1),
             "ring": body.get("ring", "single"),
         }
+        score_result, err = _validate_score_input(raw)
+        if err:
+            return {"error": f"Invalid score input: {err}"}
         game_state = engine.register_throw(score_result)
         if em:
             em.broadcast_sync("score", score_result)

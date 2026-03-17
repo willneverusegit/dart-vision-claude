@@ -131,8 +131,10 @@ Nach jeder abgeschlossenen Aufgabe MUSS der Agent folgende Schritte ausfuehren:
 - Direkt darunter einen `**Umsetzung:**`-Block einfuegen mit:
   - was konkret gemacht wurde
   - welche Dateien geaendert wurden
+- Pflege pro Prioritaet `Verknuepfte Weaknesses:` und `Verknuepfte Entscheidungen:` mit IDs oder `keine`
 - Nummerierung NIEMALS aendern — bestehende Nummern bleiben unveraendert
 - Neue Schwachstellen oder Follow-up-Aufgaben als neue Prioritaeten HINTEN anhangen (weiterführende Nummer, z.B. P11, P12, ...)
+- Pflege Rueckverlinkungen zwischen Prioritaeten, `weakness_log.md`, `decision_log.md` und Session-Reports
 
 Format fuer erledigte Prioritaet:
 ```
@@ -165,6 +167,12 @@ Nach jeder Aufgabe aktiv pruefen:
 - Gibt es in den geaenderten Dateien TODOs, unbehandelte Edge Cases oder fehlende Tests?
 - Wurden durch die Aenderung neue Risiken eingefuehrt?
 - Gibt es Folgethemen die logisch auf diese Arbeit aufbauen?
+- Entscheide, ob sie nur Restrisiko der aktuellen Aufgabe sind oder eine eigene Folgeprioritaet verdienen
 - Falls ja: als neue Prioritaet(en) hinten an `priorities.md` anhaengen
+- Nenne in der Abschlussmeldung, welche neuen Punkte auf die Liste gekommen sind
+
+### 4. Mindestens eine neue Prioritaet pro erledigter Prioritaet
+
+Fuer jede als erledigt markierte Prioritaet MUSS mindestens eine neue Prioritaet am Ende von `priorities.md` ergaenzt werden. Die neue Prioritaet kann sich aus der erledigten Arbeit ergeben (Folgethema, entdeckte Schwachstelle) oder aus einer anderen Analyse des Projekts stammen. Ziel: Die Prioritaetenliste waechst und bleibt als lebendige Roadmap aktuell — sie schrumpft nie auf null offene Eintraege.
 
 Dieser Schritt ist nicht optional — er haelt die Prioritaetenliste als lebendiges Dokument aktuell.

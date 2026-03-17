@@ -17,8 +17,12 @@ class GameEngine:
     def new_game(self, mode: str = "x01", players: list[str] | None = None,
                  starting_score: int = 501) -> None:
         """Start a new game."""
+        if not isinstance(starting_score, int) or starting_score <= 0 or starting_score > 10000:
+            raise ValueError(f"starting_score must be int 1-10000, got {starting_score!r}")
         if players is None:
             players = ["Player 1"]
+        if not isinstance(players, list) or len(players) == 0:
+            raise ValueError(f"players must be a non-empty list, got {players!r}")
 
         game_mode = GameMode(mode)
         player_states = []
@@ -51,7 +55,22 @@ class GameEngine:
         if self.state.phase != GamePhase.PLAYING:
             return self.get_state()
 
+        # Validate required keys
+        required_keys = {"score", "sector", "multiplier", "ring"}
+        missing = required_keys - set(score_result.keys())
+        if missing:
+            logger.warning("register_throw: missing keys %s in score_result", missing)
+            return self.get_state()
+
         self._push_undo()
+
+        player = self.state.current_player
+        if player is None:
+            return self.get_state()
+
+        # Auto-complete turn if already at 3 darts
+        if len(player.current_turn) >= 3:
+            self._complete_turn()
 
         throw = ThrowResult(
             score=score_result["score"],
@@ -59,10 +78,6 @@ class GameEngine:
             multiplier=score_result["multiplier"],
             ring=score_result["ring"],
         )
-
-        player = self.state.current_player
-        if player is None:
-            return self.get_state()
 
         # Mode-specific scoring
         if self.state.mode == GameMode.X01:
