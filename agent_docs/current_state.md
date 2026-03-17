@@ -35,10 +35,11 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 
 ## Verifizierte Kennzahlen
 
-- `351` Tests bestanden
+- `357` Tests bestanden (Stand 2026-03-17)
 - Gesamt-Coverage `70%`
 - Wichtige Module: main.py 78%, routes.py 66%, pipeline.py 68%, multi_camera.py 62%, capture.py 72%
 - synthetische Pipeline-Benchmarks fuer `1`, `2` und `3` Kameras innerhalb der definierten KPI-Grenzen
+- E2E-Replay-Tests: 90% Hit Rate, 100% Score Accuracy auf synthetischen Clips (6 Tests)
 
 ## Wichtige Projektfakten
 

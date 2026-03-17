@@ -53,8 +53,17 @@ Dies ist der Einstiegspunkt fuer progressive Detaildokumentation.
 - `development_workflow.md`  
   Arbeitsregeln, Testmatrix und Change-Checkliste.
 
-- `priorities.md`  
+- `priorities.md`
   Priorisierte Liste der naechsten Entwicklungsschritte.
+
+- `pitfalls.md`
+  Bekannte Stolpersteine: "Wenn X dann Y"-Regeln aus geloesten Bugs.
+
+- `decisions.md`
+  Architektur-Entscheidungen (ADRs): warum X so geloest wurde und nicht anders.
+
+- `session_logs/`
+  Kurze Protokolle nach jeder Agent-Session (was gemacht, was gelernt).
 
 ## Arbeitsregel
 

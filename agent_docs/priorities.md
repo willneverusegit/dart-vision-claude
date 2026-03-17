@@ -3,7 +3,9 @@
 Diese Liste beschreibt die empfohlene Weiterentwicklung aus Sicht des Projektstands 2026-03-17.
 Prio 1–7 der vorherigen Liste sind abgeschlossen.
 
-## Prioritaet 1: Replay-basierte E2E-Validierung (KRITISCH)
+## Prioritaet 1: Replay-basierte E2E-Validierung (✅ ERLEDIGT 2026-03-17)
+
+**Umsetzung:** Vollstaendiges E2E-Replay-Test-Framework implementiert. Synthetischer Clip-Generator erzeugt 10 Dart-Wuerfe auf verschiedene Board-Positionen (Bull, Single, Triple, Double in allen Quadranten). Ground-Truth-Loader, Accuracy-Metriken (Hit Rate, Score/Sector/Ring Accuracy, False Positive Rate) und 6 CI-faehige pytest-Tests. Ergebnis auf synthetischen Daten: 90% Hit Rate, 100% Score Accuracy, 0 False Positives. Geaenderte Dateien: `tests/e2e/__init__.py`, `tests/e2e/generate_synthetic_clip.py`, `tests/e2e/accuracy.py`, `tests/e2e/test_replay_e2e.py`.
 
 Ziel:
 
@@ -145,3 +147,41 @@ Typische Arbeiten:
 ## Arbeitsregel fuer Agents
 
 Wenn der User nur allgemein nach "weiterentwickeln" fragt und keine andere Richtung vorgibt, beginne oben in der Liste und arbeite nach unten.
+
+## Format fuer erledigte Prioritaeten
+
+```
+## Prioritaet N: Titel (✅ ERLEDIGT JJJJ-MM-TT)
+
+**Umsetzung:** Was konkret umgesetzt wurde. Geaenderte Dateien: `src/foo.py`.
+
+[urspruenglicher Inhalt bleibt erhalten]
+```
+
+Nummerierung wird NIEMALS geaendert. Neue Prioritaeten werden am Ende mit weiterführender Nummer angehaengt.
+Erledigte Prioritaeten bleiben in der Liste — nur mit Markierung und Umsetzungsnotiz ergaenzt.
+
+## Prioritaet 11: E2E-Tests mit echten Videoclips (neu — entdeckt bei Arbeit an P1)
+
+Ziel:
+
+- synthetische E2E-Tests durch Tests mit echten Kamera-Aufnahmen ergaenzen
+
+Typische Arbeiten:
+
+- 5-10 echte Clips am Dartboard aufnehmen (verschiedene Beleuchtung, Winkel)
+- Ground-Truth-Annotations manuell erstellen
+- Accuracy-Thresholds fuer echte Clips kalibrieren (realistischer als synthetisch)
+- outer_bull-Erkennung verbessern (aktuell verpasst wegen zu kleinem Blob in schmaler Ring-Zone)
+
+## Prioritaet 12: DartImpactDetector Area-Range erweitern (neu — entdeckt bei Arbeit an P1)
+
+Ziel:
+
+- Erkennungsbereich fuer Konturflaechenwerte flexibler machen
+
+Typische Arbeiten:
+
+- area_max von 1000 auf einen konfigurierbaren Wert erhoehen oder dynamisch skalieren
+- Tests fuer Edge Cases: sehr grosse/kleine Darts, verschiedene Kamera-Distanzen
+- Outer-Bull-Bereich: Blob hat in schmaler Ring-Zone nur ~40px Flaeche — unter area_min
