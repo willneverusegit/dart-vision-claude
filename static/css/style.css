@@ -1343,3 +1343,16 @@ a:focus-visible,
     padding: 2px 6px;
     font-size: 0.85em;
 }
+
+/* Camera health badges (P30) */
+.cam-health-badge {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-left: 8px;
+    vertical-align: middle;
+}
+.cam-health-green { background-color: #4caf50; }
+.cam-health-yellow { background-color: #ff9800; }
+.cam-health-red { background-color: #f44336; }

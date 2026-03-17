@@ -70,6 +70,11 @@
                 <span class="cv-tuning__value" id="cv-min-elongation-val">1.5</span>
             </label>
             <label class="cv-tuning__row">
+                <span>motion_threshold</span>
+                <input type="range" id="cv-motion-threshold" min="50" max="2000" step="50" value="200">
+                <span class="cv-tuning__value" id="cv-motion-threshold-val">200</span>
+            </label>
+            <label class="cv-tuning__row">
                 <input type="checkbox" id="cv-diagnostics-toggle">
                 <span>Save diagnostics</span>
             </label>
@@ -386,6 +391,13 @@
                     </div>
                 </div>
                 <div id="stereo-result" class="stereo-result" style="display:none;"></div>
+                <div id="stereo-progress-container" style="display:none;margin-top:12px">
+                    <div style="background:var(--bg-tertiary,#333);border-radius:4px;overflow:hidden;height:20px">
+                        <div id="stereo-progress-bar" style="height:100%;background:var(--accent-color,#4caf50);width:0%;transition:width 0.3s"></div>
+                    </div>
+                    <div id="stereo-progress-text" style="font-size:0.85em;margin-top:4px;color:var(--text-secondary,#aaa)"></div>
+                </div>
+                <div id="stereo-result-info"></div>
                 <div class="modal__actions">
                     <button id="btn-stereo-calibrate" class="btn btn--accent">Stereo kalibrieren</button>
                     <button id="btn-stereo-back" class="btn btn--secondary">Zurueck</button>

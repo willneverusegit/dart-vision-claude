@@ -87,3 +87,16 @@ class BoardCalibrationManager:
         cfg["schema_version"] = int(cfg.get("schema_version", 1)) if cfg.get("schema_version") else 2
         self._legacy._atomic_save()
         logger.info("Board optical center persisted: (%.2f, %.2f)", optical_center[0], optical_center[1])
+
+    def has_valid_intrinsics(self) -> bool:
+        """Check if this camera has valid lens intrinsics (camera_matrix)."""
+        from src.cv.camera_calibration import CameraCalibrationManager
+        cam_cal = CameraCalibrationManager(camera_id=self.camera_id)
+        intr = cam_cal.get_intrinsics()
+        if intr is None:
+            return False
+        if not hasattr(intr, 'camera_matrix') or intr.camera_matrix is None:
+            return False
+        if intr.camera_matrix.shape != (3, 3):
+            return False
+        return True

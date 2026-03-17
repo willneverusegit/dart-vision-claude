@@ -18,6 +18,7 @@ from src.cv.stereo_utils import (
 )
 from src.cv.geometry import BoardGeometry, BOARD_RADIUS_MM
 from src.utils.config import get_stereo_pair, get_board_transform
+from src.utils.triangulation_telemetry import TriangulationTelemetry
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,7 @@ class MultiCameraPipeline:
         self._running = False
         self._fusion_thread: threading.Thread | None = None
         self._camera_errors: dict[str, str] = {}  # camera_id -> error message
+        self._tri_telemetry = TriangulationTelemetry()
 
         # Loaded from config at start() / reload_stereo_params()
         self._stereo_params: dict[str, CameraParams] = {}   # camera_id -> CameraParams
@@ -253,6 +255,7 @@ class MultiCameraPipeline:
                         result["source"] = "single"
                         result["camera_id"] = entry["camera_id"]
                         logger.info("Single-camera fallback: camera_id='%s'", entry["camera_id"])
+                        self._tri_telemetry.record_attempt("single_fallback")
                         self._emit(result)
                         self._detection_buffer.clear()
                 return
@@ -320,6 +323,7 @@ class MultiCameraPipeline:
                             entries[i]["camera_id"],
                             entries[j]["camera_id"],
                         )
+                        self._tri_telemetry.record_attempt("z_rejected", tri.reprojection_error, float(p_board[2]))
                         continue
 
                     board_x_mm, board_y_mm = point_3d_to_board_2d(p_board)
@@ -341,6 +345,7 @@ class MultiCameraPipeline:
                             entries[i]["camera_id"], entries[j]["camera_id"],
                             tri.reprojection_error, p_board[2],
                         )
+                        self._tri_telemetry.record_attempt("triangulation", tri.reprojection_error, float(p_board[2]))
                         self._emit(result)
                         triangulated = True
                         break
@@ -349,6 +354,7 @@ class MultiCameraPipeline:
 
             if not triangulated:
                 # Voting fallback: use best single-camera result
+                self._tri_telemetry.record_attempt("voting_fallback")
                 result = self._voting_fallback(entries)
                 self._emit(result)
 
@@ -445,6 +451,10 @@ class MultiCameraPipeline:
     def get_pipelines(self) -> dict[str, DartPipeline]:
         """Expose individual pipelines for frame access, overlays, etc."""
         return dict(self._pipelines)
+
+    def get_triangulation_telemetry(self) -> dict:
+        """Return triangulation telemetry summary."""
+        return self._tri_telemetry.get_summary()
 
     def get_camera_errors(self) -> dict[str, str]:
         """Return dict of camera_id -> error message for cameras that failed to start."""

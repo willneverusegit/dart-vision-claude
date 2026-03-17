@@ -361,7 +361,9 @@ def setup_routes(app_state: dict) -> APIRouter:
         pipeline = app_state.get("pipeline")
         if not pipeline:
             return {"ok": False, "error": "No pipeline active"}
-        return {"ok": True, **pipeline.frame_diff_detector.get_params()}
+        params = pipeline.frame_diff_detector.get_params()
+        params["motion_threshold"] = pipeline.motion_detector.threshold
+        return {"ok": True, **params}
 
     @router.post("/api/cv-params")
     async def set_cv_params(request: Request) -> dict:
@@ -380,8 +382,13 @@ def setup_routes(app_state: dict) -> APIRouter:
                 params[k] = int(params[k])
         if "min_elongation" in params:
             params["min_elongation"] = float(params["min_elongation"])
+        # Motion threshold (separate detector)
+        if "motion_threshold" in body:
+            mt = int(body["motion_threshold"])
+            pipeline.motion_detector.set_threshold(mt)
         try:
             updated = pipeline.frame_diff_detector.set_params(**params)
+            updated["motion_threshold"] = pipeline.motion_detector.threshold
             return {"ok": True, **updated}
         except ValueError as e:
             return {"ok": False, "error": str(e)}
@@ -721,13 +728,16 @@ def setup_routes(app_state: dict) -> APIRouter:
         if pipe_a is None or pipe_b is None:
             return {"ok": False, "error": f"Camera '{cam_a}' or '{cam_b}' not found in active pipelines"}
 
-        # Check that both cameras have lens intrinsics
+        # Pre-flight: Intrinsics-Validierung
+        from src.cv.board_calibration import BoardCalibrationManager
+        bcm_a = BoardCalibrationManager(camera_id=cam_a)
+        bcm_b = BoardCalibrationManager(camera_id=cam_b)
+        if not bcm_a.has_valid_intrinsics():
+            return {"ok": False, "error": f"Kamera '{cam_a}' hat keine gueltige Lens-Kalibrierung. Bitte zuerst 'Lens Setup (ChArUco)' durchfuehren."}
+        if not bcm_b.has_valid_intrinsics():
+            return {"ok": False, "error": f"Kamera '{cam_b}' hat keine gueltige Lens-Kalibrierung. Bitte zuerst 'Lens Setup (ChArUco)' durchfuehren."}
         intr_a = pipe_a.camera_calibration.get_intrinsics()
         intr_b = pipe_b.camera_calibration.get_intrinsics()
-        if intr_a is None:
-            return {"ok": False, "error": f"Camera '{cam_a}' has no lens calibration"}
-        if intr_b is None:
-            return {"ok": False, "error": f"Camera '{cam_b}' has no lens calibration"}
 
         # Capture synchronized frame pairs
         num_pairs = body.get("num_pairs", 15)
@@ -735,12 +745,29 @@ def setup_routes(app_state: dict) -> APIRouter:
         frames_a = []
         frames_b = []
 
+        from src.web.stereo_progress import StereoProgressTracker
+        from src.cv.stereo_calibration import detect_charuco_corners
+        import cv2
+
         for i in range(num_pairs):
             raw_a = pipe_a.get_latest_raw_frame()
             raw_b = pipe_b.get_latest_raw_frame()
+            detected_a = False
+            detected_b = False
             if raw_a is not None and raw_b is not None:
                 frames_a.append(raw_a.copy())
                 frames_b.append(raw_b.copy())
+                gray_a = cv2.cvtColor(raw_a, cv2.COLOR_BGR2GRAY) if len(raw_a.shape) == 3 else raw_a
+                gray_b = cv2.cvtColor(raw_b, cv2.COLOR_BGR2GRAY) if len(raw_b.shape) == 3 else raw_b
+                corners_a, _ = detect_charuco_corners(gray_a)
+                corners_b, _ = detect_charuco_corners(gray_b)
+                detected_a = corners_a is not None
+                detected_b = corners_b is not None
+
+            progress = StereoProgressTracker.frame_progress(i, num_pairs, detected_a, detected_b)
+            em = app_state.get("event_manager")
+            if em and hasattr(em, 'broadcast_sync'):
+                em.broadcast_sync("stereo_progress", progress)
             _time.sleep(capture_delay)
 
         if len(frames_a) < 5:
@@ -792,6 +819,13 @@ def setup_routes(app_state: dict) -> APIRouter:
                 logger.info("Stereo params reloaded into live pipeline after calibration")
             except Exception as reload_err:
                 logger.warning("Failed to reload stereo params: %s", reload_err)
+
+        result_event = StereoProgressTracker.calibration_result(
+            result.reprojection_error, len(frames_a), cam_a, cam_b
+        )
+        em = app_state.get("event_manager")
+        if em and hasattr(em, 'broadcast_sync'):
+            em.broadcast_sync("stereo_result", result_event)
 
         return {
             "ok": True,
@@ -1280,6 +1314,32 @@ def setup_routes(app_state: dict) -> APIRouter:
             "camera_errors": camera_errors,
         }
 
+    @router.get("/api/multi/intrinsics-status")
+    async def multi_intrinsics_status() -> dict:
+        """Per-camera intrinsics validity for multi-cam setup."""
+        multi = app_state.get("multi_pipeline")
+        if multi is None:
+            return {"ok": False, "error": "Multi-Kamera-Pipeline laeuft nicht"}
+        from src.cv.board_calibration import BoardCalibrationManager
+        statuses = []
+        for cfg in multi.camera_configs:
+            cam_id = cfg["camera_id"]
+            bcm = BoardCalibrationManager(camera_id=cam_id)
+            has_intr = bcm.has_valid_intrinsics()
+            statuses.append({"camera_id": cam_id, "has_intrinsics": has_intr})
+        return {"ok": True, "cameras": statuses}
+
+    @router.get("/api/multi/camera-health")
+    async def multi_camera_health() -> dict:
+        """Per-Kamera Gesundheitsstatus fuer Multi-Cam Setup."""
+        multi = app_state.get("multi_pipeline")
+        if multi is None:
+            return {"ok": False, "error": "Multi-Kamera-Pipeline laeuft nicht"}
+        from src.web.camera_health import CameraHealthMonitor
+        monitor = CameraHealthMonitor()
+        health = monitor.check_health(multi)
+        return {"ok": True, "cameras": health}
+
     # --- Per-Camera Video Feeds (Multi-Camera) ---
 
     @router.get("/video/feed/{camera_id}")
@@ -1350,6 +1410,16 @@ def setup_routes(app_state: dict) -> APIRouter:
             "alerts": telemetry.get_alerts(),
             "summary": telemetry.get_summary(),
         }
+
+    @router.get("/api/telemetry/stereo")
+    async def telemetry_stereo() -> dict:
+        """Triangulations-Telemetrie."""
+        multi = app_state.get("multi_pipeline")
+        if multi is None:
+            return {"ok": False, "error": "Multi-Kamera-Pipeline laeuft nicht"}
+        if not hasattr(multi, "get_triangulation_telemetry"):
+            return {"ok": False, "error": "Triangulations-Telemetrie nicht verfuegbar"}
+        return {"ok": True, **multi.get_triangulation_telemetry()}
 
     # --- Stats ---
 

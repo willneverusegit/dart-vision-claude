@@ -170,6 +170,10 @@ class DartApp {
         // Camera health
         this.ws.on("camera_state", (data) => this._onCameraStateChange(data));
 
+        // Stereo calibration progress
+        this.ws.on("stereo_progress", (data) => this._updateStereoProgress(data));
+        this.ws.on("stereo_result", (data) => this._showStereoResult(data));
+
         // Darts removed
         this.ws.on("darts_removed", () => {
             this.dartboard.clearHits();
@@ -1248,6 +1252,42 @@ class DartApp {
         }
     }
 
+    _updateStereoProgress(data) {
+        const bar = document.getElementById('stereo-progress-bar');
+        const text = document.getElementById('stereo-progress-text');
+        const container = document.getElementById('stereo-progress-container');
+        if (container) container.style.display = 'block';
+        if (bar) bar.style.width = data.percent + '%';
+        if (text) {
+            const iA = data.detected_a ? '\u2713' : '\u2717';
+            const iB = data.detected_b ? '\u2713' : '\u2717';
+            text.textContent = 'Frame ' + (data.frame_idx + 1) + '/' + data.total + ' \u2014 Cam A: ' + iA + '  Cam B: ' + iB;
+        }
+    }
+
+    _showStereoResult(data) {
+        const el = document.getElementById('stereo-result-info');
+        if (!el) return;
+        const colors = {excellent: '#4caf50', good: '#8bc34a', acceptable: '#ff9800', poor: '#f44336'};
+        const c = colors[data.quality] || '#999';
+        // Build result display using DOM — data originates from our own server
+        const wrapper = document.createElement('div');
+        wrapper.style.cssText = 'margin-top:12px;padding:12px;border-radius:8px;border:1px solid ' + c + ';background:' + c + '22';
+        const strong = document.createElement('strong');
+        strong.style.color = c;
+        strong.textContent = data.label;
+        const rmsText = document.createTextNode(' (RMS: ' + data.rms.toFixed(4) + ')');
+        const br1 = document.createElement('br');
+        const rec = document.createElement('small');
+        rec.textContent = data.recommendation;
+        const br2 = document.createElement('br');
+        const info = document.createElement('small');
+        info.textContent = data.pairs_used + ' Frame-Paare (' + data.camera_a + ' / ' + data.camera_b + ')';
+        wrapper.append(strong, rmsText, br1, rec, br2, info);
+        el.textContent = '';
+        el.appendChild(wrapper);
+    }
+
     _updateCameraHealthFromStats(cameraHealth) {
         if (!cameraHealth) return;
         const banner = document.getElementById("camera-warning-banner");
@@ -1531,9 +1571,39 @@ class DartApp {
                 const guide = document.getElementById("multi-setup-guide");
                 if (guide) guide.style.display = "none";
             }
+            this._updateCameraHealth();
         } catch (e) {
             console.error("Multi status error:", e);
         }
+    }
+
+    async _updateCameraHealth() {
+        try {
+            const resp = await fetch('/api/multi/camera-health');
+            if (!resp.ok) return;
+            const data = await resp.json();
+            if (!data.ok) return;
+            for (const [camId, health] of Object.entries(data.cameras)) {
+                let badge = document.getElementById('cam-health-' + camId);
+                if (!badge) {
+                    const entries = document.querySelectorAll('.multi-cam-entry');
+                    for (const entry of entries) {
+                        const idInput = entry.querySelector('input[placeholder*="cam_"]') || entry.querySelector('input');
+                        if (idInput && idInput.value === camId) {
+                            badge = document.createElement('span');
+                            badge.id = 'cam-health-' + camId;
+                            badge.className = 'cam-health-badge';
+                            entry.appendChild(badge);
+                            break;
+                        }
+                    }
+                }
+                if (badge) {
+                    badge.className = 'cam-health-badge cam-health-' + health.status;
+                    badge.title = health.error || (health.fps + ' FPS');
+                }
+            }
+        } catch (e) { /* ignore */ }
     }
 
     async _fetchReadiness(infoEl) {
@@ -1976,6 +2046,7 @@ class DartApp {
             { id: "cv-min-diff-area", param: "min_diff_area" },
             { id: "cv-max-diff-area", param: "max_diff_area" },
             { id: "cv-min-elongation", param: "min_elongation" },
+            { id: "cv-motion-threshold", param: "motion_threshold" },
         ];
 
         let debounceTimer = null;
@@ -2018,6 +2089,7 @@ class DartApp {
                 min_diff_area: "cv-min-diff-area",
                 max_diff_area: "cv-max-diff-area",
                 min_elongation: "cv-min-elongation",
+                motion_threshold: "cv-motion-threshold",
             };
             for (const [param, id] of Object.entries(mapping)) {
                 const slider = document.getElementById(id);

@@ -1,6 +1,6 @@
 # Project Context — DartVision
 
-*Last updated: 2026-03-17 (Live Tuning Bug-Fix + JS-Syntax verifiziert)*
+*Last updated: 2026-03-18 (P29-P32 Multi-Cam implementiert, Diagnostik-Analyse, Tuning-Guide erweitert)*
 
 ## Projektziel
 Lokales Dart-Scoring-System mit Computer Vision zur automatischen Treffererkennung auf einer Dartscheibe. CPU-only, Windows-Laptop, kein Cloud-Zwang.
@@ -13,7 +13,7 @@ Lokales Dart-Scoring-System mit Computer Vision zur automatischen Treffererkennu
 | Backend | FastAPI | — | REST + WebSocket |
 | CV | OpenCV + NumPy | — | CPU-only, keine GPU |
 | Frontend | Vanilla JS / HTML / CSS | — | Web Audio API |
-| Tests | pytest | — | 576 Tests, ~77% Coverage |
+| Tests | pytest | — | 620 Tests, ~73% Coverage |
 | Config | YAML | — | calibration_config.yaml |
 
 ## Architektur
@@ -49,12 +49,12 @@ ThreadedCamera
 | Board-Geometrie | stabil | ArUco 4-stufig, Qualitaetsmetrik |
 | Kamera-Reconnect | stabil | Exp. Backoff, Health-API |
 | Telemetrie | stabil | FPS, Drops, Queue, RAM, Chart, Alerting |
-| Multi-Camera | experimentell | funktional, nicht produktionsreif |
+| Multi-Camera | experimentell | P29-P32 implementiert: Intrinsics-Validation, Triangulation-Telemetry, Camera-Health, Stereo-Progress |
 | Tip-Detection | stabil | P20 erledigt — minAreaRect + Kontur-Halbierung, 18/18 validiert |
 | Tip vs Centroid Scoring | validiert | P25 — 22 Tests beweisen Tip > Centroid bei Segmentgrenzen |
 | Kontur-Robustheit | stabil | P21 — Elongation-Filter (min_elongation=1.5) + Closing |
 | Diff-Diagnostics | neu | Speichert Diff-Masken/Konturen bei jedem Treffer (DARTVISION_DIAGNOSTICS_DIR) |
-| Live Tuning | stabil | CV-Parameter-API (GET/POST /api/cv-params), Frontend-Slider, Diagnostics-Toggle, JS-Syntax-Bug behoben |
+| Live Tuning | stabil | CV-Parameter-API, Frontend-Slider, Diagnostics-Toggle, Tuning-Guide mit Latenz-Kapitel |
 | Light Theme | stabil | P23 — Toggle im Header, localStorage, prefers-color-scheme |
 | E2E echte Clips | offen | P11 — synthetisch OK, echte Clips fehlen |
 
@@ -72,5 +72,6 @@ ThreadedCamera
 
 ## Open Questions
 
-- Wie verhalten sich diff_threshold=50 und settle_frames=5 am echten Board? (Validierung nach erstem Realtest)
-- Multi-Cam Robustheit noch nicht produktionsreif — wann ist sie bereit?
+- ~~Wie verhalten sich diff_threshold=50 und settle_frames=5 am echten Board?~~ → Realtest 17.03: Erkennung funktioniert, aber Latenz zu hoch. motion_threshold ist Flaschenhals.
+- Multi-Cam: P29-P32 implementiert, Integration noch nicht live getestet
+- Kamera-Qualitaet: ID 0 (schlechte Cam) zeigt Latenz-Probleme — bessere Kamera testen

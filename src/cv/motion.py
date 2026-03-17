@@ -32,6 +32,16 @@ class MotionDetector:
         motion_pixels = cv2.countNonZero(fg_mask)
         return fg_mask, motion_pixels > self.threshold
 
+    def get_params(self) -> dict:
+        """Return current tunable parameters."""
+        return {"motion_threshold": self.threshold}
+
+    def set_threshold(self, value: int) -> None:
+        """Update motion threshold at runtime."""
+        if value <= 0:
+            raise ValueError("threshold must be > 0")
+        self.threshold = value
+
     def reset(self) -> None:
         """Reset background model (e.g., after calibration change)."""
         self.bg_subtractor = cv2.createBackgroundSubtractorMOG2(
