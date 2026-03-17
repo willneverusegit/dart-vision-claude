@@ -31,14 +31,14 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 ## Was heute als fortgeschritten, aber noch sensibel gilt
 
 - Multi-Camera-Pipeline (gehaertet: Readiness-Diagnose, Config-Persistenz, Setup-Wizard)
-- Stereo-Kalibrierung
+- Stereo-Kalibrierung (Triangulations-Genauigkeit validiert: <5mm auf 8 Board-Positionen)
 - Board-Pose-Kalibrierung
 - Triangulation und Voting-Fallback
 - Umschalten zwischen Single- und Multi-Cam (Fix: Kamera-Release-Timing)
 
 ## Verifizierte Kennzahlen
 
-- `370` Tests bestanden (Stand 2026-03-17)
+- `397` Tests bestanden (Stand 2026-03-17)
 - Gesamt-Coverage `70%`
 - Wichtige Module: main.py 78%, routes.py 66%, pipeline.py 68%, multi_camera.py 62%, capture.py 72%
 - synthetische Pipeline-Benchmarks fuer `1`, `2` und `3` Kameras innerhalb der definierten KPI-Grenzen
