@@ -78,5 +78,24 @@
     "tags": ["hardware", "camera", "image-quality", "diff-threshold", "diagnostics"],
     "reusable_pattern": "Bei Multi-Kamera-Setups: Bildqualitaet variiert zwischen Kameras. Diagnostics-Modus frueh einbauen um Unterschiede zu erkennen. Algorithmen muessen auf beiden Qualitaetsstufen funktionieren.",
     "recurrence": []
+  },
+  {
+    "id": "2026-03-17-2200-class-brace-misplacement",
+    "timestamp": "2026-03-17T22:00:00+01:00",
+    "category": "syntax",
+    "severity": "critical",
+    "trigger": "Tune-Button funktioniert nicht — DartApp wird nicht instanziiert",
+    "problem": "DartApp-Klasse wurde vor den CV-Tuning-Methoden geschlossen. _bindCvTuning(), _loadCvParams(), _sendCvParam() standen ausserhalb der Klasse — SyntaxError verhinderte das Parsen der gesamten JS-Datei.",
+    "root_cause": "Beim Einfuegen der CV-Tuning-Methoden durch einen Agenten wurde eine ueberzaehlige schliessende Klammer } vor den neuen Methoden platziert. Die Klasse endete zu frueh.",
+    "solution": "Ueberzaehlige } auf Zeile 1951 entfernt. Methoden sind wieder innerhalb der DartApp-Klasse.",
+    "attempts": 3,
+    "failed_approaches": [
+      "Browser-Caching vermutet — ?v=2 Cache-Busting hinzugefuegt, loeste das Problem nicht",
+      "Preview-Tool-Limitation vermutet — tatsaechlich war der Code auf Disk fehlerhaft"
+    ],
+    "files_changed": ["static/js/app.js"],
+    "tags": ["javascript", "syntax", "class-definition", "agent-generated-code", "brace-mismatch"],
+    "reusable_pattern": "Wenn ein Agent Methoden in eine bestehende JS-Klasse einfuegt: immer node -c <file> ausfuehren um Syntax zu verifizieren. Besonders bei Einfuegungen am Ende einer Klasse auf korrekte Klammerung achten.",
+    "recurrence": []
   }
 ]

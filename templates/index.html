@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dart-Vision</title>
-    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/style.css?v=2">
 </head>
 <body>
     <header class="header">
@@ -16,25 +16,64 @@
             <span id="memory-display" class="header__metric" title="Speicherverbrauch (RAM)">RAM: --</span>
             <span id="pending-count" class="pending-badge" style="display:none;">0 Kandidaten</span>
             <button id="btn-telemetry" class="btn btn--secondary btn--tiny" title="Performance Monitor">Perf</button>
+            <button id="btn-cv-tuning" class="btn btn--secondary btn--tiny" title="CV Parameter Tuning">Tune</button>
             <span id="ws-status" class="ws-status ws-status--disconnected">Offline</span>
         </div>
     </header>
 
-    <div id="camera-warning-banner" class="camera-warning" style="display:none;">
+    <div id="camera-warning-banner" class="camera-warning" role="alert" aria-live="assertive" style="display:none;">
         <span id="camera-warning-text">Kamera-Verbindung unterbrochen — Reconnect läuft...</span>
     </div>
 
-    <div id="telemetry-alert-banner" class="telemetry-alert" style="display:none;">
+    <div id="telemetry-alert-banner" class="telemetry-alert" role="alert" aria-live="polite" style="display:none;">
         <span id="telemetry-alert-text"></span>
     </div>
 
     <div id="telemetry-panel" class="telemetry-panel" style="display:none;">
         <div class="telemetry-panel__header">
             <span>Performance Monitor</span>
-            <button id="btn-close-telemetry" class="btn btn--secondary btn--tiny">X</button>
+            <button id="btn-close-telemetry" class="btn btn--secondary btn--tiny" aria-label="Performance Monitor schliessen">X</button>
         </div>
         <canvas id="telemetry-chart" class="telemetry-chart" width="400" height="120"></canvas>
         <div class="telemetry-panel__summary" id="telemetry-summary"></div>
+    </div>
+
+    <div id="cv-tuning-panel" class="telemetry-panel" style="display:none;">
+        <div class="telemetry-panel__header">
+            <span>CV Tuning</span>
+            <button id="btn-close-cv-tuning" class="btn btn--secondary btn--tiny" aria-label="CV Tuning schliessen">X</button>
+        </div>
+        <div class="cv-tuning__controls">
+            <label class="cv-tuning__row">
+                <span>diff_threshold</span>
+                <input type="range" id="cv-diff-threshold" min="10" max="150" step="5" value="50">
+                <span class="cv-tuning__value" id="cv-diff-threshold-val">50</span>
+            </label>
+            <label class="cv-tuning__row">
+                <span>settle_frames</span>
+                <input type="range" id="cv-settle-frames" min="1" max="15" step="1" value="5">
+                <span class="cv-tuning__value" id="cv-settle-frames-val">5</span>
+            </label>
+            <label class="cv-tuning__row">
+                <span>min_diff_area</span>
+                <input type="range" id="cv-min-diff-area" min="10" max="500" step="10" value="50">
+                <span class="cv-tuning__value" id="cv-min-diff-area-val">50</span>
+            </label>
+            <label class="cv-tuning__row">
+                <span>max_diff_area</span>
+                <input type="range" id="cv-max-diff-area" min="1000" max="20000" step="500" value="8000">
+                <span class="cv-tuning__value" id="cv-max-diff-area-val">8000</span>
+            </label>
+            <label class="cv-tuning__row">
+                <span>min_elongation</span>
+                <input type="range" id="cv-min-elongation" min="1.0" max="5.0" step="0.1" value="1.5">
+                <span class="cv-tuning__value" id="cv-min-elongation-val">1.5</span>
+            </label>
+            <label class="cv-tuning__row">
+                <input type="checkbox" id="cv-diagnostics-toggle">
+                <span>Save diagnostics</span>
+            </label>
+        </div>
     </div>
 
     <main class="main-layout">
@@ -105,8 +144,8 @@
         <!-- Center: Dartboard SVG -->
         <section class="panel panel--dartboard">
             <h2 class="panel__title">Dartboard</h2>
-            <div id="dartboard-container" class="dartboard-container"></div>
-            <div class="turn-info">
+            <div id="dartboard-container" class="dartboard-container" role="img" aria-label="Dartboard visualization"></div>
+            <div class="turn-info" aria-live="polite">
                 <span id="turn-total" class="turn-total">0</span>
                 <span class="turn-label">Punkte diese Runde</span>
                 <div class="darts-remaining">
@@ -123,11 +162,11 @@
             <h2 class="panel__title">Scoreboard</h2>
 
             <div class="scoreboard-section">
-                <div id="scoreboard" class="scoreboard"></div>
+                <div id="scoreboard" class="scoreboard" aria-live="polite"></div>
             </div>
 
             <!-- Hit Candidates Review -->
-            <div class="scoreboard-section" id="candidates-panel" style="display:none;">
+            <div class="scoreboard-section" id="candidates-panel" style="display:none;" aria-live="polite">
                 <h3 class="candidates-title">Treffer-Kandidaten</h3>
                 <div id="candidates-list" class="candidates-list"></div>
             </div>
@@ -177,7 +216,7 @@
     </section>
 
     <!-- Winner Modal -->
-    <div id="winner-modal" class="modal" style="display: none;">
+    <div id="winner-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="winner-text" style="display: none;">
         <div class="modal__content">
             <h2 id="winner-text" class="modal__title">Gewinner!</h2>
             <button id="btn-close-modal" class="btn btn--accent">OK</button>
@@ -185,9 +224,9 @@
     </div>
 
     <!-- Calibration Modal -->
-    <div id="calibration-modal" class="modal" style="display: none;">
+    <div id="calibration-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="cal-modal-title" style="display: none;">
         <div class="modal__content modal__content--wide">
-            <h2 class="modal__title">Kalibrierung</h2>
+            <h2 id="cal-modal-title" class="modal__title">Kalibrierung</h2>
 
             <!-- Step 1: Mode Selection -->
             <div id="cal-step-mode" class="cal-step">
@@ -286,9 +325,9 @@
     </div>
 
     <!-- Multi-Camera Setup Modal -->
-    <div id="multi-cam-modal" class="modal" style="display: none;">
+    <div id="multi-cam-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="multi-cam-modal-title" style="display: none;">
         <div class="modal__content modal__content--wide">
-            <h2 class="modal__title">Multi-Kamera Setup</h2>
+            <h2 id="multi-cam-modal-title" class="modal__title">Multi-Kamera Setup</h2>
 
             <!-- Step 1: Camera Config -->
             <div id="multi-step-config" class="cal-step">
@@ -359,9 +398,9 @@
         </div>
     </div>
 
-    <script src="/static/js/websocket.js"></script>
-    <script src="/static/js/dartboard.js"></script>
-    <script src="/static/js/scoreboard.js"></script>
-    <script src="/static/js/app.js"></script>
+    <script src="/static/js/websocket.js?v=2"></script>
+    <script src="/static/js/dartboard.js?v=2"></script>
+    <script src="/static/js/scoreboard.js?v=2"></script>
+    <script src="/static/js/app.js?v=2"></script>
 </body>
 </html>

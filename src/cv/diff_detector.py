@@ -56,6 +56,7 @@ class FrameDiffDetector:
         min_diff_area: int = 50,
         max_diff_area: int = 8000,
         diagnostics_dir: str | None = None,
+        min_elongation: float = 1.5,
     ) -> None:
         if settle_frames < 1:
             raise ValueError("settle_frames must be >= 1")
@@ -63,11 +64,14 @@ class FrameDiffDetector:
             raise ValueError("diff_threshold must be in 1..255")
         if min_diff_area >= max_diff_area:
             raise ValueError("min_diff_area must be < max_diff_area")
+        if min_elongation < 1.0:
+            raise ValueError("min_elongation must be >= 1.0")
 
         self.settle_frames = settle_frames
         self.diff_threshold = diff_threshold
         self.min_diff_area = min_diff_area
         self.max_diff_area = max_diff_area
+        self.min_elongation = min_elongation
 
         self._state = _State.IDLE
         self._baseline: np.ndarray | None = None
@@ -108,6 +112,63 @@ class FrameDiffDetector:
     @property
     def state(self) -> str:
         return self._state.value
+
+    def get_params(self) -> dict:
+        """Return current tunable parameters as dict."""
+        return {
+            "settle_frames": self.settle_frames,
+            "diff_threshold": self.diff_threshold,
+            "min_diff_area": self.min_diff_area,
+            "max_diff_area": self.max_diff_area,
+            "min_elongation": self.min_elongation,
+            "diagnostics_enabled": self._diagnostics_dir is not None,
+        }
+
+    def set_params(self, **kwargs) -> dict:
+        """Update tunable parameters at runtime. Returns updated params.
+
+        Only provided keys are updated. Validates before applying.
+        Raises ValueError on invalid values.
+        """
+        sf = kwargs.get("settle_frames", self.settle_frames)
+        dt = kwargs.get("diff_threshold", self.diff_threshold)
+        mina = kwargs.get("min_diff_area", self.min_diff_area)
+        maxa = kwargs.get("max_diff_area", self.max_diff_area)
+        me = kwargs.get("min_elongation", self.min_elongation)
+
+        # Validate (same rules as __init__)
+        if sf < 1:
+            raise ValueError("settle_frames must be >= 1")
+        if not (0 < dt < 256):
+            raise ValueError("diff_threshold must be in 1..255")
+        if mina >= maxa:
+            raise ValueError("min_diff_area must be < max_diff_area")
+        if me < 1.0:
+            raise ValueError("min_elongation must be >= 1.0")
+
+        self.settle_frames = sf
+        self.diff_threshold = dt
+        self.min_diff_area = mina
+        self.max_diff_area = maxa
+        self.min_elongation = me
+
+        logger.info("CV params updated: %s", self.get_params())
+        return self.get_params()
+
+    def toggle_diagnostics(self, path: str | None) -> bool:
+        """Enable or disable diagnostics at runtime.
+
+        Returns True if diagnostics are now enabled.
+        """
+        if path is not None:
+            self._diagnostics_dir = Path(path)
+            self._diagnostics_dir.mkdir(parents=True, exist_ok=True)
+            logger.info("Diagnostics enabled → %s", self._diagnostics_dir)
+            return True
+        else:
+            self._diagnostics_dir = None
+            logger.info("Diagnostics disabled")
+            return False
 
     # ------------------------------------------------------------------
     # State handlers
@@ -184,6 +245,15 @@ class FrameDiffDetector:
         if area > self.max_diff_area:
             logger.debug("FrameDiff: Diff-Blob zu groß (%.0f px²) — Beleuchtungsaenderung?", area)
             return None
+
+        # Elongation filter: darts are elongated, reject roughly circular blobs
+        rect = cv2.minAreaRect(largest)
+        rect_w, rect_h = rect[1]
+        if rect_w > 0 and rect_h > 0:
+            aspect = max(rect_w, rect_h) / min(rect_w, rect_h)
+            if aspect < self.min_elongation:
+                logger.debug("FrameDiff: Blob not elongated enough (aspect=%.1f)", aspect)
+                return None
 
         # Centroid as fallback position
         M = cv2.moments(largest)

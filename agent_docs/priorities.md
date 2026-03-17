@@ -320,7 +320,9 @@ Typische Arbeiten:
 - Session-bezogene Telemetrie mit Session-ID verknuepfen
 - Frontend: Download-Button im Performance-Monitor-Panel
 
-## Prioritaet 23: Dark/Light-Theme-Umschaltung und Accessibility (neu — entdeckt bei Arbeit an P10)
+## Prioritaet 23: Dark/Light-Theme-Umschaltung und Accessibility (✅ ERLEDIGT 2026-03-17)
+
+**Umsetzung:** Light-Theme CSS-Variante als `:root.light-theme` mit allen Custom Properties. Theme-Toggle-Button im Header (Sonne/Mond Unicode). localStorage-Persistenz + `prefers-color-scheme` Media Query als Default. Focus-Styles (`:focus-visible`) und ARIA-Labels fuer Accessibility. Geaenderte Dateien: `static/css/style.css`, `static/js/app.js`, `templates/index.html`.
 
 Ziel:
 
@@ -356,7 +358,9 @@ Typische Arbeiten:
 - Phase 2: DartDetection.frame_count-Semantik bereinigen (settle_frames umbenennen)
 - Tests: auf echten Kontur-Snapshots, nicht nur synthetisch ✅
 
-## Prioritaet 21: Kontur-Robustheit gegen Schatten und Luecken (neu — entdeckt bei P19)
+## Prioritaet 21: Kontur-Robustheit gegen Schatten und Luecken (✅ ERLEDIGT 2026-03-17)
+
+**Umsetzung:** Elongation-Filter in FrameDiffDetector._compute_diff(): minAreaRect-Aspect-Ratio-Check verwirft nicht-dart-foermige Blobs (Schatten, Beleuchtungswechsel). Konfigurierbarer Parameter `min_elongation` (default 1.5, Darts typisch >2.0). Morphologisches Closing war bereits implementiert (5x5 Ellipse). 6 neue Tests: Elongation-Filter (reject/accept), Closing fuellt Luecken, Shadow-Artefakt-Ablehnung, konfigurierbare Schwelle, Validierung. Geaenderte Dateien: `src/cv/diff_detector.py`, `tests/test_diff_detector.py`.
 
 Ziel:
 
@@ -382,7 +386,9 @@ Typische Arbeiten:
 - Referenz-Datensatz fuer zukuenftige Algorithmus-Entwicklung (P20, P21) aufbauen
 - Beleuchtungs-Einfluss dokumentieren (welche Kamera-Position produziert sauberste Konturen)
 
-## Prioritaet 25: Tip-Detection Genauigkeit gegen Board-Scoring validieren (neu — entdeckt bei P20)
+## Prioritaet 25: Tip-Detection Genauigkeit gegen Board-Scoring validieren (✅ ERLEDIGT 2026-03-17)
+
+**Umsetzung:** 22 Tests in `tests/test_tip_vs_centroid_scoring.py`: 10 individuelle Szenarien (Triple/Double/Bull/Sektor-Grenzen), 10 parametrisierte Validierungen, 1 Aggregat-Accuracy-Test (Tip >= Centroid, >= 80%). Beweist dass Tip-basiertes Scoring bei Segmentgrenzen zuverlaessiger ist als Centroid — Centroid driftet ~28-40px Richtung Flights und landet im falschen Ring/Sektor. Korrekte mm-basierte Normalisierung beruecksichtigt (Triple bei 116.5-125.9px, nicht 106-116px). Geaenderte Dateien: `tests/test_tip_vs_centroid_scoring.py`.
 
 Ziel:
 
@@ -420,3 +426,138 @@ Typische Arbeiten:
 - Mitte-zu-Mitte Abstand: 430mm (verifizieren)
 - Corner-zu-Corner: 505mm (vorher 480mm) — in calibration_config.yaml aktualisieren
 - Kalibrierung neu durchfuehren und Qualitaetsmetrik vergleichen
+
+## Prioritaet 28: radii_px vs mm-Normalisierung dokumentieren (neu — entdeckt bei P25)
+
+Ziel:
+
+- Klarstellen dass `BoardGeometry.radii_px` nur fuer Overlays/UI dient und `point_to_score()` ausschliesslich mm-basierte Konstanten aus `geometry.py` nutzt
+
+Typische Arbeiten:
+
+- Docstring in `BoardGeometry` ergaenzen: `radii_px` ist fuer visuelle Darstellung, nicht fuer Scoring
+- Docstring in `point_to_score()` ergaenzen: nutzt `RING_BOUNDARIES` (mm-basiert), nicht `radii_px`
+- Optional: Konsistenz-Check einbauen der warnt wenn `radii_px` stark von den mm-Proportionen abweicht (deutet auf falsche Kalibrierung hin)
+
+## Prioritaet 29: Stereo Calibration UI Wizard (neu — Multi-Cam Assessment)
+
+Kritikalitaet: KRITISCH
+
+Ziel:
+
+- Stereo-Kalibrierung fuer Nicht-Experten bedienbar machen
+
+Typische Arbeiten:
+
+- Step-by-Step Wizard: Kameras auswaehlen → Intrinsics pruefen → Stereo-Paare aufnehmen → Kalibrierung berechnen → Reprojektionsfehler anzeigen → Speichern/Verwerfen
+- Fortschritts-Feedback via WebSocket (Frame-Counter, Winkel-Hinweise)
+- Reprojektionsfehler-Schwelle als Quality Gate (RMS < 1.0px)
+- Dateien: src/cv/stereo_calibration.py, src/web/routes.py, templates/index.html, static/js/ (neues Modul)
+
+## Prioritaet 30: Camera Error Reporting to UI (neu — Multi-Cam Assessment)
+
+Kritikalitaet: KRITISCH
+
+Ziel:
+
+- Kamera-Fehler im Multi-Cam-Betrieb sichtbar machen
+
+Typische Arbeiten:
+
+- get_camera_errors() aus multi_camera.py an WebSocket broadcast anbinden
+- Per-Camera Status-Badges im Multi-Cam-Panel (gruen/gelb/rot)
+- Fehlermeldungen mit Kontext (welche Kamera, welcher Fehler, Zeitstempel)
+- Dateien: src/cv/multi_camera.py, src/web/routes.py, static/js/app.js
+
+## Prioritaet 31: Intrinsics Validation vor Stereo-Kalibrierung (neu — Multi-Cam Assessment)
+
+Kritikalitaet: KRITISCH
+
+Ziel:
+
+- Sicherstellen dass Kameras korrekte Intrinsics haben bevor Stereo-Kalibrierung gestartet wird
+
+Typische Arbeiten:
+
+- Pre-Flight-Check: Beide Kameras muessen gueltige camera_matrix haben
+- Klare Fehlermeldung wenn fehlend: "Bitte Linsen-Kalibrierung fuer cam_left zuerst durchfuehren"
+- Stereo-Kalibrierung blockieren bis beide Kameras bereit
+- Dateien: src/cv/stereo_calibration.py, src/cv/board_calibration.py
+
+## Prioritaet 32: Triangulation Telemetrie (neu — Multi-Cam Assessment)
+
+Kritikalitaet: KRITISCH
+
+Ziel:
+
+- Triangulations-Erfolgsrate und -Qualitaet messbar machen
+
+Typische Arbeiten:
+
+- Tracking: Versuche, Erfolge, Voting-Fallbacks, Single-Cam-Fallbacks
+- Reprojektionsfehler pro Treffer loggen
+- Z-Depth-Verteilung erfassen
+- API-Endpoint /api/telemetry/stereo
+- Alert wenn Triangulation >30% fehlschlaegt
+- Dateien: src/cv/stereo_utils.py, src/cv/multi_camera.py, src/utils/telemetry.py, src/web/routes.py
+
+## Prioritaet 33: Multi-Cam FPS/Buffer Governors (neu — Multi-Cam Assessment)
+
+Kritikalitaet: HOCH
+
+Ziel:
+
+- CPU-Ueberlastung bei mehreren Kameras auf i5-Laptop verhindern
+
+Typische Arbeiten:
+
+- Per-Camera Frame-Budget (default 15fps fuer Sekundaer-Kameras)
+- Detection Buffer Queue-Tiefe begrenzen (max 5 Eintraege)
+- Backpressure: bei vollem Buffer neue Frames skippen
+- Frame-Drop-Erkennung pro Kamera mit Telemetrie-Export
+- Dateien: src/cv/multi_camera.py, config/multi_cam.yaml
+
+## Prioritaet 34: 3+ Camera Fusion (neu — Multi-Cam Assessment)
+
+Kritikalitaet: HOCH
+
+Ziel:
+
+- Mehr als 2 Kameras fuer Triangulation nutzen
+
+Typische Arbeiten:
+
+- Aktuell wird nur das erste gueltige Stereo-Paar verwendet; auf alle Paare erweitern
+- Konsistenz-Check: Ausreisser >10% vom Median verwerfen
+- Ergebnisse mitteln fuer hoehere Genauigkeit
+- Dateien: src/cv/multi_camera.py, src/cv/stereo_utils.py
+
+## Prioritaet 35: Konfigurierbares Sync-Window und Depth Tolerance (neu — Multi-Cam Assessment)
+
+Kritikalitaet: HOCH
+
+Ziel:
+
+- Hardcoded Konstanten konfigurierbar machen
+
+Typische Arbeiten:
+
+- MAX_DETECTION_TIME_DIFF_S (aktuell 150ms) nach config/multi_cam.yaml verschieben
+- BOARD_DEPTH_TOLERANCE_M (aktuell 15mm) konfigurierbar machen
+- Presets: "tight" (10mm/100ms), "standard" (15mm/150ms), "loose" (20mm/200ms)
+- Dateien: src/cv/multi_camera.py, config/multi_cam.yaml
+
+## Prioritaet 36: Multi-Cam Hardware E2E Test (neu — Multi-Cam Assessment)
+
+Kritikalitaet: MITTEL
+
+Ziel:
+
+- Triangulation mit echten USB-Kameras validieren
+
+Typische Arbeiten:
+
+- Test-Framework fuer 2+ echte Kameras mit gleichzeitiger Frame-Aufnahme
+- Offline-Replay mit Triangulation gegen Ground Truth
+- Minimale PC-Specs dokumentieren (CPU, USB-Bandbreite)
+- Dateien: tests/e2e/test_multi_cam_e2e.py

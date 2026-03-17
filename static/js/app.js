@@ -30,6 +30,7 @@ class DartApp {
         this._telemetryData = [];
         this._telemetryVisible = false;
         this._bindTelemetry();
+        this._bindCvTuning();
         this.ws.connect();
         this._startStatsPolling();
     }
@@ -1947,9 +1948,158 @@ class DartApp {
             banner.style.display = "none";
         }
     }
+
+    // --- CV Tuning ---
+
+    _bindCvTuning() {
+        const btn = document.getElementById("btn-cv-tuning");
+        const closeBtn = document.getElementById("btn-close-cv-tuning");
+        const panel = document.getElementById("cv-tuning-panel");
+        if (!btn || !panel) return;
+
+        btn.addEventListener("click", () => {
+            this._cvTuningVisible = !this._cvTuningVisible;
+            panel.style.display = this._cvTuningVisible ? "block" : "none";
+            if (this._cvTuningVisible) this._loadCvParams();
+        });
+        if (closeBtn) {
+            closeBtn.addEventListener("click", () => {
+                this._cvTuningVisible = false;
+                panel.style.display = "none";
+            });
+        }
+
+        // Slider bindings
+        const sliders = [
+            { id: "cv-diff-threshold", param: "diff_threshold" },
+            { id: "cv-settle-frames", param: "settle_frames" },
+            { id: "cv-min-diff-area", param: "min_diff_area" },
+            { id: "cv-max-diff-area", param: "max_diff_area" },
+            { id: "cv-min-elongation", param: "min_elongation" },
+        ];
+
+        let debounceTimer = null;
+        for (const { id, param } of sliders) {
+            const slider = document.getElementById(id);
+            const valSpan = document.getElementById(id + "-val");
+            if (!slider) continue;
+            slider.addEventListener("input", () => {
+                if (valSpan) valSpan.textContent = slider.value;
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(() => {
+                    this._sendCvParam(param, Number(slider.value));
+                }, 300);
+            });
+        }
+
+        // Diagnostics toggle
+        const diagToggle = document.getElementById("cv-diagnostics-toggle");
+        if (diagToggle) {
+            diagToggle.addEventListener("change", () => {
+                const path = diagToggle.checked ? "./diagnostics" : null;
+                fetch("/api/diagnostics/toggle", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ path }),
+                });
+            });
+        }
+    }
+
+    async _loadCvParams() {
+        try {
+            const resp = await fetch("/api/cv-params");
+            if (!resp.ok) return;
+            const data = await resp.json();
+            if (!data.ok) return;
+            const mapping = {
+                diff_threshold: "cv-diff-threshold",
+                settle_frames: "cv-settle-frames",
+                min_diff_area: "cv-min-diff-area",
+                max_diff_area: "cv-max-diff-area",
+                min_elongation: "cv-min-elongation",
+            };
+            for (const [param, id] of Object.entries(mapping)) {
+                const slider = document.getElementById(id);
+                const valSpan = document.getElementById(id + "-val");
+                if (slider && data[param] !== undefined) {
+                    slider.value = data[param];
+                    if (valSpan) valSpan.textContent = data[param];
+                }
+            }
+            const diagToggle = document.getElementById("cv-diagnostics-toggle");
+            if (diagToggle) diagToggle.checked = !!data.diagnostics_enabled;
+        } catch (e) { /* silent */ }
+    }
+
+    async _sendCvParam(param, value) {
+        try {
+            const resp = await fetch("/api/cv-params", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ [param]: value }),
+            });
+            if (!resp.ok) return;
+            const data = await resp.json();
+            if (!data.ok && data.error) {
+                this._showError("CV Param: " + data.error);
+            }
+        } catch (e) { /* silent */ }
+    }
 }
 
 // Initialize app when DOM is ready
 document.addEventListener("DOMContentLoaded", () => {
     window.dartApp = new DartApp();
+
+    // Theme toggle (self-contained IIFE)
+    (function initThemeToggle() {
+        const root = document.documentElement;
+        const saved = localStorage.getItem("theme");
+
+        if (saved === "light") {
+            root.classList.add("light-theme");
+            root.classList.remove("dark-theme");
+        } else if (saved === "dark") {
+            root.classList.add("dark-theme");
+            root.classList.remove("light-theme");
+        }
+        // If no saved preference, the @media (prefers-color-scheme) rule handles it
+
+        const btn = document.createElement("button");
+        btn.className = "theme-toggle";
+        btn.setAttribute("aria-label", "Toggle light/dark theme");
+        btn.title = "Toggle theme";
+
+        function updateIcon() {
+            const isLight = root.classList.contains("light-theme") ||
+                (!root.classList.contains("dark-theme") &&
+                 window.matchMedia("(prefers-color-scheme: light)").matches);
+            btn.textContent = isLight ? "\u{1F319}" : "\u{2600}\u{FE0F}";
+        }
+
+        btn.addEventListener("click", () => {
+            const isCurrentlyLight = root.classList.contains("light-theme") ||
+                (!root.classList.contains("dark-theme") &&
+                 window.matchMedia("(prefers-color-scheme: light)").matches);
+
+            if (isCurrentlyLight) {
+                root.classList.remove("light-theme");
+                root.classList.add("dark-theme");
+                localStorage.setItem("theme", "dark");
+            } else {
+                root.classList.remove("dark-theme");
+                root.classList.add("light-theme");
+                localStorage.setItem("theme", "light");
+            }
+            updateIcon();
+        });
+
+        updateIcon();
+
+        const container = document.querySelector(".header__stats");
+        if (container) {
+            container.appendChild(btn);
+        }
+    })();
 });

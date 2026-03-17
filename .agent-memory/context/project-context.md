@@ -1,6 +1,6 @@
 # Project Context — DartVision
 
-*Last updated: 2026-03-17 (P20 erledigt)*
+*Last updated: 2026-03-17 (Live Tuning Bug-Fix + JS-Syntax verifiziert)*
 
 ## Projektziel
 Lokales Dart-Scoring-System mit Computer Vision zur automatischen Treffererkennung auf einer Dartscheibe. CPU-only, Windows-Laptop, kein Cloud-Zwang.
@@ -13,7 +13,7 @@ Lokales Dart-Scoring-System mit Computer Vision zur automatischen Treffererkennu
 | Backend | FastAPI | — | REST + WebSocket |
 | CV | OpenCV + NumPy | — | CPU-only, keine GPU |
 | Frontend | Vanilla JS / HTML / CSS | — | Web Audio API |
-| Tests | pytest | — | 540 Tests, ~73% Coverage |
+| Tests | pytest | — | 576 Tests, ~77% Coverage |
 | Config | YAML | — | calibration_config.yaml |
 
 ## Architektur
@@ -51,7 +51,11 @@ ThreadedCamera
 | Telemetrie | stabil | FPS, Drops, Queue, RAM, Chart, Alerting |
 | Multi-Camera | experimentell | funktional, nicht produktionsreif |
 | Tip-Detection | stabil | P20 erledigt — minAreaRect + Kontur-Halbierung, 18/18 validiert |
+| Tip vs Centroid Scoring | validiert | P25 — 22 Tests beweisen Tip > Centroid bei Segmentgrenzen |
+| Kontur-Robustheit | stabil | P21 — Elongation-Filter (min_elongation=1.5) + Closing |
 | Diff-Diagnostics | neu | Speichert Diff-Masken/Konturen bei jedem Treffer (DARTVISION_DIAGNOSTICS_DIR) |
+| Live Tuning | stabil | CV-Parameter-API (GET/POST /api/cv-params), Frontend-Slider, Diagnostics-Toggle, JS-Syntax-Bug behoben |
+| Light Theme | stabil | P23 — Toggle im Header, localStorage, prefers-color-scheme |
 | E2E echte Clips | offen | P11 — synthetisch OK, echte Clips fehlen |
 
 ## Key Decisions (quick reference)
@@ -64,7 +68,7 @@ ThreadedCamera
 
 - `DartDetection.frame_count` wird im FrameDiffDetector als "settle_frames" (Konfiguration) verwendet, nicht als echte Frame-Zaehlung — wird bei P20 bereinigt
 - `DartImpactDetector.detect()` ist im Single-Cam-Pfad seit P19 nicht mehr aktiv (nur noch Multi-Cam und Tests)
-- Tip-Detection noch nicht gegen Board-Scoring validiert (P25) — unklar ob Tip tatsaechlich besseres Scoring liefert als Centroid
+- ~~Tip-Detection noch nicht gegen Board-Scoring validiert~~ → P25 erledigt, Tip ist zuverlaessiger
 
 ## Open Questions
 

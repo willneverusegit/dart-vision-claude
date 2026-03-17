@@ -16,6 +16,57 @@
     --radius: 8px;
 }
 
+/* Light Theme */
+:root.light-theme {
+    --bg-primary: #f0f2f5;
+    --bg-secondary: #ffffff;
+    --bg-panel: #e8ecf1;
+    --accent: #d6336c;
+    --accent-hover: #c2255c;
+    --text-primary: #212529;
+    --text-secondary: #495057;
+    --text-muted: #868e96;
+    --success: #20a357;
+    --warning: #e67700;
+    --border: #ced4da;
+    --shadow: rgba(0, 0, 0, 0.12);
+}
+
+@media (prefers-color-scheme: light) {
+    :root:not(.dark-theme) {
+        --bg-primary: #f0f2f5;
+        --bg-secondary: #ffffff;
+        --bg-panel: #e8ecf1;
+        --accent: #d6336c;
+        --accent-hover: #c2255c;
+        --text-primary: #212529;
+        --text-secondary: #495057;
+        --text-muted: #868e96;
+        --success: #20a357;
+        --warning: #e67700;
+        --border: #ced4da;
+        --shadow: rgba(0, 0, 0, 0.12);
+    }
+}
+
+/* Theme toggle button */
+.theme-toggle {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius, 8px);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 1.1rem;
+    padding: 4px 8px;
+    line-height: 1;
+    transition: border-color 0.2s, color 0.2s;
+}
+
+.theme-toggle:hover {
+    border-color: var(--accent);
+    color: var(--text-primary);
+}
+
 * {
     margin: 0;
     padding: 0;
@@ -109,6 +160,35 @@ body {
     font-weight: 600;
     font-size: 0.85rem;
     animation: camera-warning-pulse 2s ease-in-out infinite;
+}
+
+/* CV Tuning panel */
+.cv-tuning__controls {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 8px;
+}
+.cv-tuning__row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+.cv-tuning__row span:first-child {
+    min-width: 120px;
+    font-family: monospace;
+}
+.cv-tuning__row input[type="range"] {
+    flex: 1;
+    accent-color: var(--accent);
+}
+.cv-tuning__value {
+    min-width: 50px;
+    text-align: right;
+    font-family: monospace;
+    color: var(--text-primary);
 }
 
 /* Telemetry panel */
@@ -722,8 +802,17 @@ body {
 }
 
 .select:focus, .input:focus {
-    outline: none;
     border-color: var(--accent);
+}
+
+/* Accessible focus styles for keyboard navigation */
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+a:focus-visible,
+[role="button"]:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
 }
 
 /* Modal */

@@ -81,3 +81,21 @@
 **Takeaway:** Bei Multi-Cam-Setups: frueh Diagnostics einbauen um Kamera-Unterschiede zu erkennen. Algorithmen muessen auf verschiedenen Qualitaetsstufen robust sein.
 
 ---
+
+## [2026-03-17 22:00] Ueberzaehlige Klammer bricht DartApp-Klasse ab
+
+**Category:** syntax | **Severity:** critical | **Attempts:** 3
+
+**Problem:** CV-Tuning-Methoden standen ausserhalb der DartApp-Klasse — SyntaxError verhinderte das Laden der gesamten JS-Datei. Tune-Button nicht funktional.
+
+**Root Cause:** Agent-generierter Code hatte eine ueberzaehlige schliessende Klammer } vor den neuen Methoden. Die Klasse endete zu frueh.
+
+**Solution:** Ueberzaehlige } entfernt. Verifiziert mit node -c.
+
+**Failed Approaches:**
+- Browser-Caching vermutet — ?v=2 Cache-Busting half nicht
+- Preview-Tool-Limitation vermutet — tatsaechlich war der Code fehlerhaft
+
+**Takeaway:** Nach dem Einfuegen von Methoden in JS-Klassen immer `node -c <file>` ausfuehren. Nicht sofort Browser-Caching verdaechtigen — erst Syntax pruefen.
+
+---

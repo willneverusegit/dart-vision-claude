@@ -353,6 +353,50 @@ def setup_routes(app_state: dict) -> APIRouter:
             "markers": pipeline.show_overlay_markers if pipeline else False,
         }
 
+    # --- CV Parameter Tuning ---
+
+    @router.get("/api/cv-params")
+    async def get_cv_params() -> dict:
+        """Get current CV detection parameters."""
+        pipeline = app_state.get("pipeline")
+        if not pipeline:
+            return {"ok": False, "error": "No pipeline active"}
+        return {"ok": True, **pipeline.frame_diff_detector.get_params()}
+
+    @router.post("/api/cv-params")
+    async def set_cv_params(request: Request) -> dict:
+        """Update CV detection parameters at runtime (partial update)."""
+        pipeline = app_state.get("pipeline")
+        if not pipeline:
+            return {"ok": False, "error": "No pipeline active"}
+        body = await request.json()
+        # Filter to known params only
+        known = {"settle_frames", "diff_threshold", "min_diff_area",
+                 "max_diff_area", "min_elongation"}
+        params = {k: v for k, v in body.items() if k in known}
+        # Type coercion
+        for k in ("settle_frames", "diff_threshold", "min_diff_area", "max_diff_area"):
+            if k in params:
+                params[k] = int(params[k])
+        if "min_elongation" in params:
+            params["min_elongation"] = float(params["min_elongation"])
+        try:
+            updated = pipeline.frame_diff_detector.set_params(**params)
+            return {"ok": True, **updated}
+        except ValueError as e:
+            return {"ok": False, "error": str(e)}
+
+    @router.post("/api/diagnostics/toggle")
+    async def toggle_diagnostics(request: Request) -> dict:
+        """Enable/disable diagnostics image saving at runtime."""
+        pipeline = app_state.get("pipeline")
+        if not pipeline:
+            return {"ok": False, "error": "No pipeline active"}
+        body = await request.json()
+        path = body.get("path")  # None to disable
+        enabled = pipeline.frame_diff_detector.toggle_diagnostics(path)
+        return {"ok": True, "diagnostics_enabled": enabled}
+
     # --- Capture Settings ---
 
     def _get_camera_from_pipeline():

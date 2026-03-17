@@ -102,5 +102,31 @@
     "tags": ["python", "state-machine", "pipeline", "architecture", "opencv", "background-subtraction"],
     "confidence": "medium",
     "skill_candidate": false
+  },
+  {
+    "id": "verify-js-syntax-after-agent-edit",
+    "type": "workflow-rule",
+    "title": "JS-Syntax nach Agent-Einfuegungen pruefen",
+    "description": "Wenn ein Agent Methoden in eine bestehende JS-Klasse einfuegt, kann eine falsch platzierte schliessende Klammer die gesamte Klasse zerbrechen. Der SyntaxError verhindert das Parsen der Datei — keine Fehlermeldung in der Console, da die Datei gar nicht erst ausgefuehrt wird.",
+    "trigger_conditions": [
+      "Agent fuegt Methoden in eine bestehende JS-Klasse ein",
+      "JS-Funktionalitaet funktioniert nach Agent-Edit nicht mehr",
+      "Keine Console-Errors aber Klasse/Objekt ist undefined"
+    ],
+    "recommended_action": "Nach jedem Agent-Edit an JS-Dateien sofort `node -c <file>` ausfuehren. Bei 'undefined' Klassen: Syntax zuerst pruefen, nicht Browser-Caching verdaechtigen.",
+    "avoid": [
+      "Browser-Caching als erste Vermutung bei fehlender JS-Funktionalitaet",
+      "Methoden am Ende einer Klasse einfuegen ohne Klammer-Balance zu pruefen"
+    ],
+    "evidence": {
+      "occurrences": 1,
+      "error_ids": ["2026-03-17-2200-class-brace-misplacement"],
+      "first_seen": "2026-03-17",
+      "last_seen": "2026-03-17",
+      "clustering_rule": "explicit-seed"
+    },
+    "tags": ["javascript", "syntax", "agent-generated-code", "class-definition", "brace-mismatch"],
+    "confidence": "low",
+    "skill_candidate": false
   }
 ]

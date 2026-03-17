@@ -49,7 +49,7 @@ def test_motion_during_settling_reverts_to_in_motion():
 
 def test_settling_returns_detection_and_back_to_idle():
     """settle_frames=2: 1 Frame in SETTLING zählt auf 1, zweiter löst Diff aus."""
-    d = FrameDiffDetector(settle_frames=2, diff_threshold=10, min_diff_area=10)
+    d = FrameDiffDetector(settle_frames=2, diff_threshold=10, min_diff_area=10, min_elongation=1.0)
     baseline = _gray(50)
     dart_frame = _gray(50)
     dart_frame[40:60, 40:60] = 200  # Dart-Blob einfügen (20x20=400px²)
@@ -74,7 +74,7 @@ def test_reset_clears_all_state():
 
 def test_diff_detects_new_blob():
     """Klarer Dart-Blob wird korrekt erkannt und Centroid stimmt."""
-    d = FrameDiffDetector(settle_frames=2, diff_threshold=30, min_diff_area=50)
+    d = FrameDiffDetector(settle_frames=2, diff_threshold=30, min_diff_area=50, min_elongation=1.0)
     baseline = _gray(100)
     post = _gray(100)
     post[45:65, 45:65] = 200  # 20x20 px = 400 px²
@@ -133,7 +133,7 @@ def test_invalid_params_raise():
 
 def test_second_dart_uses_updated_baseline():
     """Nach erstem Treffer wird Baseline neu gesetzt — zweiter Dart korrekt erkannt."""
-    d = FrameDiffDetector(settle_frames=2, diff_threshold=10, min_diff_area=10)
+    d = FrameDiffDetector(settle_frames=2, diff_threshold=10, min_diff_area=10, min_elongation=1.0)
     empty = _gray(50)
     dart1 = _gray(50)
     dart1[20:30, 20:30] = 200
@@ -178,7 +178,7 @@ def test_diagnostics_saves_files_on_detection(tmp_path):
     diag_dir = str(tmp_path / "diag")
     d = FrameDiffDetector(
         settle_frames=2, diff_threshold=10, min_diff_area=10,
-        diagnostics_dir=diag_dir,
+        diagnostics_dir=diag_dir, min_elongation=1.0,
     )
     baseline = _gray(50)
     post = _gray(50)
@@ -219,7 +219,7 @@ def test_diagnostics_does_not_block_detection(tmp_path):
     diag_dir = str(tmp_path / "diag")
     d = FrameDiffDetector(
         settle_frames=2, diff_threshold=30, min_diff_area=50,
-        diagnostics_dir=diag_dir,
+        diagnostics_dir=diag_dir, min_elongation=1.0,
     )
     baseline = _gray(100)
     post = _gray(100)
@@ -233,3 +233,74 @@ def test_diagnostics_does_not_block_detection(tmp_path):
     assert result is not None
     assert abs(result.center[0] - 55) < 5
     assert abs(result.center[1] - 55) < 5
+
+
+# ------------------------------------------------------------------
+# Elongation filter & contour robustness tests (P21)
+# ------------------------------------------------------------------
+
+
+def _run_detection(detector, baseline, post):
+    """Helper: run full IDLE->IN_MOTION->SETTLING->detect cycle."""
+    detector.update(baseline, has_motion=False)
+    detector.update(post, has_motion=True)
+    detector.update(post, has_motion=False)
+    return detector.update(post, has_motion=False)
+
+
+def test_elongation_filter_rejects_circular_blob():
+    """A square-ish diff blob (aspect ~1.0) is rejected by the elongation filter."""
+    d = FrameDiffDetector(settle_frames=2, diff_threshold=10, min_diff_area=10, min_elongation=1.5)
+    baseline = _gray(50)
+    post = _gray(50)
+    post[40:60, 40:60] = 200  # 20x20 square blob
+    result = _run_detection(d, baseline, post)
+    assert result is None
+
+
+def test_elongation_filter_accepts_dart_shaped_blob():
+    """An elongated blob (tall and narrow) passes the elongation filter."""
+    d = FrameDiffDetector(settle_frames=2, diff_threshold=10, min_diff_area=10, min_elongation=1.5)
+    baseline = _gray(50)
+    post = _gray(50)
+    post[20:80, 48:54] = 200  # 60x6 elongated blob
+    result = _run_detection(d, baseline, post)
+    assert result is not None
+
+
+def test_closing_fills_gaps_in_contour():
+    """A dart contour with a 5px gap in the middle still gets detected."""
+    d = FrameDiffDetector(settle_frames=2, diff_threshold=10, min_diff_area=10, min_elongation=1.5)
+    baseline = _gray(50)
+    post = _gray(50)
+    post[20:45, 48:54] = 200  # top segment
+    # gap at rows 45-50
+    post[50:80, 48:54] = 200  # bottom segment
+    result = _run_detection(d, baseline, post)
+    assert result is not None
+
+
+def test_shadow_artifact_rejected():
+    """A large diffuse blob exceeding max_diff_area is rejected."""
+    d = FrameDiffDetector(settle_frames=2, diff_threshold=10, min_diff_area=10, max_diff_area=5000, min_elongation=1.5)
+    baseline = _gray(50, size=200)
+    post = _gray(50, size=200)
+    post[60:140, 60:140] = 120  # 80x80 = 6400 px² > max_diff_area
+    result = _run_detection(d, baseline, post)
+    assert result is None
+
+
+def test_configurable_elongation_threshold():
+    """Setting min_elongation=1.0 accepts everything including square blobs."""
+    d = FrameDiffDetector(settle_frames=2, diff_threshold=10, min_diff_area=10, min_elongation=1.0)
+    baseline = _gray(50)
+    post = _gray(50)
+    post[40:60, 40:60] = 200  # square blob
+    result = _run_detection(d, baseline, post)
+    assert result is not None
+
+
+def test_invalid_min_elongation_raises():
+    """min_elongation < 1.0 raises ValueError."""
+    with pytest.raises(ValueError, match="min_elongation"):
+        FrameDiffDetector(min_elongation=0.5)
