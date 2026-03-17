@@ -1,1 +1,66 @@
-[]
+[
+  {
+    "id": "2026-03-17-self-improvement-composite-chain",
+    "timestamp": "2026-03-17T14:05:00+01:00",
+    "type": "architecture-decision",
+    "title": "Self-improvement workflow is composed from 5 base skills",
+    "decision": "Treat self-improvement as an orchestrated workflow that chains session-bootstrap, pattern-extractor, iteration-logger, context-keeper, and skill-generator.",
+    "rationale": "A standalone self-improvement skill was not installed, but all required primitives already exist and are stable.",
+    "alternatives_considered": [
+      {
+        "option": "Wait for a separate single skill package",
+        "rejected_because": "Would block immediate usage even though all building blocks are available now."
+      }
+    ],
+    "impact": {
+      "files_affected": [
+        ".agent-memory/context/project-context.md",
+        ".agent-memory/context/decisions.json",
+        ".agent-memory/iterations/errors.json",
+        ".agent-memory/patterns/patterns.json",
+        ".agent-memory/generated-skills/self-improvement-agent/SKILL.md"
+      ],
+      "reversibility": "easy",
+      "dependencies": [
+        "Codex local skills directory"
+      ]
+    },
+    "tags": [
+      "codex",
+      "self-improvement",
+      "skills"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "2026-03-17-priorities-19-23-added",
+    "timestamp": "2026-03-17T13:50:00+01:00",
+    "type": "status-update",
+    "title": "Backlog expanded with runtime hardening priorities",
+    "decision": "Add priorities P19-P23 to address async route blocking, pending-hit lifecycle, calibration modularization, multi-cam fusion burst handling, and app-state concurrency contracts.",
+    "rationale": "These risks were directly observed during current codebase analysis and coverage verification.",
+    "alternatives_considered": [
+      {
+        "option": "Continue only with existing backlog items",
+        "rejected_because": "Would leave currently observed runtime risks undocumented and unprioritized."
+      }
+    ],
+    "impact": {
+      "files_affected": [
+        "agent_docs/priorities.md",
+        "agent_docs/current_state.md"
+      ],
+      "reversibility": "easy",
+      "dependencies": [
+        "coverage report",
+        "module-level analysis"
+      ]
+    },
+    "tags": [
+      "backlog",
+      "runtime",
+      "stability"
+    ],
+    "status": "active"
+  }
+]

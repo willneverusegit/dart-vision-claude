@@ -298,3 +298,91 @@ Typische Arbeiten:
 - Double-In-Variante fuer X01 unterstuetzen (erster Wurf muss Double sein)
 - Checkout-Vorschlag auch fuer 2. und 3. Dart der Runde anpassen (nach erstem Wurf restlichen Checkout berechnen)
 - Spieler-spezifische Checkout-Praeferenzen (optional, spaeter)
+
+Verknuepfte Weaknesses: keine
+Verknuepfte Entscheidungen: ADR-004
+
+## Prioritaet 19: Async-Blocker in Web-Routes entfernen (neu - Analyse 2026-03-17)
+
+Ziel:
+
+- Event-Loop-Stalls in API-Endpunkten vermeiden und WebSocket-/MJPEG-Reaktivitaet unter Last stabil halten
+
+Typische Arbeiten:
+
+- alle `_time.sleep(...)` in `async def`-Routes durch nicht-blockierende Wartepfade ersetzen (`await asyncio.sleep(...)` oder threadbasierte Worker)
+- Start/Stop-Warte- und Polling-Logik in dedizierte Helper kapseln statt verteilt in Route-Handlern
+- Tests fuer parallel laufende Requests waehrend Multi-Start/Stop ergaenzen (keine blockierte Antwortpipeline)
+
+Warum kritisch: Blockierende Sleeps in asynchronen Endpunkten bremsen den gesamten Server und fuehren zu zufaelligen UI-Haengern.
+
+Verknuepfte Weaknesses: keine
+Verknuepfte Entscheidungen: ADR-004
+
+## Prioritaet 20: Hit-Candidate-Lifecycle serverseitig haerten (neu - Analyse 2026-03-17)
+
+Ziel:
+
+- Pending-Hits auch ohne Frontend-Interaktion kontrolliert abbauen und Speicher-/State-Aufblaehung verhindern
+
+Typische Arbeiten:
+
+- serverseitiges TTL-Expiry fuer `pending_hits` einbauen (nicht nur Frontend-Timeout)
+- harte Obergrenze fuer offene Kandidaten definieren (z.B. FIFO-Drop mit Logging)
+- Metrics/API-Felder fuer expired/rejected-by-timeout nachziehen und testen
+
+Warum kritisch: Aktuell wird Auto-Timeout primaer im Frontend gesteuert; bei getrennten/instabilen Clients bleiben Kandidaten laenger liegen als gewollt.
+
+Verknuepfte Weaknesses: keine
+Verknuepfte Entscheidungen: ADR-002, ADR-005
+
+## Prioritaet 21: Kalibrierungsmodul aufteilen und gezielt absichern (neu - Analyse 2026-03-17)
+
+Ziel:
+
+- Komplexitaet in `src/cv/calibration.py` reduzieren und den aktuell schwachen Testbereich systematisch absichern
+
+Typische Arbeiten:
+
+- `calibration.py` entlang der Workflows (Board-ArUco, Lens-ChArUco, Helpers) in klarere Teilmodule trennen
+- API-Verhalten unveraendert halten, aber interne Zustandsuebergaenge isoliert testbar machen
+- Coverage fuer den Kalibrierungs-Pfad auf mindestens mittleres Niveau anheben (Fehlerpfade + Recovery explizit)
+
+Warum kritisch: Das Modul ist gross und hat im Vergleich zu Kernmodulen deutlich weniger Abdeckung; Kalibrierung bleibt betriebskritisch.
+
+Verknuepfte Weaknesses: keine
+Verknuepfte Entscheidungen: ADR-001, ADR-002
+
+## Prioritaet 22: Multi-Cam-Fusion fuer Burst- und Timing-Faelle haerten (neu - Analyse 2026-03-17)
+
+Ziel:
+
+- Fehlzuordnungen bei zeitnahen Treffern mehrerer Kameras reduzieren und Fusion reproduzierbarer machen
+
+Typische Arbeiten:
+
+- Detection-Buffer von "letzter Treffer pro Kamera" auf zeitfensterbasierten Buffer erweitern
+- klare Pairing-Regeln fuer mehrere nahe Treffer (Burst) definieren und testen
+- Triangulations-/Fallback-Entscheidungen mit nachvollziehbaren Debug-Metadaten anreichern
+
+Warum kritisch: Die aktuelle Buffer-Logik kann bei dichten Trefferfolgen Detektionen ueberschreiben und dadurch Fusionsergebnisse verfaelschen.
+
+Verknuepfte Weaknesses: keine
+Verknuepfte Entscheidungen: ADR-002, ADR-003
+
+## Prioritaet 23: App-State-Concurrency vertraglich absichern (neu - Analyse 2026-03-17)
+
+Ziel:
+
+- gemeinsame Zustandsmutation zwischen Routen und Hintergrundthreads explizit und konsistent absichern
+
+Typische Arbeiten:
+
+- Zugriff auf `app_state` in klaren State-Helpern kapseln (statt freier Dict-Mutationen)
+- Lock-Konzept fuer Lifecycle, Pending-Hits und Pipeline-Referenzen vereinheitlichen
+- Race-Tests fuer Single/Multi-Umschalten und gleichzeitige API-Calls hinzufuegen
+
+Warum kritisch: Der Zustand ist stark geteilt; uneinheitliche Mutation erhoeht das Risiko fuer schwer reproduzierbare Runtime-Fehler.
+
+Verknuepfte Weaknesses: keine
+Verknuepfte Entscheidungen: ADR-003, ADR-005

@@ -1,1 +1,29 @@
-[]
+[
+  {
+    "id": "2026-03-17-14-10-self-improvement-skill-missing",
+    "timestamp": "2026-03-17T14:10:00+01:00",
+    "category": "workflow",
+    "severity": "major",
+    "trigger": "User requested activation of a self-improvement agent skill.",
+    "problem": "No standalone self-improvement skill was installed or discoverable in the active Codex skills directory.",
+    "root_cause": "The workflow existed as separate base skills, but no composed skill package was present.",
+    "solution": "Composed the workflow from 5 base skills and generated an installable self-improvement-agent skill.",
+    "attempts": 2,
+    "failed_approaches": [
+      "Search only curated remote skill list",
+      "Search only current repo worktree for SKILL.md"
+    ],
+    "files_changed": [
+      ".agent-memory/context/project-context.md",
+      ".agent-memory/context/decisions.json",
+      ".agent-memory/generated-skills/self-improvement-agent/SKILL.md",
+      ".agent-memory/generated-skills/self-improvement-agent/agents/openai.yaml"
+    ],
+    "tags": [
+      "skills",
+      "workflow",
+      "self-improvement"
+    ],
+    "reusable_pattern": "If a meta-skill is missing, chain existing base skills and generate a composite installable skill."
+  }
+]

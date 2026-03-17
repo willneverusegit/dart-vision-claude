@@ -1,28 +1,32 @@
-# Last Session Summary
+# Session Summary
 
-*Session: 2026-03-17*
+Session: 2026-03-17
 
-## What was done
-- Codebase analysiert und 5 neue Priorities (P13-P17) identifiziert und umgesetzt
-- P13: Input-Validierung in Web-Routes (score, sector, multiplier, ring)
-- P14: Game-Engine Robustheit (KeyError-Schutz, >3 Darts, starting_score)
-- P15: CV-Pipeline Konfigurations-Validierung (area bounds, thresholds, max_candidates)
-- P16: Frontend Fehlerbehandlung (response.ok auf allen fetch-Aufrufen, Error-Toast)
-- P17: Config-Schema-Validierung (load-time Warn-Logging, save-time ValueError)
-- 57 neue Tests geschrieben (483 total)
-- AGENTS.md um Fortschrittsdoku-Pflicht erweitert
-- CLAUDE.md, claude_code.md, INDEX.md entsprechend synchronisiert
-- Regel ergaenzt: pro erledigter Prioritaet mindestens eine neue
+## Completed work
 
-## Open items
-- P7: Spielablauf-UX (Hit-Candidate-Timeout, Audio-Feedback, Checkout-Vorschlaege)
-- P8: Performance-Monitoring (Telemetrie-Historie, FPS-Warnung, CPU-Last)
-- P9: Multi-Cam UX (Kamera-Vorschau, Drag-and-Drop, Setup-Wizard)
-- P10: UI-Design und Responsiveness (Mobile, Dark/Light, Tastaturkuerzel)
-- P11: E2E-Tests mit echten Videoclips
-- P12: DartImpactDetector Area-Range erweitern
+- Pflichtdokumente gelesen und Codebase analysiert.
+- `agent_docs/priorities.md` um 5 neue Prioritaeten erweitert: P19-P23.
+- `agent_docs/current_state.md` mit Analysebefunden und aktualisierten Kennzahlen (494 Tests, 76% Coverage) aktualisiert.
+- Self-improvement als zusammengesetzten Workflow aus 5 Basisskills umgesetzt:
+  - session-bootstrap
+  - pattern-extractor
+  - iteration-logger
+  - context-keeper
+  - skill-generator
+- Generierten Skill angelegt:
+  - `.agent-memory/generated-skills/self-improvement-agent/SKILL.md`
+  - `.agent-memory/generated-skills/self-improvement-agent/agents/openai.yaml`
+- Skill lokal installiert nach:
+  - `C:/Users/domes/.codex/skills/self-improvement-agent`
+
+## Open points
+
+- Codex muss neu gestartet werden, damit der neu installierte Skill in der Skill-Liste aktiv erscheint.
+- Prioritaet 19 ist als naechste technische Umsetzung sinnvoll (async blocking in routes).
+- Pattern-Datenlage ist noch duenn (nur eine Iteration); noch kein belastbarer Skill-Kandidat aus Wiederholung.
 
 ## Recommended next steps
-1. P7 umsetzen — Spielablauf-UX hat hoechsten Nutzerimpact der offenen Priorities
-2. P12 angehen — Outer-Bull-Erkennung ist ein realer CV-Bug
-3. .agent-memory mit Pattern-Extraktion aus bisherigen Sessions fuellen
+
+1. Codex neu starten und Skill `self-improvement-agent` testen.
+2. Mit P19 starten: `_time.sleep(...)` aus async Routes entfernen und Tests nachziehen.
+3. Nach P19 eine neue Iteration loggen und Pattern erneut extrahieren.

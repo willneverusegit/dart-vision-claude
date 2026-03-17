@@ -1,0 +1,4 @@
+interface:
+  display_name: "Self Improvement Agent"
+  short_description: "Bootstrap memory, extract patterns, log iterations, update context, and generate stable skills."
+  default_prompt: "Use $self-improvement-agent to run the full self-improving workflow for this repo."

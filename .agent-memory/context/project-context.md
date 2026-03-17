@@ -1,46 +1,70 @@
-# Project Context — Dart-Vision
+# Project Context - Dart-Vision
 
 ## Projektziel
 
-CPU-optimiertes Dart-Scoring-System mit Computer Vision. Erkennt Dart-Wuerfe per Kamera, mappt Treffer auf Dartboard-Segmente, fuehrt Spielstand in Echtzeit.
+CPU-optimiertes Dart-Scoring-System mit klassischer Computer Vision. Das System soll auf einem Windows-Laptop ohne dedizierte GPU stabil laufen, Treffer als Kandidaten ausgeben und kontrolliert verbuchen.
 
 ## Tech Stack
 
-- **Backend:** Python 3.14, FastAPI, Uvicorn
-- **CV:** OpenCV (opencv-contrib-python), NumPy
-- **Frontend:** Vanilla JS, HTML/CSS, WebSocket + MJPEG
-- **Tests:** pytest, pytest-asyncio, pytest-cov
-- **Config:** YAML (PyYAML)
-- **Plattform:** Windows 11, CPU-only (kein GPU)
+- Backend: Python 3.14, FastAPI, Uvicorn
+- CV: OpenCV (opencv-contrib-python), NumPy
+- Frontend: Vanilla JS, HTML/CSS, WebSocket + MJPEG
+- Tests: pytest, pytest-asyncio, pytest-cov
+- Konfiguration: YAML (PyYAML)
+- Plattform: Windows 11, CPU-only
 
-## Architektur
+## Architektur-Ueberblick
 
-- `src/main.py` — App-Start, Lifespan, globaler Zustand
-- `src/web/routes.py` — REST + WebSocket + MJPEG
-- `src/cv/pipeline.py` — Single-Camera-Orchestrierung
-- `src/cv/multi_camera.py` — Multi-Cam-Pipeline
-- `src/cv/detector.py` — Dart-Impact-Erkennung (Shape + temporal confirmation)
-- `src/cv/calibration.py` — ArUco/ChArUco Board-Kalibrierung
-- `src/game/engine.py` — Spiellogik (X01, Cricket, Free Play)
-- `src/utils/config.py` — YAML-Config-Management mit Schema-Validierung
+- `src/main.py` - App-Lifecycle, globale Pipeline-Steuerung, Thread-Start/Stop
+- `src/web/routes.py` - REST, MJPEG, WebSocket-Endpunkte, Multi-Cam-Steuerung
+- `src/cv/pipeline.py` - Single-Camera-CV-Pipeline
+- `src/cv/multi_camera.py` - Multi-Cam-Orchestrierung und Fusion
+- `src/cv/calibration.py` - Board/Lens-Kalibrierungslogik
+- `src/game/engine.py` - Spielregeln und Turn-Flow
+- `src/utils/config.py` - YAML-Laden/Speichern plus Schema-Validierung
 
 ## Aktueller Stand (2026-03-17)
 
-- 483 Tests, ~72% Coverage
-- Single-Cam stabil, Multi-Cam funktional aber sensibel
-- P1-P6, P13-P17 erledigt (Input-Validierung, CV-Validierung, Frontend-Fehlerbehandlung, Config-Schema)
-- P7-P12 offen (UX, Performance-Monitoring, Multi-Cam UX, UI-Design, E2E mit echten Clips, Detector Area-Range)
+- 494 Tests bestanden
+- 76% Gesamt-Coverage
+- Single-Cam stabiler Hauptpfad
+- Multi-Cam funktional, aber weiterhin Hardening-Fokus
+- Backlog erweitert: neue Prioritaeten P19-P23 fuer Runtime-Haertung und Wartbarkeit
 
-## Constraints
+## Module-Status
 
-- CPU-only Laptop als Zielplattform
-- Kein Deep Learning, keine GPU-Pflicht
-- Single-Cam ist Hauptpfad, Multi-Cam High-Risk
-- Config-Dateien sind reale Betriebsdaten
-- Hit-Candidate-Review-Flow (kein Auto-Scoring)
+- `main.py`: 78% Coverage, Lifecycle mit Thread-Handles und Stop-Events
+- `routes.py`: 66% Coverage, grosse Sammeldatei mit weiterem Entkopplungsbedarf
+- `pipeline.py`: 75% Coverage, stabile Basis
+- `multi_camera.py`: 61% Coverage, Timing/Burst-Faelle priorisiert
+- `calibration.py`: 53% Coverage, gezielte Aufteilung und Tests priorisiert
+
+## Aktive Constraints
+
+- CPU-only bleibt verbindlich (kein Deep Learning, kein GPU-Zwang)
+- Single-Cam darf durch Multi-Cam-Arbeit nicht regressieren
+- Konfig-Dateien sind Betriebsdaten, keine Wegwerfdateien
+- Defensives Threading und bounded queues beibehalten
+- Kalibrierung ist Kernfunktion, nicht optionales Feature
+
+## Key Decisions
+
+- ADR-001: CPU-only Architektur
+- ADR-002: Single-Cam als stabiler Hauptpfad
+- ADR-003: ThreadedCamera plus Stop-Events statt Process-Pool
+- ADR-004: FastAPI plus Vanilla JS ohne SPA-Framework
+- ADR-005: Agent-Selbstverbesserung ueber persistente Doku
+
+## Tech Debt
+
+- Blockierende `_time.sleep(...)`-Wartepfade in async Routen
+- Fehlende serverseitige TTL fuer `pending_hits`
+- Calibration-Monolith mit relativ schwacher Testabdeckung
+- Multi-Cam-Fusionsbuffer aktuell auf "letzten Treffer je Kamera" begrenzt
+- `app_state`-Mutation ist verteilt und nur teilweise vertraglich gekapselt
 
 ## Offene Fragen
 
-- Wie robust ist die Erkennung bei realer Beleuchtung? (P11: echte Videoclips fehlen)
-- Outer-Bull-Erkennung zu schwach (P12: area_min Problem)
-- Multi-Cam UX fuer Nicht-Experten noch nicht bedienbar (P9)
+- Wie verhaelt sich E2E-Accuracy auf echten Kamera-Clips ueber verschiedene Lichtbedingungen?
+- Welche Burst-/Timing-Regeln sind fuer Multi-Cam-Fusion am robustesten im Realbetrieb?
+- Welcher minimale Refactor-Schnitt fuer `calibration.py` erzielt den besten Coverage-Gewinn ohne API-Bruch?
