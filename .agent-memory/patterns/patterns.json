@@ -58,5 +58,191 @@
     ],
     "confidence": "medium",
     "skill_candidate": false
+  },
+  {
+    "id": "centralize-non-blocking-route-waits",
+    "type": "best-practice",
+    "title": "Centralize non-blocking waits in async FastAPI routes",
+    "description": "Async route handlers that need release delays or startup polling should use shared asyncio-based helpers instead of inline time.sleep loops, so the event loop stays responsive and tests can patch one narrow seam.",
+    "trigger_conditions": [
+      "FastAPI route is declared with async def",
+      "Handler needs polling or a short wait around lifecycle state changes"
+    ],
+    "recommended_action": "Wrap the wait in a reusable helper that awaits asyncio.sleep and reuse it across route handlers; in tests, patch the worker target or asyncio.sleep seam rather than the shared threading module.",
+    "avoid": [
+      "Calling time.sleep inside async def handlers",
+      "Monkeypatching the shared threading module in TestClient-based lifespan tests"
+    ],
+    "evidence": {
+      "occurrences": 1,
+      "error_ids": [
+        "2026-03-17-13-14-async-route-blockers-removed"
+      ],
+      "first_seen": "2026-03-17",
+      "last_seen": "2026-03-17"
+    },
+    "tags": [
+      "fastapi",
+      "async",
+      "lifecycle",
+      "testing"
+    ],
+    "confidence": "medium",
+    "skill_candidate": false
+  },
+  {
+    "id": "centralize-runtime-queue-lifecycle",
+    "type": "best-practice",
+    "title": "Centralize runtime queue lifecycle in one backend owner",
+    "description": "Shared runtime queues like pending hit candidates should have one backend module that owns insertion, expiry, overflow trimming, lookup, clearing, and metrics, so routes and workers do not implement divergent state rules.",
+    "trigger_conditions": [
+      "Multiple code paths add or remove entries from the same in-memory queue",
+      "Queue semantics depend on TTL, bounded size, or UI-visible rejection reasons"
+    ],
+    "recommended_action": "Move queue lifecycle rules into shared helpers, enforce TTL and max-size at insert time, run periodic cleanup from long-lived workers, and expose counters through diagnostics endpoints.",
+    "avoid": [
+      "Letting the frontend be the primary owner of expiry semantics",
+      "Duplicating pop/clear/expire logic across routes and worker callbacks"
+    ],
+    "evidence": {
+      "occurrences": 1,
+      "error_ids": [
+        "2026-03-17-13-43-server-side-pending-hit-lifecycle"
+      ],
+      "first_seen": "2026-03-17",
+      "last_seen": "2026-03-17"
+    },
+    "tags": [
+      "runtime",
+      "queue",
+      "state",
+      "observability"
+    ],
+    "confidence": "medium",
+    "skill_candidate": false
+  },
+  {
+    "id": "inject-test-state-after-lifespan-start",
+    "type": "best-practice",
+    "title": "Inject mocked shared state after FastAPI lifespan startup",
+    "description": "When application startup deterministically resets shared runtime state, lifespan-aware tests should set mocked app_state only after TestClient enters the app lifespan; otherwise setup will be wiped and assertions will target the wrong runtime state.",
+    "trigger_conditions": [
+      "FastAPI app uses lifespan startup to initialize shared state",
+      "Tests need to mock pipeline, multi-pipeline, or other shared runtime fields"
+    ],
+    "recommended_action": "Enter `with TestClient(app)` first, then assign mocked runtime state and run the request. Treat lifespan startup as the authoritative reset boundary in both production code and tests.",
+    "avoid": [
+      "Assigning mock shared state before TestClient startup when lifespan resets the same fields",
+      "Weakening deterministic startup logic to preserve legacy test assumptions"
+    ],
+    "evidence": {
+      "occurrences": 1,
+      "error_ids": [
+        "2026-03-17-13-58-runtime-state-contracts"
+      ],
+      "first_seen": "2026-03-17",
+      "last_seen": "2026-03-17"
+    },
+    "tags": [
+      "fastapi",
+      "lifespan",
+      "testing",
+      "state"
+    ],
+    "confidence": "medium",
+    "skill_candidate": false
+  },
+  {
+    "id": "split-calibration-workflows-behind-stable-manager-api",
+    "type": "best-practice",
+    "title": "Split calibration workflows behind a stable manager API",
+    "description": "When a calibration manager accumulates board math, YAML persistence, constants and repeated ChArUco collection logic, move those concerns into helper modules while keeping the manager facade and route-facing API stable.",
+    "trigger_conditions": [
+      "Calibration module combines workflow logic, storage logic and repeated helper loops",
+      "Dependent managers or routes already rely on the existing manager API"
+    ],
+    "recommended_action": "Extract pure workflow helpers and shared IO/detection helpers first, then let the public manager delegate to them so tests and call sites keep the same contract.",
+    "avoid": [
+      "Breaking the manager API while doing an internal refactor",
+      "Duplicating ChArUco frame collection across multiple calibration paths"
+    ],
+    "evidence": {
+      "occurrences": 1,
+      "error_ids": [
+        "2026-03-17-14-32-calibration-workflow-split"
+      ],
+      "first_seen": "2026-03-17",
+      "last_seen": "2026-03-17"
+    },
+    "tags": [
+      "calibration",
+      "refactor",
+      "testing",
+      "api-stability"
+    ],
+    "confidence": "medium",
+    "skill_candidate": false
+  },
+  {
+    "id": "buffer-multi-camera-bursts-per-camera-window",
+    "type": "best-practice",
+    "title": "Buffer multi-camera bursts in a small per-camera time window",
+    "description": "When multi-camera fusion must survive closely spaced detections, keep a small ordered time-window buffer per camera and pair around the oldest pending anchor instead of overwriting each camera with only its latest hit.",
+    "trigger_conditions": [
+      "Multiple detections from the same camera can occur before fusion completes",
+      "Timeout and fusion ordering matter for reproducible multi-camera behavior"
+    ],
+    "recommended_action": "Store a short ordered buffer per camera, match entries around the oldest pending detection, and remove only the entries actually consumed by timeout or fusion.",
+    "avoid": [
+      "One-slot-per-camera buffers that overwrite bursts",
+      "Clearing the entire fusion buffer when only one unmatched entry times out"
+    ],
+    "evidence": {
+      "occurrences": 1,
+      "error_ids": [
+        "2026-03-17-15-05-multi-cam-burst-buffer"
+      ],
+      "first_seen": "2026-03-17",
+      "last_seen": "2026-03-17"
+    },
+    "tags": [
+      "multi-camera",
+      "fusion",
+      "buffering",
+      "timing"
+    ],
+    "confidence": "medium",
+    "skill_candidate": false
+  },
+  {
+    "id": "untrack-generated-python-artifacts-not-just-ignore-them",
+    "type": "best-practice",
+    "title": "Untrack generated Python artifacts instead of only ignoring them",
+    "description": "If __pycache__, .pyc, or pytest cache files were already committed in the past, extending .gitignore is not enough; remove them from the Git index and document the hygiene step so the worktree stays clean in future sessions.",
+    "trigger_conditions": [
+      "Generated Python artifacts still appear in git status even though matching ignore rules already exist",
+      "The repository contains historically tracked __pycache__ or .pyc paths"
+    ],
+    "recommended_action": "Use git rm --cached on the tracked artifact paths, keep the ignore rules in place, and document the cleanup step in the development workflow so future sessions know how to handle legacy tracked artifacts.",
+    "avoid": [
+      "Assuming .gitignore alone will remove files that are already tracked",
+      "Deleting local cache directories from disk when the real issue is stale index state"
+    ],
+    "evidence": {
+      "occurrences": 1,
+      "error_ids": [
+        "2026-03-17-15-18-generated-artifacts-untracked"
+      ],
+      "first_seen": "2026-03-17",
+      "last_seen": "2026-03-17"
+    },
+    "tags": [
+      "git",
+      "artifacts",
+      "hygiene",
+      "maintenance"
+    ],
+    "confidence": "medium",
+    "skill_candidate": false
   }
 ]

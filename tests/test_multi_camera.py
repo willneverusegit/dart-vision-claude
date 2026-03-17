@@ -56,8 +56,8 @@ class TestDetectionBuffer:
         assert entry["detection"] is det
         assert "timestamp" in entry
 
-    def test_buffer_overwrites_same_camera(self):
-        """Second detection from same camera overwrites the first."""
+    def test_buffer_keeps_short_history_for_same_camera(self):
+        """Second detection from same camera is retained for burst pairing."""
         pipeline = MultiCameraPipeline(camera_configs=[])
         score1 = {"score": 20}
         score2 = {"score": 60}
@@ -67,7 +67,9 @@ class TestDetectionBuffer:
         pipeline._on_single_detection("cam_left", score2, det)
 
         assert len(pipeline._detection_buffer) == 1
-        assert pipeline._detection_buffer["cam_left"]["score_result"]["score"] == 60
+        buffered = pipeline._detection_buffer["cam_left"]
+        assert isinstance(buffered, list)
+        assert [entry["score_result"]["score"] for entry in buffered] == [20, 60]
 
     def test_buffer_multiple_cameras(self):
         """Detections from different cameras are stored separately."""
@@ -180,7 +182,7 @@ class TestTryFuse:
         cb.assert_not_called()
 
     def test_two_detections_too_far_apart(self):
-        """Two detections beyond time window -> single_timeout fallback."""
+        """Oldest unmatched detection times out first and newer one stays buffered."""
         cb = MagicMock()
         pipeline = MultiCameraPipeline(camera_configs=[], on_multi_dart_detected=cb)
 
@@ -202,7 +204,8 @@ class TestTryFuse:
         cb.assert_called_once()
         result = cb.call_args[0][0]
         assert result["source"] == "single_timeout"
-        assert result["camera_id"] == "cam_right"  # Most recent
+        assert result["camera_id"] == "cam_left"
+        assert "cam_right" in pipeline._detection_buffer
 
     def test_two_detections_no_camera_params_voting_fallback(self):
         """Two near-simultaneous detections without CameraParams -> voting_fallback."""
@@ -232,6 +235,56 @@ class TestTryFuse:
         result = cb.call_args[0][0]
         assert result["source"] == "voting_fallback"
         assert result["score"] == 60  # Higher confidence
+
+    def test_burst_pairs_oldest_match_first_and_keeps_newer_entries(self):
+        """Burst detections are fused in temporal order instead of being overwritten."""
+        cb = MagicMock()
+        pipeline = MultiCameraPipeline(camera_configs=[], on_multi_dart_detected=cb)
+
+        now = time.time()
+        pipeline._detection_buffer["cam_left"] = [
+            {
+                "camera_id": "cam_left",
+                "score_result": {"score": 20, "total_score": 20},
+                "detection": FakeDetection(confidence=0.7),
+                "timestamp": now,
+            },
+            {
+                "camera_id": "cam_left",
+                "score_result": {"score": 5, "total_score": 5},
+                "detection": FakeDetection(confidence=0.6),
+                "timestamp": now + 0.04,
+            },
+        ]
+        pipeline._detection_buffer["cam_right"] = [
+            {
+                "camera_id": "cam_right",
+                "score_result": {"score": 60, "total_score": 60},
+                "detection": FakeDetection(confidence=0.95),
+                "timestamp": now + 0.01,
+            },
+            {
+                "camera_id": "cam_right",
+                "score_result": {"score": 1, "total_score": 1},
+                "detection": FakeDetection(confidence=0.5),
+                "timestamp": now + 0.05,
+            },
+        ]
+
+        pipeline._try_fuse()
+        first = cb.call_args_list[0][0][0]
+        assert first["source"] == "voting_fallback"
+        assert first["camera_id"] == "cam_right"
+
+        remaining_left = pipeline._detection_buffer["cam_left"]
+        remaining_right = pipeline._detection_buffer["cam_right"]
+        assert isinstance(remaining_left, dict)
+        assert isinstance(remaining_right, dict)
+        assert remaining_left["score_result"]["score"] == 5
+        assert remaining_right["score_result"]["score"] == 1
+
+        pipeline._try_fuse()
+        assert cb.call_count == 2
 
     def test_get_pipelines_returns_copy(self):
         """get_pipelines returns a copy dict."""

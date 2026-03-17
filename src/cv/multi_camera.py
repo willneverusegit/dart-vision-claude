@@ -9,31 +9,26 @@ from typing import Callable
 
 import numpy as np
 
+from src.cv.geometry import BOARD_RADIUS_MM, BoardGeometry
 from src.cv.pipeline import DartPipeline
 from src.cv.stereo_utils import (
     CameraParams,
-    triangulate_point,
     point_3d_to_board_2d,
     transform_to_board_frame,
+    triangulate_point,
 )
-from src.cv.geometry import BoardGeometry, BOARD_RADIUS_MM
-from src.utils.config import get_stereo_pair, get_board_transform
+from src.utils.config import get_board_transform, get_stereo_pair
 
 logger = logging.getLogger(__name__)
 
-# Maximum time difference (seconds) between detections from two cameras
-# to be considered "simultaneous" (software sync).
-MAX_DETECTION_TIME_DIFF_S = 0.15  # 150ms
+MAX_DETECTION_TIME_DIFF_S = 0.15
+MAX_BUFFERED_DETECTIONS_PER_CAMERA = 3
+DETECTION_BUFFER_RETENTION_S = 2.0
 
-# Frame-rate target for each camera loop.  Keeps CPU usage bounded and gives
-# the GIL breathing room when running 2-3 camera threads in parallel.
 _TARGET_FPS = 30
-_FRAME_INTERVAL_S = 1.0 / _TARGET_FPS  # ~0.0333 s
+_FRAME_INTERVAL_S = 1.0 / _TARGET_FPS
 
-# Dart tip must be within this distance of the board face (in board frame Z)
-# to be considered a valid hit.  Accounts for dart penetration (~5 mm),
-# triangulation noise (~5 mm), and calibration error (~5 mm).
-BOARD_DEPTH_TOLERANCE_M = 0.015  # 15 mm
+BOARD_DEPTH_TOLERANCE_M = 0.015
 
 
 class MultiCameraPipeline:
@@ -45,29 +40,20 @@ class MultiCameraPipeline:
         on_multi_dart_detected: Callable[[dict], None] | None = None,
         debug: bool = False,
     ) -> None:
-        """
-        Args:
-            camera_configs: List of dicts, each with keys:
-                - camera_id (str): Unique name, e.g. "cam_left"
-                - src (int | str): Camera source index or video path
-            on_multi_dart_detected: Callback with fused score dict.
-            debug: Enable debug visualization.
-        """
         self.camera_configs = camera_configs
         self.on_multi_dart_detected = on_multi_dart_detected
         self.debug = debug
 
         self._pipelines: dict[str, DartPipeline] = {}
         self._threads: dict[str, threading.Thread] = {}
-        self._detection_buffer: dict[str, dict] = {}  # camera_id -> latest detection
+        self._detection_buffer: dict[str, dict | list[dict]] = {}
         self._buffer_lock = threading.Lock()
         self._running = False
         self._fusion_thread: threading.Thread | None = None
-        self._camera_errors: dict[str, str] = {}  # camera_id -> error message
+        self._camera_errors: dict[str, str] = {}
 
-        # Loaded from config at start() / reload_stereo_params()
-        self._stereo_params: dict[str, CameraParams] = {}   # camera_id -> CameraParams
-        self._board_transforms: dict[str, dict] = {}          # camera_id -> {R_cb, t_cb}
+        self._stereo_params: dict[str, CameraParams] = {}
+        self._board_transforms: dict[str, dict] = {}
 
     def start(self) -> None:
         """Start all camera pipelines in separate threads."""
@@ -86,15 +72,11 @@ class MultiCameraPipeline:
                 capture_fps=cfg.get("capture_fps"),
             )
 
-            # Configure pipeline with camera-specific calibration
             from src.cv.board_calibration import BoardCalibrationManager
             from src.cv.camera_calibration import CameraCalibrationManager
-            pipeline.board_calibration = BoardCalibrationManager(
-                camera_id=cam_id,
-            )
-            pipeline.camera_calibration = CameraCalibrationManager(
-                camera_id=cam_id,
-            )
+
+            pipeline.board_calibration = BoardCalibrationManager(camera_id=cam_id)
+            pipeline.camera_calibration = CameraCalibrationManager(camera_id=cam_id)
 
             self._pipelines[cam_id] = pipeline
 
@@ -108,15 +90,8 @@ class MultiCameraPipeline:
             thread.start()
             logger.info("Pipeline started for camera '%s' (src=%s)", cam_id, src)
 
-        # Start fusion thread
-        self._fusion_thread = threading.Thread(
-            target=self._fusion_loop,
-            daemon=True,
-            name="cv-fusion",
-        )
+        self._fusion_thread = threading.Thread(target=self._fusion_loop, daemon=True, name="cv-fusion")
         self._fusion_thread.start()
-
-        # Load stereo extrinsics and board transforms from config
         self._load_extrinsics()
 
     def stop(self) -> None:
@@ -134,57 +109,52 @@ class MultiCameraPipeline:
         """Frame processing loop for a single camera, rate-limited to _TARGET_FPS."""
         try:
             pipeline.start()
-        except Exception as e:
-            logger.warning("Camera '%s' failed to start: %s", cam_id, e)
-            self._camera_errors[cam_id] = str(e)
+        except Exception as exc:
+            logger.warning("Camera '%s' failed to start: %s", cam_id, exc)
+            self._camera_errors[cam_id] = str(exc)
             return
 
         while self._running:
-            t0 = time.monotonic()
+            started_at = time.monotonic()
             try:
                 pipeline.process_frame()
-            except Exception as e:
-                logger.debug("Frame error on '%s': %s", cam_id, e)
-            elapsed = time.monotonic() - t0
+            except Exception as exc:
+                logger.debug("Frame error on '%s': %s", cam_id, exc)
+            elapsed = time.monotonic() - started_at
             sleep_s = max(0.0, _FRAME_INTERVAL_S - elapsed)
             if sleep_s > 0:
                 time.sleep(sleep_s)
 
     def _load_extrinsics(self) -> None:
-        """Load stereo pair extrinsics and board transforms from config files.
-
-        Called at start() and by reload_stereo_params() for hot-reloading.
-        Populates self._stereo_params and self._board_transforms.
-        """
-        # --- Board transforms (camera frame -> board frame) ---
+        """Load stereo pair extrinsics and board transforms from config files."""
         for cfg in self.camera_configs:
             cam_id = cfg["camera_id"]
-            bt = get_board_transform(cam_id)
-            if bt is not None:
+            board_transform = get_board_transform(cam_id)
+            if board_transform is not None:
                 try:
                     self._board_transforms[cam_id] = {
-                        "R_cb": np.array(bt["R_cb"], dtype=np.float64).reshape(3, 3),
-                        "t_cb": np.array(bt["t_cb"], dtype=np.float64).reshape(3),
+                        "R_cb": np.array(board_transform["R_cb"], dtype=np.float64).reshape(3, 3),
+                        "t_cb": np.array(board_transform["t_cb"], dtype=np.float64).reshape(3),
                     }
                     logger.info("Loaded board_transform for camera '%s'", cam_id)
-                except Exception as e:
-                    logger.warning("Invalid board_transform for '%s': %s", cam_id, e)
+                except Exception as exc:
+                    logger.warning("Invalid board_transform for '%s': %s", cam_id, exc)
             else:
                 logger.warning(
-                    "No board_transform found for camera '%s' — triangulation will be skipped",
+                    "No board_transform found for camera '%s' - triangulation will be skipped",
                     cam_id,
                 )
 
-        # --- Stereo pair extrinsics (inter-camera R, T) ---
-        for i, cfg_a in enumerate(self.camera_configs):
-            for cfg_b in self.camera_configs[i + 1:]:
+        for index, cfg_a in enumerate(self.camera_configs):
+            for cfg_b in self.camera_configs[index + 1:]:
                 cam_a = cfg_a["camera_id"]
                 cam_b = cfg_b["camera_id"]
                 pair_data = get_stereo_pair(cam_a, cam_b)
                 if pair_data is None:
                     logger.warning(
-                        "No stereo pair data for '%s'--'%s' — triangulation disabled for this pair",
-                        cam_a, cam_b,
+                        "No stereo pair data for '%s'--'%s' - triangulation disabled for this pair",
+                        cam_a,
+                        cam_b,
                     )
                     continue
 
@@ -197,12 +167,12 @@ class MultiCameraPipeline:
                 intr_b = pipe_b.camera_calibration.get_intrinsics()
                 if intr_a is None or intr_b is None:
                     logger.warning(
-                        "Missing intrinsics for '%s' or '%s' — triangulation disabled for this pair",
-                        cam_a, cam_b,
+                        "Missing intrinsics for '%s' or '%s' - triangulation disabled for this pair",
+                        cam_a,
+                        cam_b,
                     )
                     continue
 
-                # Camera 1 is the world origin (identity extrinsics)
                 self._stereo_params[cam_a] = CameraParams(
                     camera_id=cam_a,
                     camera_matrix=intr_a.camera_matrix,
@@ -210,7 +180,6 @@ class MultiCameraPipeline:
                     R=np.eye(3, dtype=np.float64),
                     T=np.zeros((3, 1), dtype=np.float64),
                 )
-                # Camera 2: relative pose from stereo calibration (cam1 -> cam2)
                 self._stereo_params[cam_b] = CameraParams(
                     camera_id=cam_b,
                     camera_matrix=intr_b.camera_matrix,
@@ -218,113 +187,165 @@ class MultiCameraPipeline:
                     R=np.array(pair_data["R"], dtype=np.float64).reshape(3, 3),
                     T=np.array(pair_data["T"], dtype=np.float64).reshape(3, 1),
                 )
-                logger.info(
-                    "Loaded stereo params for pair '%s'--'%s'", cam_a, cam_b
-                )
+                logger.info("Loaded stereo params for pair '%s'--'%s'", cam_a, cam_b)
 
     def _on_single_detection(self, camera_id: str, score_result: dict, detection) -> None:
-        """Callback from a single pipeline. Buffer detection for fusion."""
+        """Callback from a single pipeline. Buffer detections for short burst fusion."""
         with self._buffer_lock:
-            self._detection_buffer[camera_id] = {
+            now = time.time()
+            entry = {
                 "camera_id": camera_id,
                 "score_result": score_result,
                 "detection": detection,
-                "timestamp": time.time(),
+                "timestamp": now,
             }
+            entries = self._camera_entries_locked(camera_id)
+            entries.append(entry)
+            entries = [
+                candidate
+                for candidate in entries
+                if (now - candidate["timestamp"]) <= DETECTION_BUFFER_RETENTION_S
+            ]
+            if len(entries) > MAX_BUFFERED_DETECTIONS_PER_CAMERA:
+                entries = entries[-MAX_BUFFERED_DETECTIONS_PER_CAMERA:]
+            self._set_camera_entries_locked(camera_id, entries)
+
+    def _camera_entries_locked(self, camera_id: str) -> list[dict]:
+        value = self._detection_buffer.get(camera_id)
+        if value is None:
+            return []
+        if isinstance(value, list):
+            return list(value)
+        return [value]
+
+    def _set_camera_entries_locked(self, camera_id: str, entries: list[dict]) -> None:
+        if not entries:
+            self._detection_buffer.pop(camera_id, None)
+        elif len(entries) == 1:
+            self._detection_buffer[camera_id] = entries[0]
+        else:
+            self._detection_buffer[camera_id] = entries
+
+    def _flatten_detection_buffer_locked(self) -> list[dict]:
+        entries: list[dict] = []
+        for camera_id in list(self._detection_buffer.keys()):
+            entries.extend(self._camera_entries_locked(camera_id))
+        entries.sort(key=lambda entry: entry["timestamp"])
+        return entries
+
+    def _prune_detection_buffer_locked(self, now: float) -> None:
+        for camera_id in list(self._detection_buffer.keys()):
+            entries = [
+                entry
+                for entry in self._camera_entries_locked(camera_id)
+                if (now - entry["timestamp"]) <= DETECTION_BUFFER_RETENTION_S
+            ]
+            self._set_camera_entries_locked(camera_id, entries)
+
+    def _matching_entries_locked(self, anchor: dict) -> list[dict]:
+        matches = [anchor]
+        anchor_ts = anchor["timestamp"]
+        for camera_id in list(self._detection_buffer.keys()):
+            if camera_id == anchor["camera_id"]:
+                continue
+            candidates = [
+                entry
+                for entry in self._camera_entries_locked(camera_id)
+                if abs(entry["timestamp"] - anchor_ts) <= MAX_DETECTION_TIME_DIFF_S
+            ]
+            if candidates:
+                matches.append(min(candidates, key=lambda entry: abs(entry["timestamp"] - anchor_ts)))
+        return matches
+
+    def _remove_entries_locked(self, entries_to_remove: list[dict]) -> None:
+        grouped: dict[str, list[dict]] = {}
+        for entry in entries_to_remove:
+            grouped.setdefault(entry["camera_id"], []).append(entry)
+
+        for camera_id, removable in grouped.items():
+            remaining = [
+                entry
+                for entry in self._camera_entries_locked(camera_id)
+                if all(entry is not doomed for doomed in removable)
+            ]
+            self._set_camera_entries_locked(camera_id, remaining)
 
     def _fusion_loop(self) -> None:
         """Periodically check detection buffer and fuse multi-camera results."""
         while self._running:
-            time.sleep(0.05)  # 20Hz check rate
+            time.sleep(0.05)
             self._try_fuse()
 
     def _try_fuse(self) -> None:
         """Attempt to fuse detections from multiple cameras."""
         with self._buffer_lock:
-            if len(self._detection_buffer) < 2:
-                # Single camera fallback: emit the lone detection
-                if len(self._detection_buffer) == 1:
-                    entry = list(self._detection_buffer.values())[0]
-                    age = time.time() - entry["timestamp"]
-                    if age > MAX_DETECTION_TIME_DIFF_S:
-                        # Detection is old enough that the other camera won't
-                        # catch up -> use single-camera result as fallback
-                        result = dict(entry["score_result"])
-                        result["source"] = "single"
-                        result["camera_id"] = entry["camera_id"]
-                        logger.info("Single-camera fallback: camera_id='%s'", entry["camera_id"])
-                        self._emit(result)
-                        self._detection_buffer.clear()
+            now = time.time()
+            self._prune_detection_buffer_locked(now)
+            entries = self._flatten_detection_buffer_locked()
+            if not entries:
                 return
 
-            # Check if detections are temporally close enough
-            entries = list(self._detection_buffer.values())
-            timestamps = [e["timestamp"] for e in entries]
-            if max(timestamps) - min(timestamps) > MAX_DETECTION_TIME_DIFF_S:
-                # Too far apart — use the most recent single detection
-                latest = max(entries, key=lambda e: e["timestamp"])
-                result = dict(latest["score_result"])
-                result["source"] = "single_timeout"
-                result["camera_id"] = latest["camera_id"]
-                logger.info("Timeout fallback: camera_id='%s' (detections too far apart)", latest["camera_id"])
+            anchor = entries[0]
+            matched_entries = self._matching_entries_locked(anchor)
+            if len(matched_entries) < 2:
+                age = now - anchor["timestamp"]
+                if age <= MAX_DETECTION_TIME_DIFF_S:
+                    return
+                result = dict(anchor["score_result"])
+                result["source"] = "single" if len(self._detection_buffer) == 1 else "single_timeout"
+                result["camera_id"] = anchor["camera_id"]
+                logger.info(
+                    "Timeout fallback: camera_id='%s' age=%.3fs matched_cameras=%d",
+                    anchor["camera_id"],
+                    age,
+                    len(matched_entries),
+                )
                 self._emit(result)
-                self._detection_buffer.clear()
+                self._remove_entries_locked([anchor])
                 return
 
-            # Two+ cameras detected within time window -> attempt triangulation
-            # Use self._stereo_params (populated by _load_extrinsics at startup)
             cam_params = self._stereo_params
-
-            # Try triangulation for first pair with valid CameraParams
             triangulated = False
-            for i in range(len(entries)):
-                for j in range(i + 1, len(entries)):
-                    p1 = cam_params.get(entries[i]["camera_id"])
-                    p2 = cam_params.get(entries[j]["camera_id"])
+            for i in range(len(matched_entries)):
+                for j in range(i + 1, len(matched_entries)):
+                    p1 = cam_params.get(matched_entries[i]["camera_id"])
+                    p2 = cam_params.get(matched_entries[j]["camera_id"])
                     if p1 is None or p2 is None:
                         continue
 
-                    det1 = entries[i]["detection"]
-                    det2 = entries[j]["detection"]
+                    det1 = matched_entries[i]["detection"]
+                    det2 = matched_entries[j]["detection"]
                     if det1 is None or det2 is None:
                         continue
 
-                    tri = triangulate_point(
-                        det1.center, det2.center, p1, p2,
-                    )
+                    tri = triangulate_point(det1.center, det2.center, p1, p2)
                     if not tri.valid:
                         continue
 
-                    # Transform from camera-1 frame to board frame.
-                    # Without this, point_3d[2] is the distance to the camera
-                    # lens — not the dart's depth into the board.
-                    bt = self._board_transforms.get(entries[i]["camera_id"])
-                    if bt is None:
+                    board_transform = self._board_transforms.get(matched_entries[i]["camera_id"])
+                    if board_transform is None:
                         logger.debug(
-                            "No board_transform for camera '%s' — skipping triangulation",
-                            entries[i]["camera_id"],
+                            "No board_transform for camera '%s' - skipping triangulation",
+                            matched_entries[i]["camera_id"],
                         )
                         continue
 
                     p_board = transform_to_board_frame(
-                        tri.point_3d, bt["R_cb"], bt["t_cb"]
+                        tri.point_3d,
+                        board_transform["R_cb"],
+                        board_transform["t_cb"],
                     )
-
-                    # Z plausibility in board frame: dart tip must be within
-                    # BOARD_DEPTH_TOLERANCE_M of the board face (Z = 0).
                     if abs(p_board[2]) > BOARD_DEPTH_TOLERANCE_M:
                         logger.info(
-                            "Triangulation Z implausible in board frame "
-                            "(Z=%.4f m) for cameras '%s','%s' — voting fallback",
+                            "Triangulation Z implausible in board frame (Z=%.4f m) for cameras '%s','%s' - voting fallback",
                             p_board[2],
-                            entries[i]["camera_id"],
-                            entries[j]["camera_id"],
+                            matched_entries[i]["camera_id"],
+                            matched_entries[j]["camera_id"],
                         )
                         continue
 
                     board_x_mm, board_y_mm = point_3d_to_board_2d(p_board)
-                    # Convert mm to board score via geometry of first camera
-                    pipeline_1 = self._pipelines.get(entries[i]["camera_id"])
+                    pipeline_1 = self._pipelines.get(matched_entries[i]["camera_id"])
                     if pipeline_1 and pipeline_1.geometry:
                         geo = pipeline_1.geometry
                         radius_px = geo.double_outer_radius_px
@@ -338,8 +359,10 @@ class MultiCameraPipeline:
                         result["reprojection_error"] = tri.reprojection_error
                         logger.info(
                             "Triangulation: cameras='%s','%s' reproj=%.2f Z_board=%.4f",
-                            entries[i]["camera_id"], entries[j]["camera_id"],
-                            tri.reprojection_error, p_board[2],
+                            matched_entries[i]["camera_id"],
+                            matched_entries[j]["camera_id"],
+                            tri.reprojection_error,
+                            p_board[2],
                         )
                         self._emit(result)
                         triangulated = True
@@ -348,54 +371,38 @@ class MultiCameraPipeline:
                     break
 
             if not triangulated:
-                # Voting fallback: use best single-camera result
-                result = self._voting_fallback(entries)
+                result = self._voting_fallback(matched_entries)
                 self._emit(result)
 
-            self._detection_buffer.clear()
+            self._remove_entries_locked(matched_entries)
 
     def _voting_fallback(self, entries: list[dict]) -> dict:
-        """When triangulation fails, use confidence-weighted voting.
-
-        - Weights each camera's score by its detection confidence.
-        - For ≥3 cameras, uses median of total_score instead of mean.
-        - Falls back to highest-confidence single result for non-numeric scores.
-        """
-        # Extract confidences
+        """When triangulation fails, use confidence-weighted voting."""
         confidences = []
-        for e in entries:
-            det = e.get("detection")
-            conf = getattr(det, "confidence", 0.0) if det else 0.0
-            confidences.append(conf)
+        for entry in entries:
+            detection = entry.get("detection")
+            confidence = getattr(detection, "confidence", 0.0) if detection else 0.0
+            confidences.append(confidence)
 
-        # Try confidence-weighted scoring
         total_conf = sum(confidences)
-        if total_conf > 0 and all("total_score" in e.get("score_result", {}) for e in entries):
-            scores = [e["score_result"]["total_score"] for e in entries]
-
+        if total_conf > 0 and all("total_score" in entry.get("score_result", {}) for entry in entries):
+            scores = [entry["score_result"]["total_score"] for entry in entries]
             if len(entries) >= 3:
-                # Median for ≥3 cameras (robust against outlier)
                 sorted_scores = sorted(scores)
                 mid = len(sorted_scores) // 2
                 if len(sorted_scores) % 2 == 0:
                     weighted_score = (sorted_scores[mid - 1] + sorted_scores[mid]) / 2.0
                 else:
                     weighted_score = sorted_scores[mid]
-                logger.info(
-                    "Voting fallback: median score=%s from %d cameras",
-                    weighted_score, len(entries),
-                )
+                logger.info("Voting fallback: median score=%s from %d cameras", weighted_score, len(entries))
             else:
-                # Weighted average for 2 cameras
-                weighted_score = sum(
-                    s * c for s, c in zip(scores, confidences)
-                ) / total_conf
+                weighted_score = sum(score * conf for score, conf in zip(scores, confidences)) / total_conf
                 logger.info(
                     "Voting fallback: weighted score=%.1f (conf=%.2f,%.2f)",
-                    weighted_score, *confidences,
+                    weighted_score,
+                    *confidences,
                 )
 
-            # Use the result dict from the highest-confidence camera as base
             best_idx = confidences.index(max(confidences))
             result = dict(entries[best_idx]["score_result"])
             result["total_score"] = int(round(weighted_score))
@@ -403,7 +410,6 @@ class MultiCameraPipeline:
             result["camera_id"] = entries[best_idx]["camera_id"]
             return result
 
-        # Fallback: pick highest confidence
         best_idx = confidences.index(max(confidences))
         best = entries[best_idx]
         result = dict(best["score_result"])
@@ -411,7 +417,8 @@ class MultiCameraPipeline:
         result["camera_id"] = best["camera_id"]
         logger.info(
             "Voting fallback: best confidence camera_id='%s' (conf=%.2f)",
-            best["camera_id"], confidences[best_idx],
+            best["camera_id"],
+            confidences[best_idx],
         )
         return result
 
@@ -428,18 +435,15 @@ class MultiCameraPipeline:
             self._detection_buffer.clear()
 
     def reload_stereo_params(self) -> None:
-        """Hot-reload stereo extrinsics and board transforms from config files.
-
-        Call this after running stereo or board-pose calibration to pick up
-        the new data without restarting the pipeline.
-        """
+        """Hot-reload stereo extrinsics and board transforms from config files."""
         logger.info("Reloading stereo extrinsics and board transforms...")
         self._stereo_params.clear()
         self._board_transforms.clear()
         self._load_extrinsics()
         logger.info(
             "Stereo params reloaded: %d camera params, %d board transforms",
-            len(self._stereo_params), len(self._board_transforms),
+            len(self._stereo_params),
+            len(self._board_transforms),
         )
 
     def get_pipelines(self) -> dict[str, DartPipeline]:

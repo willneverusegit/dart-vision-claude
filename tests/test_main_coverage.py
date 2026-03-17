@@ -5,12 +5,23 @@ import time
 from unittest.mock import MagicMock, patch, PropertyMock
 
 from src.main import (
+    MAX_PENDING_HITS,
     _compute_quality_score,
     _run_pipeline,
     _run_multi_pipeline,
+    add_pending_hit,
+    clear_pending_hits,
+    expire_pending_hits,
+    get_pending_hits_snapshot,
+    pop_pending_hit,
     stop_pipeline_thread,
     start_single_pipeline,
     app_state,
+)
+from src.utils.state import (
+    clear_multi_pipeline_state,
+    initialize_runtime_state,
+    set_multi_latest_frame,
 )
 
 
@@ -140,6 +151,183 @@ class TestStopPipelineThread:
         }
         stop_pipeline_thread(state, "multi", timeout=0.01)
         assert state["multi_pipeline_stop_event"] is None
+
+
+class TestPendingHitsLifecycle:
+    def test_expire_pending_hits_removes_stale_candidate(self):
+        em = MagicMock()
+        state = {
+            "event_manager": em,
+            "pending_hits_lock": threading.Lock(),
+            "pending_hits": {
+                "stale": {
+                    "candidate_id": "stale",
+                    "score": 20,
+                    "timestamp": 100.0,
+                }
+            },
+            "pending_hits_expired_total": 0,
+            "pending_hits_rejected_by_timeout_total": 0,
+            "pending_hits_dropped_overflow_total": 0,
+        }
+
+        expired = expire_pending_hits(state, now=131.0)
+
+        assert [candidate["candidate_id"] for candidate in expired] == ["stale"]
+        assert state["pending_hits"] == {}
+        assert state["pending_hits_expired_total"] == 1
+        assert state["pending_hits_rejected_by_timeout_total"] == 1
+        em.broadcast_sync.assert_called_once_with(
+            "hit_rejected",
+            {"candidate_id": "stale", "reason": "timeout"},
+        )
+
+    def test_add_pending_hit_drops_oldest_on_overflow(self):
+        em = MagicMock()
+        state = {
+            "event_manager": em,
+            "pending_hits_lock": threading.Lock(),
+            "pending_hits": {},
+            "pending_hits_expired_total": 0,
+            "pending_hits_rejected_by_timeout_total": 0,
+            "pending_hits_dropped_overflow_total": 0,
+        }
+        base_ts = time.time()
+
+        for idx in range(MAX_PENDING_HITS):
+            add_pending_hit(
+                state,
+                {
+                    "candidate_id": f"old-{idx}",
+                    "score": 20,
+                    "timestamp": base_ts + idx,
+                },
+                now=base_ts + idx,
+            )
+
+        overflow = add_pending_hit(
+            state,
+            {
+                "candidate_id": "newest",
+                "score": 60,
+                "timestamp": base_ts + MAX_PENDING_HITS,
+            },
+            now=base_ts + MAX_PENDING_HITS,
+        )
+
+        assert [candidate["candidate_id"] for candidate in overflow] == ["old-0"]
+        assert "old-0" not in state["pending_hits"]
+        assert "newest" in state["pending_hits"]
+        assert len(state["pending_hits"]) == MAX_PENDING_HITS
+        assert state["pending_hits_dropped_overflow_total"] == 1
+        assert em.broadcast_sync.call_args_list[-1].args == (
+            "hit_rejected",
+            {"candidate_id": "old-0", "reason": "overflow"},
+        )
+
+    def test_pop_pending_hit_expires_before_lookup(self):
+        now = time.time()
+        state = {
+            "event_manager": MagicMock(),
+            "pending_hits_lock": threading.Lock(),
+            "pending_hits": {
+                "stale": {"candidate_id": "stale", "timestamp": now - 31.0},
+                "fresh": {"candidate_id": "fresh", "timestamp": now},
+            },
+            "pending_hits_expired_total": 0,
+            "pending_hits_rejected_by_timeout_total": 0,
+            "pending_hits_dropped_overflow_total": 0,
+        }
+
+        candidate = pop_pending_hit(state, "stale")
+
+        assert candidate is None
+        assert list(state["pending_hits"]) == ["fresh"]
+
+    def test_clear_pending_hits_empties_store(self):
+        state = {
+            "pending_hits_lock": threading.Lock(),
+            "pending_hits": {"a": {"candidate_id": "a"}},
+        }
+
+        clear_pending_hits(state)
+
+        assert state["pending_hits"] == {}
+
+    def test_get_pending_hits_snapshot_filters_expired(self):
+        state = {
+            "event_manager": MagicMock(),
+            "pending_hits_lock": threading.Lock(),
+            "pending_hits": {
+                "legacy": {"candidate_id": "legacy", "timestamp": 0},
+                "fresh": {"candidate_id": "fresh", "timestamp": time.time()},
+            },
+            "pending_hits_expired_total": 0,
+            "pending_hits_rejected_by_timeout_total": 0,
+            "pending_hits_dropped_overflow_total": 0,
+        }
+
+        snapshot = get_pending_hits_snapshot(state)
+
+        assert {candidate["candidate_id"] for candidate in snapshot} == {"legacy", "fresh"}
+
+
+class TestStateHelpers:
+    def test_initialize_runtime_state_resets_shared_fields(self):
+        state = {
+            "pipeline": object(),
+            "pipeline_running": True,
+            "multi_pipeline": object(),
+            "multi_pipeline_running": True,
+            "active_camera_ids": ["a"],
+            "multi_latest_frames": {"a": object()},
+            "latest_frame": object(),
+        }
+
+        initialize_runtime_state(
+            state,
+            game_engine=MagicMock(),
+            event_manager=MagicMock(),
+            shutdown_event=threading.Event(),
+            pending_hits_lock=threading.Lock(),
+            pipeline_lock=threading.Lock(),
+        )
+
+        assert state["pipeline"] is None
+        assert state["pipeline_running"] is False
+        assert state["multi_pipeline"] is None
+        assert state["multi_pipeline_running"] is False
+        assert state["active_camera_ids"] == []
+        assert state["multi_latest_frames"] == {}
+        assert state["pending_hits"] == {}
+
+    def test_clear_multi_pipeline_state_resets_frames_and_ids(self):
+        state = {
+            "multi_pipeline": object(),
+            "multi_pipeline_running": True,
+            "active_camera_ids": ["cam_a", "cam_b"],
+            "multi_latest_frames": {"cam_a": "frame"},
+        }
+
+        clear_multi_pipeline_state(state)
+
+        assert state["multi_pipeline"] is None
+        assert state["multi_pipeline_running"] is False
+        assert state["active_camera_ids"] == []
+        assert state["multi_latest_frames"] == {}
+
+    def test_set_multi_latest_frame_prefers_primary_camera(self):
+        state = {
+            "multi_latest_frames": {},
+            "latest_frame": None,
+            "active_camera_ids": ["cam_a", "cam_b"],
+        }
+
+        set_multi_latest_frame(state, "cam_b", "frame-b")
+        assert state["latest_frame"] == "frame-b"
+
+        set_multi_latest_frame(state, "cam_a", "frame-a")
+        assert state["latest_frame"] == "frame-a"
 
 
 class TestStartSinglePipeline:

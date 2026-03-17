@@ -4,6 +4,7 @@ import pytest
 import os
 import numpy as np
 import yaml
+from unittest.mock import MagicMock
 from src.cv.calibration import (
     CalibrationManager,
     MANUAL_MIN_POINT_DISTANCE_PX,
@@ -77,6 +78,53 @@ class TestCalibration:
         assert abs(cx - 200) < 1.0
         assert abs(cy - 200) < 1.0
 
+    def test_loads_camera_specific_config(self, tmp_path):
+        path = tmp_path / "multi.yaml"
+        path.write_text(
+            yaml.dump(
+                {
+                    "schema_version": 3,
+                    "cameras": {
+                        "cam_a": {"valid": True, "center_px": [111, 222], "mm_per_px": 0.75},
+                        "cam_b": {"valid": False, "center_px": [1, 2], "mm_per_px": 1.5},
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        manager = CalibrationManager(config_path=str(path), camera_id="cam_a")
+
+        assert manager.is_valid() is True
+        assert manager.get_center() == (111.0, 222.0)
+        assert manager.get_mm_per_px() == pytest.approx(0.75)
+
+    def test_atomic_save_migrates_legacy_flat_file(self, tmp_path):
+        path = tmp_path / "legacy.yaml"
+        path.write_text(
+            yaml.dump(
+                {
+                    "valid": True,
+                    "center_px": [123, 234],
+                    "mm_per_px": 0.9,
+                    "homography": np.eye(3).tolist(),
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        manager = CalibrationManager(config_path=str(path), camera_id="side")
+        manager._config["center_px"] = [10, 20]
+        manager._config["valid"] = False
+        manager._atomic_save()
+
+        with open(path, "r", encoding="utf-8") as handle:
+            raw = yaml.safe_load(handle)
+
+        assert raw["schema_version"] == 3
+        assert raw["cameras"]["default"]["center_px"] == [123, 234]
+        assert raw["cameras"]["side"]["center_px"] == [10, 20]
+
 
 class TestManualCalibrationValidation:
     """D2: Tests for A3 (mm/px plausibility) and A4 (min point distance)."""
@@ -135,6 +183,51 @@ class TestManualCalibrationValidation:
 
 
 class TestCameraCharucoBoardConfig:
+    def test_aruco_calibration_reports_missing_expected_marker(self, calib_manager, monkeypatch):
+        frame = np.zeros((200, 200, 3), dtype=np.uint8)
+
+        class DummyDetector:
+            def detectMarkers(self, _gray):
+                corners = [np.zeros((1, 4, 2), dtype=np.float32) for _ in range(4)]
+                ids = np.array([[0], [1], [2], [99]], dtype=np.int32)
+                return corners, ids, []
+
+        monkeypatch.setattr(
+            "src.cv.calibration_board.cv2.aruco.ArucoDetector",
+            lambda _dictionary, _params: DummyDetector(),
+        )
+
+        result = calib_manager.aruco_calibration(frame)
+
+        assert result["ok"] is False
+        assert "Marker ID 3 not found" in result["error"]
+
+    def test_charuco_calibration_requires_three_usable_frames(self, calib_manager, monkeypatch):
+        frames = [np.zeros((120, 160, 3), dtype=np.uint8) for _ in range(3)]
+        board = MagicMock()
+        dictionary = MagicMock()
+        board_spec = MagicMock()
+        board_spec.create_dictionary.return_value = dictionary
+        board_spec.create_board.return_value = board
+        board_spec.square_length_m = 0.04
+        board_spec.squares_x = 5
+
+        monkeypatch.setattr("src.cv.calibration.resolve_charuco_board_spec", lambda **_kwargs: board_spec)
+        monkeypatch.setattr("src.cv.calibration.cv2.aruco.ArucoDetector", lambda _dictionary: MagicMock())
+        monkeypatch.setattr(
+            "src.cv.calibration.collect_charuco_frame_observations",
+            lambda *_args, **_kwargs: (
+                [np.zeros((4, 1, 2), dtype=np.float32)] * 2,
+                [np.zeros((4, 1), dtype=np.int32)] * 2,
+                (160, 120),
+            ),
+        )
+
+        result = calib_manager.charuco_calibration(frames)
+
+        assert result["ok"] is False
+        assert "Only 2 usable frames" in result["error"]
+
     def test_camera_calibration_manager_uses_default_board_spec(self, tmp_path):
         path = str(tmp_path / "cal.yaml")
         manager = CameraCalibrationManager(config_path=path)

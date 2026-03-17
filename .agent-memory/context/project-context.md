@@ -25,20 +25,26 @@ CPU-optimiertes Dart-Scoring-System mit klassischer Computer Vision. Das System 
 
 ## Aktueller Stand (2026-03-17)
 
-- 494 Tests bestanden
+- 512 Tests bestanden
 - 76% Gesamt-Coverage
 - Single-Cam stabiler Hauptpfad
 - Multi-Cam funktional, aber weiterhin Hardening-Fokus
-- Backlog erweitert: neue Prioritaeten P19-P23 fuer Runtime-Haertung und Wartbarkeit
+- P19 abgeschlossen: Async-Wartepfade in Web-Routes laufen nicht-blockierend ueber `asyncio.sleep(...)`
+- P20 abgeschlossen: Pending-Hits werden serverseitig per TTL/Obergrenze bereinigt und als Stats/Event-Flow exponiert
+- P21 abgeschlossen: Kalibrierungslogik ist intern in Board-Workflows, YAML-Store, Konstanten und gemeinsame ChArUco-Observation-Helfer getrennt
+- P22 abgeschlossen: Multi-Cam-Fusion puffert kurze Burst-Folgen jetzt pro Kamera in einem Zeitfenster und fusioniert sie in zeitlicher Reihenfolge statt nur ueber den letzten Treffer je Kamera
+- P23 abgeschlossen: Runtime-State fuer Pipeline, Thread-Handles und Multi-Frames ist ueber dedizierte State-Helper und deterministischen Lifespan-Reset gekapselt
+- P24 abgeschlossen: historisch getrackte Python-Artefakte sind aus dem Git-Tracking entfernt und der Hygiene-Workflow ist dokumentiert
+- Weiterer Fokus liegt jetzt eher auf realer E2E-/Hardware-Verifikation als auf den zuletzt identifizierten Struktur-Hardening-Punkten
 - Self-improvement-Workflow ist aktiv nutzbar und als atomarer Memory-Sync dokumentiert
 
 ## Module-Status
 
-- `main.py`: 78% Coverage, Lifecycle mit Thread-Handles und Stop-Events
+- `main.py`: 78% Coverage, Lifecycle jetzt mit expliziten State-Helpern fuer Runtime-Reset und Thread-Handles
 - `routes.py`: 66% Coverage, grosse Sammeldatei mit weiterem Entkopplungsbedarf
 - `pipeline.py`: 75% Coverage, stabile Basis
-- `multi_camera.py`: 61% Coverage, Timing/Burst-Faelle priorisiert
-- `calibration.py`: 53% Coverage, gezielte Aufteilung und Tests priorisiert
+- `multi_camera.py`: Burst-/Timing-Puffer gehaertet; weitere Arbeit liegt eher in Real-World-Tuning als in Buffer-Semantik
+- `calibration.py`: deutlich schlankerer Wrapper ueber Board-/Store-/ChArUco-Helfer; weitere Arbeit liegt eher in Real-World-Verifikation als in Datei-Groesse
 
 ## Aktive Constraints
 
@@ -58,11 +64,7 @@ CPU-optimiertes Dart-Scoring-System mit klassischer Computer Vision. Das System 
 
 ## Tech Debt
 
-- Blockierende `_time.sleep(...)`-Wartepfade in async Routen
-- Fehlende serverseitige TTL fuer `pending_hits`
-- Calibration-Monolith mit relativ schwacher Testabdeckung
-- Multi-Cam-Fusionsbuffer aktuell auf "letzten Treffer je Kamera" begrenzt
-- `app_state`-Mutation ist verteilt und nur teilweise vertraglich gekapselt
+- `app_state` ist fuer Pipeline-Lifecycle und Multi-Frame-Tracking jetzt teilweise gekapselt; Restschuld bleibt die weitere Entkopplung aus `routes.py`/`main.py`
 
 ## Offene Fragen
 

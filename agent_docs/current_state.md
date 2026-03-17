@@ -1,6 +1,6 @@
 # Current State
 
-Stand dieser Zusammenfassung: 2026-03-17 (P7, P13-P17 erledigt; P19-P23 neu priorisiert)
+Stand dieser Zusammenfassung: 2026-03-17 (P7, P13-P24 erledigt)
 
 ## Technischer Kern
 
@@ -43,6 +43,11 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 - Wurf-Badges im Scoreboard statt Klartext
 - Pulsierender Glow-Effekt fuer aktiven Spieler
 - X01-Checkout-Vorschlaege (Scores 2-170) mit Backend-Lookup
+- Async-Wartepfade in Web-Routes blockieren den Event-Loop nicht mehr (Single/Multi-Start-Stop, Lens-ChArUco, Stereo-Kalibrierung)
+- Pending-Hits werden serverseitig per TTL (`30s`) und Obergrenze (`10`) bereinigt; Timeout- und Overflow-Rejections werden als Events und Stats exponiert
+- Runtime-State fuer Pipeline, Thread-Handles und Multi-Frames wird ueber dedizierte Helper initialisiert und mutiert statt verstreuter Dict-Schreibzugriffe
+- Kalibrierungslogik ist intern nach Board-Workflow, YAML-Store, Konstanten und gemeinsamer ChArUco-Frame-Sammlung getrennt; `CalibrationManager` behaelt dabei die bestehende API
+- Multi-Cam-Fusion nutzt jetzt pro Kamera einen kleinen Zeitfenster-Buffer und pairt Burst-Folgen in zeitlicher Reihenfolge statt nur den letzten Treffer je Kamera zu behalten
 
 ## Was heute als fortgeschritten, aber noch sensibel gilt
 
@@ -54,7 +59,7 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 
 ## Verifizierte Kennzahlen
 
-- `494` Tests bestanden (Stand 2026-03-17)
+- `513` Tests bestanden (Stand 2026-03-17)
 - Gesamt-Coverage 76%
 - Wichtige Module: main.py 78%, routes.py 66%, pipeline.py 75%, multi_camera.py 61%, capture.py 95%
 - synthetische Pipeline-Benchmarks fuer `1`, `2` und `3` Kameras innerhalb der definierten KPI-Grenzen
@@ -63,17 +68,21 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 ## Analysebefunde 2026-03-17 (fuer neue Prioritaeten)
 
 - `src/web/routes.py` ist mit 1453 Zeilen weiterhin das groesste Modul und kombiniert API, Lifecycle-Waits und Stream-Logik.
-- Es gibt weiterhin blockierende `_time.sleep(...)`-Wartepfade in asynchronen Route-Handlern.
-- `src/cv/calibration.py` bleibt mit 53% Coverage der schwaechste betriebsrelevante Kernbereich.
-- `src/cv/multi_camera.py` hat 61% Coverage; Burst-/Timing-Faelle in der Fusion bleiben ein Hardening-Thema.
-- Der `pending_hits`-Lifecycle ist funktional, aber Timeout-Verhalten ist aktuell stark frontend-getrieben.
+- Die blockierenden `_time.sleep(...)`-Wartepfade in asynchronen Route-Handlern sind entfernt; die Datei bleibt aber als Lifecycle- und API-Sammelmodul weiter zu gross.
+- Der fruehere Kalibrierungs-Monolith ist intern in kleinere Workflow- und Store-Module aufgeteilt; offenes Restrisiko ist jetzt eher reale Workflow-Verifikation als ungetrennte Steuerlogik.
+- Die Multi-Cam-Fusion verarbeitet Burst-/Timing-Faelle jetzt ueber einen zeitfensterbasierten Kamera-Buffer; weiteres Restrisiko liegt eher in Real-World-Tuning als in letzter-Treffer-Ueberschreibung.
+- Die Pending-Hit-State-Logik und der Pipeline-Lifecycle teilen jetzt gemeinsame State-Helper; die weitere Restarbeit liegt vor allem in der strukturellen Verkleinerung von `routes.py` und `main.py`.
+- Historisch getrackte Python-Artefakte (`__pycache__`, `.pyc`) sind aus dem Git-Tracking entfernt; der Repo-Workflow fuer Artefakt-Hygiene ist dokumentiert.
 
 ## Wichtige Projektfakten
 
 - `config/calibration_config.yaml` enthaelt eine gueltige Kalibrierung fuer `default`
 - `config/multi_cam.yaml` speichert jetzt auch `last_cameras` fuer schnellen Multi-Cam-Neustart
 - Telemetrie-Endpunkt `/api/stats` liefert FPS, Dropped Frames, Queue-Druck, RAM
+- `/api/stats` liefert jetzt auch `pending_hits_expired_total`, `pending_hits_rejected_by_timeout_total` und `pending_hits_dropped_overflow_total`
 - `/api/multi/readiness` liefert pro-Kamera-Diagnose fuer Multi-Cam-Setup
+- Lifespan-Start initialisiert den Runtime-State deterministisch; Tests muessen Mock-State deshalb innerhalb von `TestClient(...)` setzen
+- Board- und Lens-ChArUco-Workflows teilen jetzt eine gemeinsame Frame-Observation-Hilfe statt doppelter Marker/Corner-Sammlung
 - Alle API-Fehlermeldungen sind deutsch und handlungsorientiert
 
 ## Arbeitsannahmen fuer Agents

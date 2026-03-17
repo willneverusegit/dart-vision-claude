@@ -73,6 +73,18 @@ Vor Abgabe einer Aenderung sollte ein Agent pruefen:
 - Wurden Konfigurationsschluessel oder Schemas geaendert?
 - Wurde die Hardwarelast stillschweigend erhoeht?
 - Ist die Doku noch konsistent?
+- Hinterlaesst der Lauf keine neu getrackten Python-Artefakte (`__pycache__`, `.pyc`)?
+
+## Artefakt-Hygiene
+
+- Python-Artefakte und pytest-Caches sind per `.gitignore` ausgeschlossen und sollen lokal bleiben.
+- Falls historisch getrackte Cache-Dateien wieder im Worktree auftauchen, entferne sie aus dem Git-Tracking mit:
+
+```powershell
+git rm --cached -r src/__pycache__ src/cv/__pycache__ src/game/__pycache__ src/utils/__pycache__ src/web/__pycache__ tests/__pycache__
+```
+
+- Danach keine generierten Artefakte wieder einchecken; die lokale Laufzeitkopie darf bestehen bleiben.
 
 ## Spezielle Regeln fuer sensible Bereiche
 

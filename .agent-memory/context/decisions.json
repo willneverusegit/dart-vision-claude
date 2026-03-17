@@ -97,5 +97,221 @@
       "stability"
     ],
     "status": "active"
+  },
+  {
+    "id": "2026-03-17-priority-19-async-routes-completed",
+    "timestamp": "2026-03-17T13:14:22+01:00",
+    "type": "status-update",
+    "title": "Async route waits centralized for lifecycle and calibration paths",
+    "decision": "Use centralized asyncio-based wait helpers in src.web.routes for release delays and state polling instead of inline time.sleep calls inside async handlers.",
+    "rationale": "Blocking waits in async routes can stall the FastAPI event loop during pipeline transitions and calibration capture, especially while MJPEG and WebSocket traffic are active.",
+    "alternatives_considered": [
+      {
+        "option": "Keep inline time.sleep loops and accept short stalls",
+        "rejected_because": "Short stalls still block the shared event loop and become user-visible under load."
+      }
+    ],
+    "impact": {
+      "files_affected": [
+        "src/web/routes.py",
+        "tests/test_routes_extra.py",
+        "agent_docs/priorities.md",
+        "agent_docs/current_state.md"
+      ],
+      "reversibility": "easy",
+      "dependencies": [
+        "FastAPI async handlers",
+        "main.py lifecycle helpers"
+      ]
+    },
+    "tags": [
+      "routes",
+      "async",
+      "lifecycle",
+      "stability"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "2026-03-17-priority-20-pending-hit-lifecycle-completed",
+    "timestamp": "2026-03-17T13:43:00+01:00",
+    "type": "status-update",
+    "title": "Pending-hit lifecycle centralized server-side",
+    "decision": "Manage pending hit candidate insertion, expiry, overflow trimming, lookup, and clearing through shared helpers in src.main, with lifecycle counters exposed via /api/stats.",
+    "rationale": "A shared backend policy prevents stale candidates from surviving disconnected clients and keeps route/UI behavior aligned with the authoritative server state.",
+    "alternatives_considered": [
+      {
+        "option": "Keep timeout handling primarily in the frontend and only patch individual routes",
+        "rejected_because": "It leaves the backend vulnerable to stale state and duplicates lifecycle semantics across layers."
+      }
+    ],
+    "impact": {
+      "files_affected": [
+        "src/main.py",
+        "src/web/routes.py",
+        "tests/test_main_coverage.py",
+        "tests/test_routes_coverage2.py"
+      ],
+      "reversibility": "easy",
+      "dependencies": [
+        "app_state pending_hits store",
+        "WebSocket hit_rejected event"
+      ]
+    },
+    "tags": [
+      "runtime",
+      "state",
+      "pending-hits",
+      "observability"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "2026-03-17-priority-23-runtime-state-contracts-completed",
+    "timestamp": "2026-03-17T13:58:00+01:00",
+    "type": "status-update",
+    "title": "Runtime-state lifecycle centralized around deterministic lifespan startup",
+    "decision": "Use shared state helpers in src.utils.state for runtime-state initialization, pipeline references, thread handles, and multi-frame cache mutation, and treat FastAPI lifespan startup as the authoritative reset boundary.",
+    "rationale": "Shared app_state lifecycle fields were otherwise mutated inconsistently across routes, worker threads, and tests, making concurrency behavior and startup assumptions harder to reason about.",
+    "alternatives_considered": [
+      {
+        "option": "Keep open dict writes and relax deterministic startup so existing tests continue to pass",
+        "rejected_because": "It preserves hidden coupling and weakens the runtime contract instead of making tests match real startup behavior."
+      }
+    ],
+    "impact": {
+      "files_affected": [
+        "src/utils/state.py",
+        "src/main.py",
+        "src/web/routes.py",
+        "tests/test_main_coverage.py",
+        "tests/test_routes_extra.py",
+        "tests/test_routes_coverage2.py",
+        "tests/test_multi_hardening.py"
+      ],
+      "reversibility": "easy",
+      "dependencies": [
+        "FastAPI lifespan startup",
+        "shared app_state runtime fields"
+      ]
+    },
+    "tags": [
+      "runtime",
+      "state",
+      "lifespan",
+      "testing"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "2026-03-17-priority-21-calibration-workflows-completed",
+    "timestamp": "2026-03-17T14:32:00+01:00",
+    "type": "status-update",
+    "title": "Calibration workflows split behind helper modules with stable manager API",
+    "decision": "Keep CalibrationManager as the public facade, but move board workflow logic, shared config IO/defaults and repeated ChArUco observation collection into dedicated helper modules.",
+    "rationale": "This reduces calibration-module complexity and improves direct testability of persistence and error paths without forcing route or manager API changes.",
+    "alternatives_considered": [
+      {
+        "option": "Rewrite calibration call sites to use new manager types directly",
+        "rejected_because": "It would widen the change surface and risk API regressions in a calibration-critical area."
+      }
+    ],
+    "impact": {
+      "files_affected": [
+        "src/cv/calibration.py",
+        "src/cv/calibration_board.py",
+        "src/cv/calibration_common.py",
+        "src/cv/calibration_store.py",
+        "src/cv/charuco_detection.py",
+        "src/cv/camera_calibration.py",
+        "tests/test_calibration.py"
+      ],
+      "reversibility": "easy",
+      "dependencies": [
+        "CalibrationManager facade",
+        "CameraCalibrationManager ChArUco workflow",
+        "shared calibration YAML file"
+      ]
+    },
+    "tags": [
+      "calibration",
+      "refactor",
+      "testing",
+      "api-stability"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "2026-03-17-priority-22-multi-cam-burst-buffer-completed",
+    "timestamp": "2026-03-17T15:05:00+01:00",
+    "type": "status-update",
+    "title": "Multi-camera fusion now buffers short burst windows per camera",
+    "decision": "Replace the one-slot-per-camera fusion buffer with a small per-camera time-window buffer and pair detections around the oldest pending anchor while removing only consumed entries.",
+    "rationale": "Burst detections from the same camera should not overwrite each other before fusion, and timeout behavior should be reproducible and time-ordered instead of depending on whichever detection arrived last.",
+    "alternatives_considered": [
+      {
+        "option": "Keep the latest-only buffer and only tweak timeout thresholds",
+        "rejected_because": "It leaves burst overwrites unsolved and does not make fusion order deterministic."
+      }
+    ],
+    "impact": {
+      "files_affected": [
+        "src/cv/multi_camera.py",
+        "tests/test_multi_camera.py",
+        "tests/test_multi_robustness.py"
+      ],
+      "reversibility": "easy",
+      "dependencies": [
+        "multi-camera fusion callback",
+        "timeout fallback semantics",
+        "buffer lock"
+      ]
+    },
+    "tags": [
+      "multi-camera",
+      "fusion",
+      "timing",
+      "runtime"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "2026-03-17-priority-24-generated-artifacts-untracked",
+    "timestamp": "2026-03-17T15:18:00+01:00",
+    "type": "status-update",
+    "title": "Historically tracked Python cache artifacts were removed from the Git index",
+    "decision": "Keep the existing ignore rules, remove tracked __pycache__ and related cache paths from the Git index, and document the cleanup step in the development workflow.",
+    "rationale": "Legacy tracked artifacts keep the worktree noisy across sessions and obscure real code changes, while .gitignore alone does not fix already tracked cache paths.",
+    "alternatives_considered": [
+      {
+        "option": "Leave the tracked cache files in the repository and rely only on .gitignore for future runs",
+        "rejected_because": "The worktree would remain noisy and future sessions would continue to see false-positive changes."
+      }
+    ],
+    "impact": {
+      "files_affected": [
+        "agent_docs/development_workflow.md",
+        "agent_docs/priorities.md",
+        "agent_docs/current_state.md",
+        "src/__pycache__",
+        "src/cv/__pycache__",
+        "src/game/__pycache__",
+        "src/utils/__pycache__",
+        "src/web/__pycache__",
+        "tests/__pycache__"
+      ],
+      "reversibility": "easy",
+      "dependencies": [
+        "existing .gitignore rules",
+        "Git index state"
+      ]
+    },
+    "tags": [
+      "git",
+      "maintenance",
+      "artifacts",
+      "hygiene"
+    ],
+    "status": "active"
   }
 ]

@@ -9,6 +9,7 @@ import cv2
 import numpy as np
 
 from src.cv.calibration import CalibrationManager
+from src.cv.charuco_detection import collect_charuco_frame_observations
 from src.cv.geometry import CameraIntrinsics
 from src.cv.stereo_calibration import CharucoBoardSpec, resolve_charuco_board_spec
 
@@ -86,25 +87,14 @@ class CameraCalibrationManager:
             board = board_spec.create_board(dictionary)
             detector = cv2.aruco.ArucoDetector(dictionary)
 
-            all_charuco_corners: list = []
-            all_charuco_ids: list = []
-            image_size = None
-
-            for i, frame in enumerate(frames):
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if len(frame.shape) == 3 else frame
-                if image_size is None:
-                    image_size = gray.shape[::-1]
-                corners, ids, _ = detector.detectMarkers(gray)
-                if ids is None or len(ids) < 4:
-                    logger.debug("Lens calibration frame %d ignored (markers=%d)", i, 0 if ids is None else len(ids))
-                    continue
-
-                ret, charuco_corners, charuco_ids = cv2.aruco.interpolateCornersCharuco(
-                    corners, ids, gray, board
-                )
-                if ret >= 4:
-                    all_charuco_corners.append(charuco_corners)
-                    all_charuco_ids.append(charuco_ids)
+            all_charuco_corners, all_charuco_ids, image_size = collect_charuco_frame_observations(
+                frames,
+                board,
+                detector,
+                logger=logger,
+                skip_log_level="debug",
+                skip_log_template="Lens calibration frame %d ignored (markers=%d)",
+            )
 
             if len(all_charuco_corners) < 3 or image_size is None:
                 return {

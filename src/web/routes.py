@@ -4,7 +4,6 @@ import asyncio
 import base64
 import logging
 import threading
-import time as _time
 from contextlib import nullcontext as _nullcontext
 
 import cv2
@@ -13,6 +12,11 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Request
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
+from src.utils.state import (
+    clear_multi_latest_frames,
+    clear_single_pipeline_state,
+    set_pipeline_thread_handles,
+)
 from src.web.stream import encode_frame_jpeg, make_mjpeg_frame
 
 logger = logging.getLogger(__name__)
@@ -23,6 +27,21 @@ templates = Jinja2Templates(directory="templates")
 
 def setup_routes(app_state: dict) -> APIRouter:
     """Create router with access to shared app state."""
+
+    def _clear_pending_hits() -> None:
+        from src.main import clear_pending_hits
+
+        clear_pending_hits(app_state)
+
+    def _get_pending_hits() -> list[dict]:
+        from src.main import get_pending_hits_snapshot
+
+        return get_pending_hits_snapshot(app_state)
+
+    def _pop_pending_hit(candidate_id: str) -> dict | None:
+        from src.main import pop_pending_hit
+
+        return pop_pending_hit(app_state, candidate_id)
 
     async def _optional_json_body(request: Request | None) -> dict:
         if request is None:
@@ -45,6 +64,20 @@ def setup_routes(app_state: dict) -> APIRouter:
     def _has_charuco_override(body: dict | None) -> bool:
         fields = _charuco_override_fields(body)
         return any(value is not None for value in fields.values())
+
+    async def _pause(seconds: float) -> None:
+        """Yield control without blocking the FastAPI event loop."""
+        await asyncio.sleep(max(float(seconds), 0.0))
+
+    async def _wait_for_state(flag_name: str, attempts: int = 30, delay: float = 0.1) -> bool:
+        """Poll shared app state without blocking the event loop."""
+        if app_state.get(flag_name):
+            return True
+        for _ in range(attempts):
+            await _pause(delay)
+            if app_state.get(flag_name):
+                return True
+        return bool(app_state.get(flag_name))
 
     VALID_RINGS = {"single", "double", "triple", "inner_bull", "outer_bull", "miss"}
     VALID_SECTORS = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 25, 50}
@@ -121,10 +154,7 @@ def setup_routes(app_state: dict) -> APIRouter:
         if pipeline and hasattr(pipeline, "detector"):
             pipeline.detector.reset()
         # Clear pending hits on new game
-        lock = app_state.get("pending_hits_lock")
-        if lock:
-            with lock:
-                app_state["pending_hits"].clear()
+        _clear_pending_hits()
         return state
 
     @router.post("/api/game/undo")
@@ -164,10 +194,7 @@ def setup_routes(app_state: dict) -> APIRouter:
         if pipeline and hasattr(pipeline, "detector"):
             pipeline.detector.reset()
         # Clear pending hits
-        lock = app_state.get("pending_hits_lock")
-        if lock:
-            with lock:
-                app_state["pending_hits"].clear()
+        _clear_pending_hits()
         em = app_state.get("event_manager")
         if em:
             em.broadcast_sync("darts_removed", {})
@@ -188,10 +215,7 @@ def setup_routes(app_state: dict) -> APIRouter:
         if pipeline and hasattr(pipeline, "detector"):
             pipeline.detector.reset()
         # Clear pending hits
-        lock = app_state.get("pending_hits_lock")
-        if lock:
-            with lock:
-                app_state["pending_hits"].clear()
+        _clear_pending_hits()
         return state
 
     # --- Hit Candidate Review ---
@@ -199,20 +223,12 @@ def setup_routes(app_state: dict) -> APIRouter:
     @router.get("/api/hits/pending")
     async def get_pending_hits() -> dict:
         """Get all pending hit candidates."""
-        lock = app_state.get("pending_hits_lock")
-        if lock:
-            with lock:
-                return {"ok": True, "hits": list(app_state["pending_hits"].values())}
-        return {"ok": True, "hits": []}
+        return {"ok": True, "hits": _get_pending_hits()}
 
     @router.post("/api/hits/{candidate_id}/confirm")
     async def confirm_hit(candidate_id: str) -> dict:
         """Confirm a hit candidate — registers the throw in the game engine."""
-        lock = app_state.get("pending_hits_lock")
-        candidate = None
-        if lock:
-            with lock:
-                candidate = app_state["pending_hits"].pop(candidate_id, None)
+        candidate = _pop_pending_hit(candidate_id)
 
         if candidate is None:
             return {"ok": False, "error": f"Candidate {candidate_id} not found"}
@@ -243,11 +259,7 @@ def setup_routes(app_state: dict) -> APIRouter:
     @router.post("/api/hits/{candidate_id}/reject")
     async def reject_hit(candidate_id: str) -> dict:
         """Reject a hit candidate — removes it without affecting game state."""
-        lock = app_state.get("pending_hits_lock")
-        candidate = None
-        if lock:
-            with lock:
-                candidate = app_state["pending_hits"].pop(candidate_id, None)
+        candidate = _pop_pending_hit(candidate_id)
 
         if candidate is None:
             return {"ok": False, "error": f"Candidate {candidate_id} not found"}
@@ -263,11 +275,7 @@ def setup_routes(app_state: dict) -> APIRouter:
     async def correct_hit(candidate_id: str, request: Request) -> dict:
         """Correct a hit candidate — override score before registering."""
         body = await request.json()
-        lock = app_state.get("pending_hits_lock")
-        candidate = None
-        if lock:
-            with lock:
-                candidate = app_state["pending_hits"].pop(candidate_id, None)
+        candidate = _pop_pending_hit(candidate_id)
 
         if candidate is None:
             return {"ok": False, "error": f"Candidate {candidate_id} not found"}
@@ -526,7 +534,7 @@ def setup_routes(app_state: dict) -> APIRouter:
             raw = pipeline.get_latest_raw_frame()
             if raw is not None:
                 frames.append(raw.copy())
-            _time.sleep(0.1)
+            await _pause(0.1)
 
         if len(frames) < 3:
             return {"ok": False, "error": f"Nur {len(frames)} Frames erfasst (mind. 3 noetig) — Kamera pruefen."}
@@ -697,7 +705,8 @@ def setup_routes(app_state: dict) -> APIRouter:
             if raw_a is not None and raw_b is not None:
                 frames_a.append(raw_a.copy())
                 frames_b.append(raw_b.copy())
-            _time.sleep(capture_delay)
+            if i < num_pairs - 1:
+                await _pause(capture_delay)
 
         if len(frames_a) < 5:
             return {"ok": False, "error": f"Only captured {len(frames_a)} pairs, need at least 5"}
@@ -916,25 +925,21 @@ def setup_routes(app_state: dict) -> APIRouter:
             # Stop multi if running
             if app_state.get("multi_pipeline_running"):
                 stop_pipeline_thread(app_state, "multi", timeout=5.0)
-                app_state["multi_latest_frames"] = {}
+                clear_multi_latest_frames(app_state)
             # Stop existing single if running
             if app_state.get("pipeline_running") and app_state.get("pipeline"):
                 try:
                     app_state["pipeline"].stop()
                 except Exception:
                     pass
-                app_state["pipeline_running"] = False
-                app_state["pipeline"] = None
+                clear_single_pipeline_state(app_state)
             stop_pipeline_thread(app_state, "single", timeout=5.0)
 
-        _time.sleep(0.5)  # Windows needs time after camera release
+        await _pause(0.5)  # Windows needs time after camera release
         start_single_pipeline(app_state, camera_src=camera_src)
 
         # Wait for pipeline to initialize (up to 3s)
-        for _ in range(30):
-            _time.sleep(0.1)
-            if app_state.get("pipeline_running"):
-                break
+        await _wait_for_state("pipeline_running")
 
         if not app_state.get("pipeline_running"):
             return {"ok": False, "error": "Single-Pipeline konnte nicht gestartet werden."}
@@ -956,8 +961,7 @@ def setup_routes(app_state: dict) -> APIRouter:
                     app_state["pipeline"].stop()
                 except Exception:
                     pass
-                app_state["pipeline_running"] = False
-                app_state["pipeline"] = None
+                clear_single_pipeline_state(app_state)
 
         return {"ok": True}
 
@@ -1092,30 +1096,30 @@ def setup_routes(app_state: dict) -> APIRouter:
             # Thread's finally block already calls pipeline.stop() + camera.release().
             # Only clean up state here — no redundant stop() call.
             if app_state.get("pipeline"):
-                app_state["pipeline_running"] = False
-                app_state["pipeline"] = None
+                clear_single_pipeline_state(app_state)
 
         # Windows needs a moment after camera release before re-opening
-        _time.sleep(0.5)
+        await _pause(0.5)
 
         # Start multi-pipeline in a background thread with its own stop event
         from src.main import _run_multi_pipeline
         stop_evt = threading.Event()
-        app_state["multi_pipeline_stop_event"] = stop_evt
         multi_thread = threading.Thread(
             target=_run_multi_pipeline,
             args=(app_state, cameras, stop_evt),
             daemon=True,
             name="cv-multi-pipeline",
         )
-        app_state["multi_pipeline_thread"] = multi_thread
+        set_pipeline_thread_handles(
+            app_state,
+            "multi",
+            stop_event=stop_evt,
+            thread=multi_thread,
+        )
         multi_thread.start()
 
         # Wait for pipeline to initialize (up to 3s)
-        for _ in range(30):
-            _time.sleep(0.1)
-            if app_state.get("multi_pipeline_running"):
-                break
+        await _wait_for_state("multi_pipeline_running")
 
         if not app_state.get("multi_pipeline_running"):
             # Check camera errors for better diagnostics
@@ -1176,18 +1180,15 @@ def setup_routes(app_state: dict) -> APIRouter:
         _pl = app_state.get("pipeline_lock")
         with (_pl if _pl else _nullcontext()):
             stop_pipeline_thread(app_state, "multi", timeout=5.0)
-            app_state["multi_latest_frames"] = {}
+            clear_multi_latest_frames(app_state)
 
         result = {"ok": True}
 
         # Auto-restart single pipeline so the user isn't left without a camera
         if restart_single:
-            _time.sleep(0.5)  # Windows needs time after camera release
+            await _pause(0.5)  # Windows needs time after camera release
             start_single_pipeline(app_state, camera_src=single_src)
-            for _ in range(30):
-                _time.sleep(0.1)
-                if app_state.get("pipeline_running"):
-                    break
+            await _wait_for_state("pipeline_running")
             result["single_restarted"] = app_state.get("pipeline_running", False)
             result["single_src"] = single_src
 
@@ -1309,11 +1310,7 @@ def setup_routes(app_state: dict) -> APIRouter:
         if pipeline and hasattr(pipeline, "camera") and pipeline.camera is not None:
             if hasattr(pipeline.camera, "queue_pressure"):
                 queue_pressure = pipeline.camera.queue_pressure
-        lock = app_state.get("pending_hits_lock")
-        pending_count = 0
-        if lock:
-            with lock:
-                pending_count = len(app_state.get("pending_hits", {}))
+        pending_count = len(_get_pending_hits())
         board_calibrated = False
         if pipeline and hasattr(pipeline, "board_calibration"):
             board_calibrated = pipeline.board_calibration.is_valid()
@@ -1363,6 +1360,9 @@ def setup_routes(app_state: dict) -> APIRouter:
             "multi_pipeline_running": app_state.get("multi_pipeline_running", False),
             "active_cameras": app_state.get("active_camera_ids", []),
             "pending_hits": pending_count,
+            "pending_hits_expired_total": app_state.get("pending_hits_expired_total", 0),
+            "pending_hits_rejected_by_timeout_total": app_state.get("pending_hits_rejected_by_timeout_total", 0),
+            "pending_hits_dropped_overflow_total": app_state.get("pending_hits_dropped_overflow_total", 0),
             "board_calibrated": board_calibrated,
             "dropped_frames": dropped_frames,
             "queue_pressure": round(queue_pressure, 2),
@@ -1424,14 +1424,11 @@ def setup_routes(app_state: dict) -> APIRouter:
                 "data": engine.get_state(),
             })
         # Send any pending hits
-        lock = app_state.get("pending_hits_lock")
-        if lock:
-            with lock:
-                for candidate in app_state.get("pending_hits", {}).values():
-                    await websocket.send_json({
-                        "type": "hit_candidate",
-                        "data": candidate,
-                    })
+        for candidate in _get_pending_hits():
+            await websocket.send_json({
+                "type": "hit_candidate",
+                "data": candidate,
+            })
         try:
             while True:
                 data = await websocket.receive_json()

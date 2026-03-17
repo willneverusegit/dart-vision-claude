@@ -1,6 +1,7 @@
 """Additional route tests to increase routes.py coverage from 34% to 60%+."""
 
 import threading
+import time
 import numpy as np
 from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
@@ -123,6 +124,41 @@ class TestHitCandidateEndpoints:
             resp = client.post("/api/hits/missing/correct", json={"score": 10})
             assert resp.json()["ok"] is False
 
+    def test_get_pending_hits_expires_stale_candidates(self):
+        with TestClient(app) as client:
+            lock = app_state.get("pending_hits_lock")
+            if lock:
+                with lock:
+                    app_state["pending_hits"]["stale"] = {
+                        "candidate_id": "stale",
+                        "score": 20,
+                        "sector": 20,
+                        "multiplier": 1,
+                        "ring": "single",
+                        "timestamp": time.time() - 31,
+                    }
+            resp = client.get("/api/hits/pending")
+            data = resp.json()
+            assert data["ok"] is True
+            assert data["hits"] == []
+
+    def test_confirm_expired_candidate_returns_not_found(self):
+        with TestClient(app) as client:
+            lock = app_state.get("pending_hits_lock")
+            if lock:
+                with lock:
+                    app_state["pending_hits"]["expired-confirm"] = {
+                        "candidate_id": "expired-confirm",
+                        "score": 20,
+                        "sector": 20,
+                        "multiplier": 1,
+                        "ring": "single",
+                        "timestamp": time.time() - 31,
+                    }
+            resp = client.post("/api/hits/expired-confirm/confirm")
+            data = resp.json()
+            assert data["ok"] is False
+
 
 class TestOverlayEndpoints:
     def test_set_overlays(self):
@@ -165,15 +201,16 @@ class TestCalibrationEndpoints:
             app_state["latest_frame"] = saved
 
     def test_get_calibration_frame_with_frame(self):
-        app_state["latest_frame"] = np.zeros((480, 640, 3), dtype=np.uint8)
+        saved = app_state.get("latest_frame")
         try:
             with TestClient(app) as client:
+                app_state["latest_frame"] = np.zeros((480, 640, 3), dtype=np.uint8)
                 resp = client.get("/api/calibration/frame")
                 data = resp.json()
                 assert data["ok"] is True
                 assert "image" in data
         finally:
-            app_state["latest_frame"] = None
+            app_state["latest_frame"] = saved
 
     def test_roi_preview_no_pipeline(self):
         saved = app_state.get("pipeline")
@@ -187,9 +224,9 @@ class TestCalibrationEndpoints:
 
     def test_roi_preview_with_pipeline(self):
         saved = app_state.get("pipeline")
-        app_state["pipeline"] = _make_dummy_pipeline()
         try:
             with TestClient(app) as client:
+                app_state["pipeline"] = _make_dummy_pipeline()
                 resp = client.get("/api/calibration/roi-preview")
                 assert resp.json()["ok"] is True
         finally:
@@ -197,9 +234,9 @@ class TestCalibrationEndpoints:
 
     def test_field_overlay_with_pipeline(self):
         saved = app_state.get("pipeline")
-        app_state["pipeline"] = _make_dummy_pipeline()
         try:
             with TestClient(app) as client:
+                app_state["pipeline"] = _make_dummy_pipeline()
                 resp = client.get("/api/calibration/overlay")
                 assert resp.json()["ok"] is True
         finally:
@@ -273,9 +310,9 @@ class TestCalibrationEndpoints:
     def test_optical_center_manual_success(self):
         saved = app_state.get("pipeline")
         pipe = _make_dummy_pipeline()
-        app_state["pipeline"] = pipe
         try:
             with TestClient(app) as client:
+                app_state["pipeline"] = pipe
                 resp = client.post("/api/calibration/optical-center/manual",
                                    json={"x": 200.5, "y": 199.3})
                 assert resp.json()["ok"] is True
@@ -290,9 +327,9 @@ class TestCalibrationEndpoints:
             "radii_px": [10, 19, 106, 116, 188, 200],
             "center_px": [200, 200], "schema_version": 2,
         }
-        app_state["pipeline"] = pipe
         try:
             with TestClient(app) as client:
+                app_state["pipeline"] = pipe
                 resp = client.get("/api/calibration/info")
                 data = resp.json()
                 assert data["ok"] is True
@@ -388,14 +425,37 @@ class TestStatsEndpoint:
 
     def test_get_stats_with_pipeline(self):
         saved = app_state.get("pipeline")
-        app_state["pipeline"] = _make_dummy_pipeline()
         try:
             with TestClient(app) as client:
+                app_state["pipeline"] = _make_dummy_pipeline()
                 resp = client.get("/api/stats")
                 data = resp.json()
                 assert data["fps"] == 30.0
         finally:
             app_state["pipeline"] = saved
+
+    def test_get_stats_includes_pending_hit_lifecycle_metrics(self):
+        with TestClient(app) as client:
+            lock = app_state.get("pending_hits_lock")
+            if lock:
+                with lock:
+                    app_state["pending_hits"] = {
+                        "stale": {
+                            "candidate_id": "stale",
+                            "score": 20,
+                            "timestamp": time.time() - 31,
+                        }
+                    }
+            app_state["pending_hits_expired_total"] = 0
+            app_state["pending_hits_rejected_by_timeout_total"] = 0
+            app_state["pending_hits_dropped_overflow_total"] = 0
+
+            resp = client.get("/api/stats")
+            data = resp.json()
+            assert data["pending_hits"] == 0
+            assert data["pending_hits_expired_total"] == 1
+            assert data["pending_hits_rejected_by_timeout_total"] == 1
+            assert data["pending_hits_dropped_overflow_total"] == 0
 
 
 class TestMultiCamEndpoints:
@@ -428,9 +488,9 @@ class TestMultiCamEndpoints:
 
     def test_multi_start_already_running(self):
         saved = app_state.get("multi_pipeline_running")
-        app_state["multi_pipeline_running"] = True
         try:
             with TestClient(app) as client:
+                app_state["multi_pipeline_running"] = True
                 resp = client.post("/api/multi/start", json={
                     "cameras": [{"camera_id": "a", "src": 0}, {"camera_id": "b", "src": 1}]
                 })
@@ -450,9 +510,9 @@ class TestMultiCamEndpoints:
         mock_multi.get_pipelines.return_value = {"cam_a": mock_pipe}
         mock_multi.get_camera_errors.return_value = {}
 
-        app_state["multi_pipeline"] = mock_multi
         try:
             with TestClient(app) as client:
+                app_state["multi_pipeline"] = mock_multi
                 resp = client.get("/api/multi/status")
                 data = resp.json()
                 assert data["ok"] is True
@@ -515,9 +575,9 @@ class TestBoardGeometry:
 
     def test_board_geometry_with_pipeline(self):
         saved = app_state.get("pipeline")
-        app_state["pipeline"] = _make_dummy_pipeline()
         try:
             with TestClient(app) as client:
+                app_state["pipeline"] = _make_dummy_pipeline()
                 resp = client.get("/api/board/geometry")
                 data = resp.json()
                 assert data["ok"] is True

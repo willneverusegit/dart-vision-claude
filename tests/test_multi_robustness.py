@@ -176,7 +176,7 @@ class TestTemporalTimeout:
     """Detections too far apart in time should use single-camera fallback."""
 
     def test_timeout_uses_most_recent(self):
-        """Detections 1s apart -> single_timeout with most recent camera."""
+        """Detections 1s apart -> oldest unmatched detection times out first."""
         cb = MagicMock()
         configs = [
             {"camera_id": "cam_left", "src": 0},
@@ -202,7 +202,7 @@ class TestTemporalTimeout:
         cb.assert_called_once()
         result = cb.call_args[0][0]
         assert result["source"] == "single_timeout"
-        assert result["camera_id"] == "cam_right"  # Most recent, not highest conf
+        assert result["camera_id"] == "cam_left"
 
 
 class TestConfidenceVoting:

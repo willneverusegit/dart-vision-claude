@@ -52,9 +52,9 @@ class TestReadinessEndpoint:
 
     def test_readiness_all_uncalibrated(self):
         saved = app_state.get("multi_pipeline")
-        app_state["multi_pipeline"] = _make_multi_pipeline(["cam_a", "cam_b"])
         try:
             with TestClient(app) as client:
+                app_state["multi_pipeline"] = _make_multi_pipeline(["cam_a", "cam_b"])
                 resp = client.get("/api/multi/readiness")
                 data = resp.json()
                 assert data["ok"] is True
@@ -79,9 +79,9 @@ class TestReadinessEndpoint:
         for pipe in multi.get_pipelines().values():
             pipe.camera_calibration.get_intrinsics.return_value = MagicMock()
             pipe.board_calibration.is_valid.return_value = True
-        app_state["multi_pipeline"] = multi
         try:
             with TestClient(app) as client:
+                app_state["multi_pipeline"] = multi
                 resp = client.get("/api/multi/readiness")
                 data = resp.json()
                 assert data["all_ready"] is True
@@ -99,9 +99,9 @@ class TestReadinessEndpoint:
         pipes = multi.get_pipelines()
         pipes["cam_a"].camera_calibration.get_intrinsics.return_value = MagicMock()
         pipes["cam_a"].board_calibration.is_valid.return_value = True
-        app_state["multi_pipeline"] = multi
         try:
             with TestClient(app) as client:
+                app_state["multi_pipeline"] = multi
                 resp = client.get("/api/multi/readiness")
                 data = resp.json()
                 assert data["all_ready"] is False
@@ -115,9 +115,9 @@ class TestReadinessEndpoint:
     def test_readiness_stereo_pairs(self):
         saved = app_state.get("multi_pipeline")
         multi = _make_multi_pipeline(["cam_a", "cam_b"], with_stereo=True)
-        app_state["multi_pipeline"] = multi
         try:
             with TestClient(app) as client:
+                app_state["multi_pipeline"] = multi
                 resp = client.get("/api/multi/readiness")
                 data = resp.json()
                 assert len(data["stereo_pairs"]) == 1

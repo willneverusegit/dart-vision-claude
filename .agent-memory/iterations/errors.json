@@ -51,5 +51,223 @@
       "self-improvement"
     ],
     "reusable_pattern": "If a meta-skill is missing, chain existing base skills and generate a composite installable skill."
+  },
+  {
+    "id": "2026-03-17-13-14-async-route-blockers-removed",
+    "timestamp": "2026-03-17T13:14:22+01:00",
+    "category": "bugfix",
+    "severity": "major",
+    "trigger": "User requested self-improvement and autonomous work on the next open repository priority.",
+    "problem": "Several FastAPI route handlers were declared async but still used blocking time.sleep-based release and polling loops, which could stall the event loop during camera calibration and pipeline start/stop transitions.",
+    "root_cause": "Lifecycle waits had grown incrementally around Windows camera release timing and startup polling without a shared non-blocking helper for async routes.",
+    "solution": "Introduced centralized async wait helpers in src.web.routes, replaced the blocking sleeps with await asyncio.sleep-based polling, and added regression tests for single/multi start-stop plus stereo calibration waits.",
+    "attempts": 2,
+    "failed_approaches": [
+      "Monkeypatched the shared threading.Thread module in route tests, which leaked into the FastAPI lifespan startup path and corrupted thread-handle state."
+    ],
+    "files_changed": [
+      "src/web/routes.py",
+      "tests/test_routes_extra.py",
+      "agent_docs/priorities.md",
+      "agent_docs/current_state.md",
+      ".agent-memory/context/project-context.md",
+      ".agent-memory/context/decisions.json",
+      ".agent-memory/iterations/errors.json",
+      ".agent-memory/iterations/iteration-log.md",
+      ".agent-memory/patterns/patterns.json",
+      ".agent-memory/patterns/patterns.md"
+    ],
+    "tags": [
+      "fastapi",
+      "async",
+      "routes",
+      "lifecycle"
+    ],
+    "reusable_pattern": "Centralize non-blocking wait/poll helpers in async FastAPI routes; avoid time.sleep and, in TestClient-based tests, patch the worker target rather than the shared threading module."
+  },
+  {
+    "id": "2026-03-17-13-43-server-side-pending-hit-lifecycle",
+    "timestamp": "2026-03-17T13:43:00+01:00",
+    "category": "bugfix",
+    "severity": "major",
+    "trigger": "Continuation on the next open runtime hardening priority after P19.",
+    "problem": "Pending hits depended on frontend timeout logic and had no authoritative server-side cap or expiry policy, risking stale state and unbounded growth under long sessions.",
+    "root_cause": "Candidate lifecycle concerns were split across pipeline callbacks, routes, and the UI without a single backend owner for insert, pop, expire, and metrics.",
+    "solution": "Added centralized pending-hit helpers in src.main, enforced TTL and overflow trimming, ran periodic cleanup in the pipeline loops, and exposed lifecycle counters in /api/stats.",
+    "attempts": 2,
+    "failed_approaches": [
+      "Initial overflow test data used timestamps that triggered TTL cleanup first, so the test hit the wrong behavior."
+    ],
+    "files_changed": [
+      "src/main.py",
+      "src/web/routes.py",
+      "tests/test_main_coverage.py",
+      "tests/test_routes_coverage2.py",
+      "agent_docs/priorities.md",
+      "agent_docs/current_state.md",
+      ".agent-memory/context/project-context.md",
+      ".agent-memory/context/decisions.json",
+      ".agent-memory/iterations/errors.json",
+      ".agent-memory/iterations/iteration-log.md",
+      ".agent-memory/patterns/patterns.json",
+      ".agent-memory/patterns/patterns.md"
+    ],
+    "tags": [
+      "runtime",
+      "state",
+      "pending-hits",
+      "fastapi"
+    ],
+    "reusable_pattern": "For shared runtime queues, centralize add/pop/expire/clear in one backend module, enforce TTL and max-size at insertion time, and expose lifecycle counters so routes and UI consume a single authoritative view."
+  },
+  {
+    "id": "2026-03-17-13-58-runtime-state-contracts",
+    "timestamp": "2026-03-17T13:58:00+01:00",
+    "category": "bugfix",
+    "severity": "major",
+    "trigger": "Continuation on the next runtime hardening priority after server-side pending-hit lifecycle work.",
+    "problem": "Pipeline references, thread handles, and multi-frame caches in app_state were mutated from several locations without a clear contract, and multiple tests relied on pre-lifespan global state that real app startup now resets.",
+    "root_cause": "Lifecycle state had grown as open dict writes across main.py, routes.py, and tests, while FastAPI lifespan was not treated as the authoritative runtime reset boundary.",
+    "solution": "Added src.utils.state as the shared owner for runtime-state initialization and lifecycle mutations, switched main.py and routes.py to these helpers, and moved lifespan-sensitive test setup inside TestClient startup.",
+    "attempts": 2,
+    "failed_approaches": [
+      "Repaired only route tests first; a second pass was needed after readiness tests exposed the same pre-lifespan setup assumption."
+    ],
+    "files_changed": [
+      "src/utils/state.py",
+      "src/main.py",
+      "src/web/routes.py",
+      "tests/test_main_coverage.py",
+      "tests/test_routes_extra.py",
+      "tests/test_routes_coverage2.py",
+      "tests/test_multi_hardening.py",
+      "agent_docs/priorities.md",
+      "agent_docs/current_state.md",
+      ".agent-memory/context/project-context.md",
+      ".agent-memory/context/decisions.json",
+      ".agent-memory/iterations/errors.json",
+      ".agent-memory/iterations/iteration-log.md",
+      ".agent-memory/patterns/patterns.json",
+      ".agent-memory/patterns/patterns.md"
+    ],
+    "tags": [
+      "runtime",
+      "state",
+      "lifespan",
+      "testing"
+    ],
+    "reusable_pattern": "When startup becomes deterministic, centralize shared runtime-state mutation behind helpers and set mocked state only after TestClient has entered the FastAPI lifespan."
+  },
+  {
+    "id": "2026-03-17-14-32-calibration-workflow-split",
+    "timestamp": "2026-03-17T14:32:00+01:00",
+    "category": "refactor",
+    "severity": "major",
+    "trigger": "Continuation on the next open priority after P23 with calibration still identified as the weakest maintainability area.",
+    "problem": "src/cv/calibration.py still bundled board calibration math, YAML persistence, constants and repeated ChArUco observation logic, which kept the module hard to reason about and left persistence/error paths under-tested.",
+    "root_cause": "Calibration logic grew around a single legacy manager while newer calibration managers and tests still depended on that same monolithic implementation seam.",
+    "solution": "Split board workflows, config store/defaults and shared ChArUco observation collection into dedicated helper modules while keeping CalibrationManager as the stable public facade, and added persistence and error-path tests.",
+    "attempts": 1,
+    "failed_approaches": [],
+    "files_changed": [
+      "src/cv/calibration.py",
+      "src/cv/calibration_board.py",
+      "src/cv/calibration_common.py",
+      "src/cv/calibration_store.py",
+      "src/cv/charuco_detection.py",
+      "src/cv/camera_calibration.py",
+      "tests/test_calibration.py",
+      "agent_docs/priorities.md",
+      "agent_docs/current_state.md",
+      "agent_docs/session_logs/2026-03-17_p21-calibration-module-split.md",
+      ".agent-memory/context/project-context.md",
+      ".agent-memory/context/decisions.json",
+      ".agent-memory/iterations/errors.json",
+      ".agent-memory/iterations/iteration-log.md",
+      ".agent-memory/patterns/patterns.json",
+      ".agent-memory/patterns/patterns.md",
+      ".agent-memory/session-summary.md"
+    ],
+    "tags": [
+      "calibration",
+      "refactor",
+      "charuco",
+      "persistence"
+    ],
+    "reusable_pattern": "When a calibration manager becomes monolithic, split pure workflow helpers and shared IO/detection helpers first, then keep the manager facade stable so routes and dependent managers do not need to change."
+  },
+  {
+    "id": "2026-03-17-15-05-multi-cam-burst-buffer",
+    "timestamp": "2026-03-17T15:05:00+01:00",
+    "category": "bugfix",
+    "severity": "major",
+    "trigger": "Continuation on the next runtime priority after calibration hardening, with multi-camera burst handling still identified as an open risk.",
+    "problem": "Multi-camera fusion stored only the latest detection per camera, so short burst sequences could overwrite earlier hits before fusion and make timeout behavior non-deterministic.",
+    "root_cause": "The fusion buffer modeled one slot per camera and cleared entire camera state after timeout/fusion, instead of preserving ordered short-lived detections until they were actually consumed.",
+    "solution": "Changed the fusion buffer to a small per-camera time window, matched around the oldest pending anchor, removed only consumed entries, and extended tests for burst ordering and timeout preservation.",
+    "attempts": 2,
+    "failed_approaches": [
+      "Initial retention window was too short and pruned unmatched detections before they could emit as timeout fallbacks."
+    ],
+    "files_changed": [
+      "src/cv/multi_camera.py",
+      "tests/test_multi_camera.py",
+      "tests/test_multi_robustness.py",
+      "agent_docs/priorities.md",
+      "agent_docs/current_state.md",
+      "agent_docs/session_logs/2026-03-17_p22-multi-cam-burst-buffer.md",
+      ".agent-memory/context/project-context.md",
+      ".agent-memory/context/decisions.json",
+      ".agent-memory/iterations/errors.json",
+      ".agent-memory/iterations/iteration-log.md",
+      ".agent-memory/patterns/patterns.json",
+      ".agent-memory/patterns/patterns.md",
+      ".agent-memory/session-summary.md"
+    ],
+    "tags": [
+      "multi-camera",
+      "fusion",
+      "timing",
+      "buffering"
+    ],
+    "reusable_pattern": "For burst-sensitive multi-camera fusion, buffer a short ordered window per camera, pair around the oldest pending anchor, and remove only the detections actually consumed by timeout or fusion."
+  },
+  {
+    "id": "2026-03-17-15-18-generated-artifacts-untracked",
+    "timestamp": "2026-03-17T15:18:00+01:00",
+    "category": "maintenance",
+    "severity": "minor",
+    "trigger": "Continuation after runtime priorities, with a remaining backlog item to clean historically tracked generated artifacts from the worktree.",
+    "problem": "Generated __pycache__ and related Python cache artifacts still appeared in git status even though ignore rules already existed.",
+    "root_cause": "The cache paths had been committed earlier, so .gitignore no longer affected them while they remained in the Git index.",
+    "solution": "Removed the tracked cache directories from the Git index with git rm --cached -r, kept the ignore rules in place, and documented the hygiene step in the development workflow.",
+    "attempts": 1,
+    "failed_approaches": [],
+    "files_changed": [
+      "agent_docs/development_workflow.md",
+      "agent_docs/priorities.md",
+      "agent_docs/current_state.md",
+      "agent_docs/session_logs/2026-03-17_p24-worktree-artifacts.md",
+      ".agent-memory/context/project-context.md",
+      ".agent-memory/context/decisions.json",
+      ".agent-memory/iterations/errors.json",
+      ".agent-memory/iterations/iteration-log.md",
+      ".agent-memory/patterns/patterns.json",
+      ".agent-memory/patterns/patterns.md",
+      ".agent-memory/session-summary.md",
+      "src/__pycache__",
+      "src/cv/__pycache__",
+      "src/game/__pycache__",
+      "src/utils/__pycache__",
+      "src/web/__pycache__",
+      "tests/__pycache__"
+    ],
+    "tags": [
+      "git",
+      "artifacts",
+      "maintenance",
+      "worktree"
+    ],
+    "reusable_pattern": "If generated Python artifacts are already tracked, untrack them from Git with git rm --cached and document the hygiene step; ignore rules alone will not clean the worktree."
   }
 ]

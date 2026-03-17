@@ -302,7 +302,9 @@ Typische Arbeiten:
 Verknuepfte Weaknesses: keine
 Verknuepfte Entscheidungen: ADR-004
 
-## Prioritaet 19: Async-Blocker in Web-Routes entfernen (neu - Analyse 2026-03-17)
+## Prioritaet 19: Async-Blocker in Web-Routes entfernen (✅ ERLEDIGT 2026-03-17)
+
+**Umsetzung:** Zentrale Async-Warte-Helper `_pause()` und `_wait_for_state()` in `src/web/routes.py` eingefuehrt. Blockierende `_time.sleep(...)`-Wartepfade in den asynchronen Routen fuer Lens-ChArUco, Stereo-Kalibrierung, Single-Start, Multi-Start und Multi-Stop durch `await asyncio.sleep(...)` bzw. nicht-blockierendes Polling ersetzt. Route-Tests decken die neuen Async-Wartepfade fuer Single/Multi-Start-Stop und Stereo-Kalibrierung ab. Geaenderte Dateien: `src/web/routes.py`, `tests/test_routes_extra.py`.
 
 Ziel:
 
@@ -319,7 +321,9 @@ Warum kritisch: Blockierende Sleeps in asynchronen Endpunkten bremsen den gesamt
 Verknuepfte Weaknesses: keine
 Verknuepfte Entscheidungen: ADR-004
 
-## Prioritaet 20: Hit-Candidate-Lifecycle serverseitig haerten (neu - Analyse 2026-03-17)
+## Prioritaet 20: Hit-Candidate-Lifecycle serverseitig haerten (✅ ERLEDIGT 2026-03-17)
+
+**Umsetzung:** Pending-Hits werden jetzt serverseitig verwaltet: `src/main.py` enthaelt zentrale Helper fuer `add_pending_hit()`, `expire_pending_hits()`, `pop_pending_hit()` und `clear_pending_hits()`. Neue Kandidaten werden vor dem Einfuegen gegen TTL (`30s`) und eine harte Obergrenze (`10`) geprueft; abgelaufene Kandidaten werden per `hit_rejected` mit `reason="timeout"` verworfen, Overflow-Drops mit `reason="overflow"`. Die Pipeline fuehrt zusaetzlich im Laufzeitloop periodisches Cleanup aus, und `/api/hits/pending`, `/api/stats` sowie der WebSocket-Initialzustand benutzen jetzt die serverseitig bereinigte Sicht. Stats liefern neue Lifecycle-Zaehler fuer Expiry/Timeout/Overflow. Geaenderte Dateien: `src/main.py`, `src/web/routes.py`, `tests/test_main_coverage.py`, `tests/test_routes_coverage2.py`.
 
 Ziel:
 
@@ -336,7 +340,9 @@ Warum kritisch: Aktuell wird Auto-Timeout primaer im Frontend gesteuert; bei get
 Verknuepfte Weaknesses: keine
 Verknuepfte Entscheidungen: ADR-002, ADR-005
 
-## Prioritaet 21: Kalibrierungsmodul aufteilen und gezielt absichern (neu - Analyse 2026-03-17)
+## Prioritaet 21: Kalibrierungsmodul aufteilen und gezielt absichern (✅ ERLEDIGT 2026-03-17)
+
+**Umsetzung:** `src/cv/calibration.py` ist jetzt ein schlankerer Manager-/CLI-Wrapper; Board-spezifische Workflows wurden nach `src/cv/calibration_board.py`, Konfig-IO nach `src/cv/calibration_store.py` und gemeinsame Defaults/Konstanten nach `src/cv/calibration_common.py` ausgelagert. Die ChArUco-Frame-Sammlung ist in `src/cv/charuco_detection.py` zentralisiert und wird von `CalibrationManager` und `CameraCalibrationManager` gemeinsam genutzt. Zusaetzlich wurden Persistenz-, Legacy-Migration- und Fehlerpfad-Tests in `tests/test_calibration.py` erweitert. Geaenderte Dateien: `src/cv/calibration.py`, `src/cv/calibration_board.py`, `src/cv/calibration_common.py`, `src/cv/calibration_store.py`, `src/cv/charuco_detection.py`, `src/cv/camera_calibration.py`, `tests/test_calibration.py`.
 
 Ziel:
 
@@ -353,7 +359,9 @@ Warum kritisch: Das Modul ist gross und hat im Vergleich zu Kernmodulen deutlich
 Verknuepfte Weaknesses: keine
 Verknuepfte Entscheidungen: ADR-001, ADR-002
 
-## Prioritaet 22: Multi-Cam-Fusion fuer Burst- und Timing-Faelle haerten (neu - Analyse 2026-03-17)
+## Prioritaet 22: Multi-Cam-Fusion fuer Burst- und Timing-Faelle haerten (✅ ERLEDIGT 2026-03-17)
+
+**Umsetzung:** `src/cv/multi_camera.py` puffert Detektionen jetzt pro Kamera in einem kleinen Zeitfenster statt nur als letzten Treffer. Die Fusion arbeitet anchor-basiert in zeitlicher Reihenfolge: alte unmatched Entries laufen kontrolliert in `single`/`single_timeout`, passende Entries werden nur selektiv aus dem Buffer entfernt, und Burst-Folgen koennen dadurch nacheinander fusioniert werden, statt sich gegenseitig zu ueberschreiben. Die Hardening-Tests wurden in `tests/test_multi_camera.py` und `tests/test_multi_robustness.py` auf die neue Zeitfenster-Semantik erweitert. Geaenderte Dateien: `src/cv/multi_camera.py`, `tests/test_multi_camera.py`, `tests/test_multi_robustness.py`.
 
 Ziel:
 
@@ -370,7 +378,9 @@ Warum kritisch: Die aktuelle Buffer-Logik kann bei dichten Trefferfolgen Detekti
 Verknuepfte Weaknesses: keine
 Verknuepfte Entscheidungen: ADR-002, ADR-003
 
-## Prioritaet 23: App-State-Concurrency vertraglich absichern (neu - Analyse 2026-03-17)
+## Prioritaet 23: App-State-Concurrency vertraglich absichern (✅ ERLEDIGT 2026-03-17)
+
+**Umsetzung:** Gemeinsame Runtime-Mutation fuer Pipeline-, Thread-Handle- und Multi-Frame-State in `src/utils/state.py` zentralisiert und aus `src/main.py`/`src/web/routes.py` ueber Helper angesprochen. `lifespan()` initialisiert den Shared State jetzt deterministisch pro App-Start, statt verteilte Altwerte weiterzutragen. Lifespan-sensitive Route- und Readiness-Tests wurden auf explizites State-Setup nach `TestClient`-Startup umgestellt. Geaenderte Dateien: `src/utils/state.py`, `src/main.py`, `src/web/routes.py`, `tests/test_main_coverage.py`, `tests/test_routes_extra.py`, `tests/test_routes_coverage2.py`, `tests/test_multi_hardening.py`.
 
 Ziel:
 
@@ -386,3 +396,22 @@ Warum kritisch: Der Zustand ist stark geteilt; uneinheitliche Mutation erhoeht d
 
 Verknuepfte Weaknesses: keine
 Verknuepfte Entscheidungen: ADR-003, ADR-005
+
+## Prioritaet 24: Generierte Laufartefakte aus dem Worktree fernhalten (✅ ERLEDIGT 2026-03-17)
+
+**Umsetzung:** Die bereits vorhandenen Ignore-Regeln fuer Python-/pytest-Artefakte wurden beibehalten, aber die historisch mitgetrackten `__pycache__`-Dateien per `git rm --cached -r ...` aus dem Git-Tracking entfernt, sodass kuenftige Testlaeufe den Worktree nicht mehr mit diesen Dateien verunreinigen. Der Hygiene-Schritt wurde zusaetzlich in `agent_docs/development_workflow.md` dokumentiert. Geaenderte Dateien: `agent_docs/development_workflow.md` sowie die ehemals getrackten `src/**/__pycache__/*`- und `tests/__pycache__/*`-Artefakte (aus dem Index entfernt).
+
+Ziel:
+
+- lokale Test- und Laufspuren wie `__pycache__` nicht mehr als dauerhafte Worktree-Veraenderungen hinterlassen
+
+Typische Arbeiten:
+
+- Python-Artefakte (`__pycache__`, `.pyc`, pytest-Cache) per `.gitignore` oder Repo-Regel sauber ausschliessen
+- optionalen Cleanup-/Diagnose-Schritt fuer Entwicklungs- und Testlaeufe dokumentieren
+- pruefen, ob reale Betriebsdaten weiterhin unangetastet bleiben
+
+Warum kritisch: Die Artefakte sind kein Produktionsfehler, erzeugen aber dauerhaft Rauschen im Worktree und erschweren die Sicht auf echte Code- und Doku-Aenderungen.
+
+Verknuepfte Weaknesses: keine
+Verknuepfte Entscheidungen: ADR-005

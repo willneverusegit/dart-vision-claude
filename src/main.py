@@ -15,8 +15,21 @@ from src.game.engine import GameEngine
 from src.web.events import EventManager
 from src.web.routes import setup_routes
 from src.utils.logger import setup_logging
+from src.utils.state import (
+    clear_multi_pipeline_state,
+    clear_pipeline_thread_handles,
+    clear_single_pipeline_state,
+    initialize_runtime_state,
+    set_multi_latest_frame,
+    set_multi_pipeline_state,
+    set_pipeline_thread_handles,
+    set_single_pipeline_state,
+)
 
 logger = logging.getLogger(__name__)
+
+PENDING_HIT_TTL_SECONDS = 30.0
+MAX_PENDING_HITS = 10
 
 # Shared application state
 app_state: dict = {
@@ -29,6 +42,9 @@ app_state: dict = {
     # Hit candidate system
     "pending_hits": {},          # {candidate_id: candidate_dict}
     "pending_hits_lock": None,   # threading.Lock for thread safety
+    "pending_hits_expired_total": 0,
+    "pending_hits_rejected_by_timeout_total": 0,
+    "pending_hits_dropped_overflow_total": 0,
     # Overlay toggles (for annotated stream)
     "overlay_roi": False,
     "overlay_motion": False,
@@ -48,6 +64,141 @@ app_state: dict = {
     "pipeline_thread": None,           # threading.Thread handle
     "multi_pipeline_thread": None,     # threading.Thread handle
 }
+
+
+def _pending_hits_store(state: dict) -> dict:
+    return state.setdefault("pending_hits", {})
+
+
+def _pending_hit_timestamp(candidate: dict) -> float | None:
+    ts = candidate.get("timestamp")
+    if isinstance(ts, (int, float)) and ts > 0:
+        return float(ts)
+    return None
+
+
+def _pending_hit_sort_key(candidate: dict) -> tuple[float, str]:
+    ts = _pending_hit_timestamp(candidate)
+    candidate_id = str(candidate.get("candidate_id", ""))
+    return (ts if ts is not None else float("inf"), candidate_id)
+
+
+def _broadcast_pending_hit_rejected(state: dict, candidate: dict, reason: str) -> None:
+    em = state.get("event_manager")
+    if em:
+        em.broadcast_sync(
+            "hit_rejected",
+            {"candidate_id": candidate.get("candidate_id"), "reason": reason},
+        )
+
+
+def _expire_pending_hits_locked(state: dict, now: float) -> list[dict]:
+    pending_hits = _pending_hits_store(state)
+    expired_ids = [
+        candidate_id
+        for candidate_id, candidate in pending_hits.items()
+        if (timestamp := _pending_hit_timestamp(candidate)) is not None
+        and (now - timestamp) >= PENDING_HIT_TTL_SECONDS
+    ]
+    expired = [pending_hits.pop(candidate_id) for candidate_id in expired_ids]
+    if expired:
+        state["pending_hits_expired_total"] = state.get("pending_hits_expired_total", 0) + len(expired)
+        state["pending_hits_rejected_by_timeout_total"] = (
+            state.get("pending_hits_rejected_by_timeout_total", 0) + len(expired)
+        )
+    return expired
+
+
+def expire_pending_hits(state: dict, now: float | None = None) -> list[dict]:
+    """Remove timed-out hit candidates and emit rejection events."""
+    now = time.time() if now is None else now
+    lock = state.get("pending_hits_lock")
+    if lock:
+        with lock:
+            expired = _expire_pending_hits_locked(state, now)
+    else:
+        expired = _expire_pending_hits_locked(state, now)
+
+    for candidate in expired:
+        _broadcast_pending_hit_rejected(state, candidate, reason="timeout")
+        logger.info("Pending hit timed out: %s", candidate.get("candidate_id"))
+    return expired
+
+
+def add_pending_hit(state: dict, candidate: dict, now: float | None = None) -> list[dict]:
+    """Add a pending hit, expiring stale entries and trimming overflow."""
+    now = time.time() if now is None else now
+    lock = state.get("pending_hits_lock")
+    overflow: list[dict] = []
+    expired: list[dict] = []
+
+    if lock:
+        with lock:
+            expired = _expire_pending_hits_locked(state, now)
+            pending_hits = _pending_hits_store(state)
+            pending_hits[candidate["candidate_id"]] = candidate
+            while len(pending_hits) > MAX_PENDING_HITS:
+                overflow_id, overflow_candidate = min(
+                    pending_hits.items(),
+                    key=lambda item: _pending_hit_sort_key(item[1]),
+                )
+                overflow.append(pending_hits.pop(overflow_id))
+    else:
+        expired = _expire_pending_hits_locked(state, now)
+        pending_hits = _pending_hits_store(state)
+        pending_hits[candidate["candidate_id"]] = candidate
+        while len(pending_hits) > MAX_PENDING_HITS:
+            overflow_id, overflow_candidate = min(
+                pending_hits.items(),
+                key=lambda item: _pending_hit_sort_key(item[1]),
+            )
+            overflow.append(pending_hits.pop(overflow_id))
+
+    if overflow:
+        state["pending_hits_dropped_overflow_total"] = (
+            state.get("pending_hits_dropped_overflow_total", 0) + len(overflow)
+        )
+
+    for expired_candidate in expired:
+        _broadcast_pending_hit_rejected(state, expired_candidate, reason="timeout")
+        logger.info("Pending hit timed out: %s", expired_candidate.get("candidate_id"))
+    for overflow_candidate in overflow:
+        _broadcast_pending_hit_rejected(state, overflow_candidate, reason="overflow")
+        logger.warning(
+            "Pending hit dropped due to overflow: %s",
+            overflow_candidate.get("candidate_id"),
+        )
+    return overflow
+
+
+def get_pending_hits_snapshot(state: dict) -> list[dict]:
+    """Return active pending hits after server-side expiry cleanup."""
+    expire_pending_hits(state)
+    lock = state.get("pending_hits_lock")
+    if lock:
+        with lock:
+            return list(_pending_hits_store(state).values())
+    return list(_pending_hits_store(state).values())
+
+
+def pop_pending_hit(state: dict, candidate_id: str) -> dict | None:
+    """Pop a pending hit after first removing timed-out entries."""
+    expire_pending_hits(state)
+    lock = state.get("pending_hits_lock")
+    if lock:
+        with lock:
+            return _pending_hits_store(state).pop(candidate_id, None)
+    return _pending_hits_store(state).pop(candidate_id, None)
+
+
+def clear_pending_hits(state: dict) -> None:
+    """Remove all pending hits without emitting rejection events."""
+    lock = state.get("pending_hits_lock")
+    if lock:
+        with lock:
+            _pending_hits_store(state).clear()
+    else:
+        _pending_hits_store(state).clear()
 
 
 def _compute_quality_score(detection, score_result: dict) -> int:
@@ -120,8 +271,6 @@ def _run_pipeline(state: dict, stop_event: threading.Event | None = None,
             """
             em = state.get("event_manager")
             engine = state.get("game_engine")
-            lock = state.get("pending_hits_lock")
-
             if not engine or not em:
                 return
 
@@ -144,9 +293,7 @@ def _run_pipeline(state: dict, stop_event: threading.Event | None = None,
                 "timestamp": time.time(),
             }
 
-            if lock:
-                with lock:
-                    state["pending_hits"][candidate_id] = candidate
+            add_pending_hit(state, candidate)
 
             # Send candidate to all clients via WebSocket
             em.broadcast_sync("hit_candidate", candidate)
@@ -172,8 +319,7 @@ def _run_pipeline(state: dict, stop_event: threading.Event | None = None,
             pipeline.start()
         except Exception as cam_err:
             logger.warning("Camera not available: %s — running without CV", cam_err)
-            state["pipeline"] = pipeline
-            state["pipeline_running"] = False
+            set_single_pipeline_state(state, pipeline, running=False)
             return
 
         # Register health callback after successful start
@@ -181,9 +327,9 @@ def _run_pipeline(state: dict, stop_event: threading.Event | None = None,
         if isinstance(pipeline.camera, ThreadedCamera):
             pipeline.camera.on_state_change(on_camera_state_change)
 
-        state["pipeline"] = pipeline
-        state["pipeline_running"] = True
+        set_single_pipeline_state(state, pipeline, running=True)
         logger.info("CV Pipeline started")
+        next_pending_cleanup_at = time.time() + 1.0
 
         def _should_stop() -> bool:
             return stop_event.is_set() or shutdown_event.is_set()
@@ -198,6 +344,11 @@ def _run_pipeline(state: dict, stop_event: threading.Event | None = None,
             except Exception as frame_err:
                 logger.debug("Frame processing error: %s", frame_err)
 
+            now = time.time()
+            if now >= next_pending_cleanup_at:
+                expire_pending_hits(state, now=now)
+                next_pending_cleanup_at = now + 1.0
+
             stop_event.wait(0.001)
 
     except ImportError as e:
@@ -205,7 +356,7 @@ def _run_pipeline(state: dict, stop_event: threading.Event | None = None,
     except Exception as e:
         logger.error("CV Pipeline error: %s", e)
     finally:
-        state["pipeline_running"] = False
+        clear_single_pipeline_state(state)
         if pipeline is not None:
             try:
                 pipeline.stop()
@@ -238,7 +389,6 @@ def _run_multi_pipeline(state: dict, camera_configs: list[dict],
             """Callback when a dart is detected by the multi-pipeline."""
             em = state.get("event_manager")
             engine = state.get("game_engine")
-            lock = state.get("pending_hits_lock")
 
             if not engine or not em:
                 return
@@ -266,9 +416,7 @@ def _run_multi_pipeline(state: dict, camera_configs: list[dict],
                 "timestamp": time.time(),
             }
 
-            if lock:
-                with lock:
-                    state["pending_hits"][candidate_id] = candidate
+            add_pending_hit(state, candidate)
 
             em.broadcast_sync("hit_candidate", candidate)
             logger.info("Multi-cam hit candidate: %s (quality=%d, source=%s, %s %d)",
@@ -280,12 +428,15 @@ def _run_multi_pipeline(state: dict, camera_configs: list[dict],
             on_multi_dart_detected=on_multi_dart_detected,
         )
 
-        state["multi_pipeline"] = multi
-        state["multi_pipeline_running"] = True
-        state["active_camera_ids"] = [c["camera_id"] for c in camera_configs]
+        set_multi_pipeline_state(
+            state,
+            multi,
+            [c["camera_id"] for c in camera_configs],
+        )
 
         multi.start()
         logger.info("Multi-camera pipeline started with %d cameras", len(camera_configs))
+        next_pending_cleanup_at = time.time() + 1.0
 
         def _should_stop() -> bool:
             return stop_event.is_set() or shutdown_event.is_set()
@@ -296,10 +447,11 @@ def _run_multi_pipeline(state: dict, camera_configs: list[dict],
             for cam_id, pipeline in pipelines.items():
                 annotated = pipeline.get_annotated_frame()
                 if annotated is not None:
-                    state["multi_latest_frames"][cam_id] = annotated
-                    # Also update default latest_frame with first camera
-                    if state.get("latest_frame") is None or cam_id == state["active_camera_ids"][0]:
-                        state["latest_frame"] = annotated
+                    set_multi_latest_frame(state, cam_id, annotated)
+            now = time.time()
+            if now >= next_pending_cleanup_at:
+                expire_pending_hits(state, now=now)
+                next_pending_cleanup_at = now + 1.0
             stop_event.wait(0.033)  # ~30fps frame grab rate
 
     except ImportError as e:
@@ -307,14 +459,12 @@ def _run_multi_pipeline(state: dict, camera_configs: list[dict],
     except Exception as e:
         logger.error("Multi-camera pipeline error: %s", e)
     finally:
-        state["multi_pipeline_running"] = False
-        state["active_camera_ids"] = []
         if multi is not None:
             try:
                 multi.stop()
             except Exception:
                 pass
-        state["multi_pipeline"] = None
+        clear_multi_pipeline_state(state)
         logger.info("Multi-camera pipeline stopped")
 
 
@@ -341,12 +491,7 @@ def stop_pipeline_thread(state: dict, kind: str = "single", timeout: float = 5.0
             logger.warning("%s pipeline thread did not exit within %.1fs", kind, timeout)
 
     # Clear handles
-    if kind == "single":
-        state["pipeline_stop_event"] = None
-        state["pipeline_thread"] = None
-    else:
-        state["multi_pipeline_stop_event"] = None
-        state["multi_pipeline_thread"] = None
+    clear_pipeline_thread_handles(state, kind)
 
 
 def start_single_pipeline(state: dict, camera_src: int | str = 0) -> None:
@@ -356,14 +501,13 @@ def start_single_pipeline(state: dict, camera_src: int | str = 0) -> None:
     """
     stop_pipeline_thread(state, "single", timeout=5.0)
     stop_evt = threading.Event()
-    state["pipeline_stop_event"] = stop_evt
     thread = threading.Thread(
         target=_run_pipeline,
         args=(state, stop_evt, camera_src),
         daemon=True,
         name="cv-pipeline",
     )
-    state["pipeline_thread"] = thread
+    set_pipeline_thread_handles(state, "single", stop_event=stop_evt, thread=thread)
     thread.start()
     logger.info("Single pipeline started (camera_src=%s)", camera_src)
 
@@ -377,13 +521,17 @@ async def lifespan(app: FastAPI):
     logger.info("Dart-Vision starting up... (session=%s)", SESSION_ID)
 
     # Initialize game engine and event manager
-    app_state["game_engine"] = GameEngine()
+    game_engine = GameEngine()
     em = EventManager()
     em.set_loop(asyncio.get_running_loop())
-    app_state["event_manager"] = em
-    app_state["shutdown_event"] = threading.Event()
-    app_state["pending_hits_lock"] = threading.Lock()
-    app_state["pipeline_lock"] = threading.Lock()  # A1: pipeline lifecycle guard
+    initialize_runtime_state(
+        app_state,
+        game_engine=game_engine,
+        event_manager=em,
+        shutdown_event=threading.Event(),
+        pending_hits_lock=threading.Lock(),
+        pipeline_lock=threading.Lock(),
+    )
 
     # Start CV pipeline — single or multi camera depending on config
     from src.utils.config import get_startup_cameras
@@ -391,14 +539,18 @@ async def lifespan(app: FastAPI):
 
     if startup_cameras:
         stop_evt = threading.Event()
-        app_state["multi_pipeline_stop_event"] = stop_evt
         pipeline_thread = threading.Thread(
             target=_run_multi_pipeline,
             args=(app_state, startup_cameras, stop_evt),
             daemon=True,
             name="cv-multi-pipeline",
         )
-        app_state["multi_pipeline_thread"] = pipeline_thread
+        set_pipeline_thread_handles(
+            app_state,
+            "multi",
+            stop_event=stop_evt,
+            thread=pipeline_thread,
+        )
         pipeline_thread.start()
         logger.info("Starting multi-camera pipeline (%d cameras)", len(startup_cameras))
     else:
