@@ -50,6 +50,8 @@ scripts/pre_commit_check.sh            # Pre-Commit Quality Gate
 - Lies `agent_docs/pitfalls.md` wenn du in einem dort dokumentierten Bereich arbeitest
 - Halte Aenderungen klein und pruefbar
 - Verschlechtere nicht Startpfad, Kamera-Lifecycle oder Kalibrierung
+- Nach Agent-Edits an JS-Dateien: `node -c <file>` zur Syntax-Pruefung ausfuehren
+- Bei langen Sessions (>50 Nachrichten oder Multi-Agent-Runs): proaktiv `/save-session` vorschlagen bevor Context knapp wird
 
 ## Lesepfade nach Aufgabentyp
 
@@ -86,6 +88,7 @@ Nenne am Ende immer:
 
 - `/run-diagnostics` — Kamera-Diagnostik zwischen Kameras vergleichen
 - `/session-log` — Session-Abschluss-Workflow (Log, priorities, current_state)
+- `/save-session` — Kompletter Session-Abschluss: alle 6 Protokolle gebuendelt (iteration-logger, pattern-extractor, skill-generator, context-keeper, commit, CLAUDE.md revision)
 - `/task-splitter` — Grosse Aufgaben in parallele Agenten zerlegen
 - `.claude/agents/calibration-reviewer.md` — Review-Agent fuer Kalibrierungs-Aenderungen
 

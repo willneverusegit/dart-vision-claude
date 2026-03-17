@@ -561,3 +561,21 @@ Typische Arbeiten:
 - Offline-Replay mit Triangulation gegen Ground Truth
 - Minimale PC-Specs dokumentieren (CPU, USB-Bandbreite)
 - Dateien: tests/e2e/test_multi_cam_e2e.py
+
+## Prioritaet 37: Live-Realtest am Board — Parameter tunen (neu — entdeckt bei Live-Tuning-Session)
+
+Kritikalitaet: HOCH
+
+Ziel:
+
+- Erste echte Live-Session: Kamera aktiv, Darts werfen, CV-Parameter im Browser anpassen bis Erkennung zuverlaessig funktioniert
+- Optimale Defaults fuer diff_threshold, settle_frames, min_diff_area ermitteln
+
+Typische Arbeiten:
+
+- `python -m src.main` starten, Browser oeffnen, Tune-Panel nutzen
+- diff_threshold (aktuell 50) und min_diff_area (aktuell 50) am echten Board validieren
+- settle_frames (aktuell 5) pruefen — zu viel = langsam, zu wenig = Fehldetektionen
+- Gute Werte als neue Defaults in diff_detector.py uebernehmen
+- Diagnostics aktivieren und Diff-Masken bei Fehldetektionen analysieren
+- Ergebnisse in current_state.md dokumentieren
