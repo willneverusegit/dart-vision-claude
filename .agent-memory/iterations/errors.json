@@ -1,5 +1,31 @@
 [
   {
+    "id": "2026-03-17-12-12-self-improvement-workflow-run",
+    "timestamp": "2026-03-17T12:12:19+01:00",
+    "category": "workflow",
+    "severity": "minor",
+    "trigger": "User requested to start the self-improvement workflow after activation.",
+    "problem": "Memory artifacts can drift when bootstrap, pattern extraction, iteration logging, and context updates are not run together.",
+    "root_cause": "The skill was available, but this session had no fresh end-to-end workflow execution record.",
+    "solution": "Executed the full workflow chain and synchronized patterns, iterations, context, and decision records in one pass.",
+    "attempts": 1,
+    "failed_approaches": [],
+    "files_changed": [
+      ".agent-memory/patterns/patterns.json",
+      ".agent-memory/patterns/patterns.md",
+      ".agent-memory/iterations/errors.json",
+      ".agent-memory/iterations/iteration-log.md",
+      ".agent-memory/context/project-context.md",
+      ".agent-memory/context/decisions.json"
+    ],
+    "tags": [
+      "self-improvement",
+      "workflow",
+      "memory-sync"
+    ],
+    "reusable_pattern": "Treat self-improvement runs as atomic: bootstrap -> patterns -> iteration -> context/decisions."
+  },
+  {
     "id": "2026-03-17-14-10-self-improvement-skill-missing",
     "timestamp": "2026-03-17T14:10:00+01:00",
     "category": "workflow",

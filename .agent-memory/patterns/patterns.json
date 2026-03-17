@@ -1,5 +1,35 @@
 [
   {
+    "id": "run-self-improvement-as-atomic-sync",
+    "type": "best-practice",
+    "title": "Run self-improvement workflow as atomic memory sync",
+    "description": "When the self-improvement workflow is triggered, execute bootstrap, pattern extraction, iteration logging, and context/decision updates in a single pass to avoid drift.",
+    "trigger_conditions": [
+      "User explicitly asks to start self-improvement workflow",
+      "Persistent memory artifacts already exist"
+    ],
+    "recommended_action": "Run sequence bootstrap -> patterns -> iteration log -> context/decisions and persist each artifact in the same session.",
+    "avoid": [
+      "Partial workflow execution with only some artifacts updated",
+      "Skipping iteration logging after context updates"
+    ],
+    "evidence": {
+      "occurrences": 1,
+      "error_ids": [
+        "2026-03-17-12-12-self-improvement-workflow-run"
+      ],
+      "first_seen": "2026-03-17",
+      "last_seen": "2026-03-17"
+    },
+    "tags": [
+      "workflow",
+      "memory-sync",
+      "self-improvement"
+    ],
+    "confidence": "medium",
+    "skill_candidate": false
+  },
+  {
     "id": "compose-missing-meta-skill-from-base-skills",
     "type": "best-practice",
     "title": "Compose a missing meta-skill from existing base skills",

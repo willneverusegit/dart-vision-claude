@@ -30,6 +30,7 @@ CPU-optimiertes Dart-Scoring-System mit klassischer Computer Vision. Das System 
 - Single-Cam stabiler Hauptpfad
 - Multi-Cam funktional, aber weiterhin Hardening-Fokus
 - Backlog erweitert: neue Prioritaeten P19-P23 fuer Runtime-Haertung und Wartbarkeit
+- Self-improvement-Workflow ist aktiv nutzbar und als atomarer Memory-Sync dokumentiert
 
 ## Module-Status
 

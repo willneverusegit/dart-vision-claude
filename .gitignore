@@ -16,3 +16,7 @@ venv/
 # OS/editor noise
 .DS_Store
 Thumbs.db
+
+# Local tool/worktree folders (Windows reparse points in this setup)
+.claude/worktrees/
+static/img/

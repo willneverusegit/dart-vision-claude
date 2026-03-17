@@ -1,5 +1,40 @@
 [
   {
+    "id": "2026-03-17-self-improvement-atomic-memory-sync",
+    "timestamp": "2026-03-17T12:12:19+01:00",
+    "type": "process-decision",
+    "title": "Run self-improvement workflow as atomic memory sync",
+    "decision": "Execute self-improvement workflow runs as one cohesive chain that updates patterns, iteration history, project context, and decisions in the same session.",
+    "rationale": "Partial updates create stale or inconsistent memory artifacts and reduce the reliability of follow-up automation.",
+    "alternatives_considered": [
+      {
+        "option": "Update only selected memory files ad-hoc",
+        "rejected_because": "Increases drift risk and weakens reproducibility of future runs."
+      }
+    ],
+    "impact": {
+      "files_affected": [
+        ".agent-memory/patterns/patterns.json",
+        ".agent-memory/patterns/patterns.md",
+        ".agent-memory/iterations/errors.json",
+        ".agent-memory/iterations/iteration-log.md",
+        ".agent-memory/context/project-context.md",
+        ".agent-memory/context/decisions.json"
+      ],
+      "reversibility": "easy",
+      "dependencies": [
+        "self-improvement-agent skill",
+        ".agent-memory baseline files"
+      ]
+    },
+    "tags": [
+      "self-improvement",
+      "workflow",
+      "memory"
+    ],
+    "status": "active"
+  },
+  {
     "id": "2026-03-17-self-improvement-composite-chain",
     "timestamp": "2026-03-17T14:05:00+01:00",
     "type": "architecture-decision",
