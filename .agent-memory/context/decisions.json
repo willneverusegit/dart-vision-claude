@@ -1,0 +1,54 @@
+[
+  {
+    "id": "2026-03-17-frame-diff-over-mog2-centroid",
+    "timestamp": "2026-03-17T15:00:00+01:00",
+    "type": "architecture-decision",
+    "title": "Before/After-Frame-Diff statt MOG2-Centroid fuer Dart-Positionsbestimmung",
+    "decision": "FrameDiffDetector (IDLE/IN_MOTION/SETTLING-State-Machine) als primaerer Detektor. Positionsbestimmung via cv2.absdiff() zwischen stabilem Baseline-Frame und stabilem Post-Wurf-Frame.",
+    "rationale": "MOG2-Centroid zeigt fast immer auf das Flight (grosse Flaeche), nicht auf die Dartspitze. Before/After-Diff berechnet die Position aus dem stabilen neuen Zustand — unabhaengig von Bewegungsartefakten waehrend des Flugs.",
+    "alternatives_considered": [
+      {
+        "option": "MOG2-Centroid beibehalten + Tip-Detection on top",
+        "rejected_because": "Grundproblem bleibt — Centroid des Motion-Masks ist immer noch Flight-dominiert. Tip-Detection wird als P20 auf dem Diff-Ergebnis aufgebaut."
+      },
+      {
+        "option": "Template-Matching fuer Dart-Erkennung",
+        "rejected_because": "Zu langsam und zu fragil gegenueber Beleuchtungswechseln. CPU-Constraint verletzt."
+      }
+    ],
+    "impact": {
+      "files_affected": [
+        "src/cv/diff_detector.py",
+        "src/cv/detector.py",
+        "src/cv/pipeline.py",
+        "tests/test_diff_detector.py",
+        "tests/test_pipeline_diff_integration.py"
+      ],
+      "reversibility": "moderate",
+      "dependencies": ["opencv-python", "numpy"]
+    },
+    "tags": ["python", "opencv", "architecture", "state-machine", "background-subtraction", "pipeline"],
+    "status": "active"
+  },
+  {
+    "id": "2026-03-17-mog2-reset-between-turns",
+    "timestamp": "2026-03-17T15:30:00+01:00",
+    "type": "architecture-decision",
+    "title": "MOG2 bei reset_turn() zuruecksetzen",
+    "decision": "motion_detector.reset() wird in DartPipeline.reset_turn() aufgerufen, zusammen mit dart_detector.reset() und frame_diff_detector.reset().",
+    "rationale": "MOG2 adaptiert sein Hintergrundmodell fortlaufend. Nach einem Treffer ist der Dart Teil des gelernten Hintergrunds. Ohne Reset erzeugt der naechste Wurf kein ausreichendes Motion-Signal mehr.",
+    "alternatives_considered": [
+      {
+        "option": "MOG2 laufen lassen, Sensitivity erhoehen",
+        "rejected_because": "Erhoehte Sensitivity fuehrt zu mehr False Positives bei Beleuchtungswechseln. Root cause wird nicht behoben."
+      }
+    ],
+    "impact": {
+      "files_affected": ["src/cv/pipeline.py"],
+      "reversibility": "easy",
+      "dependencies": []
+    },
+    "tags": ["python", "opencv", "background-subtraction", "pipeline", "state-machine"],
+    "status": "active"
+  }
+]
