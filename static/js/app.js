@@ -10,6 +10,8 @@ class DartApp {
         this.state = null;
         this.calibrationPoints = [];
         this.pendingHits = new Map(); // candidate_id -> candidate
+        this._candidateTimers = new Map(); // candidate_id -> timeout ID
+        this._countdownInterval = null;
         this.multiCamRunning = false;
         this.calibrationValid = false;
         this._pickingCenter = false;
@@ -27,6 +29,20 @@ class DartApp {
         this._refreshCharucoBoardPresetFromServer();
         this.ws.connect();
         this._startStatsPolling();
+    }
+
+    _showError(message) {
+        let toast = document.getElementById("error-toast");
+        if (!toast) {
+            toast = document.createElement("div");
+            toast.id = "error-toast";
+            toast.style.cssText = "position:fixed;top:12px;left:50%;transform:translateX(-50%);background:#e94560;color:#fff;padding:10px 24px;border-radius:6px;font-size:0.95em;z-index:9999;opacity:0;transition:opacity 0.3s;pointer-events:none;";
+            document.body.appendChild(toast);
+        }
+        toast.textContent = message;
+        toast.style.opacity = "1";
+        clearTimeout(this._errorToastTimer);
+        this._errorToastTimer = setTimeout(() => { toast.style.opacity = "0"; }, 3000);
     }
 
     _bindEvents() {
@@ -139,6 +155,9 @@ class DartApp {
         // Legacy score event (for manual scoring)
         this.ws.on("score", (data) => this._onScoreEvent(data));
 
+        // Camera health
+        this.ws.on("camera_state", (data) => this._onCameraStateChange(data));
+
         // Darts removed
         this.ws.on("darts_removed", () => {
             this.dartboard.clearHits();
@@ -234,6 +253,7 @@ class DartApp {
     async _refreshCharucoBoardPresetFromServer() {
         try {
             const response = await fetch("/api/calibration/lens/info");
+            if (!response.ok) { this._showError(`Fehler: ${response.status}`); return; }
             const data = await response.json();
             const preset = data?.charuco_board?.preset;
             if (preset) {
@@ -247,7 +267,22 @@ class DartApp {
     // --- Hit Candidate Flow ---
 
     _onHitCandidate(data) {
+        data._addedAt = Date.now();
         this.pendingHits.set(data.candidate_id, data);
+
+        // Auto-reject after 30 seconds
+        const timerId = setTimeout(() => {
+            this._candidateTimers.delete(data.candidate_id);
+            if (this.pendingHits.has(data.candidate_id)) {
+                this._rejectCandidate(data.candidate_id);
+            }
+        }, 30000);
+        this._candidateTimers.set(data.candidate_id, timerId);
+
+        // Start countdown interval if not running
+        if (!this._countdownInterval) {
+            this._countdownInterval = setInterval(() => this._updateCountdowns(), 1000);
+        }
 
         // Show candidate marker on dartboard (with pending style)
         if (data.board_x_norm !== undefined && data.board_y_norm !== undefined) {
@@ -265,17 +300,53 @@ class DartApp {
     }
 
     _onHitConfirmed(data) {
+        this._clearCandidateTimer(data.candidate_id);
         this.pendingHits.delete(data.candidate_id);
         // Update marker style from pending to confirmed
         this.dartboard.confirmHit(data.candidate_id);
+        this._playHitSound();
         this._renderCandidates();
     }
 
     _onHitRejected(data) {
+        this._clearCandidateTimer(data.candidate_id);
         this.pendingHits.delete(data.candidate_id);
         // Remove marker from dartboard
         this.dartboard.removeHit(data.candidate_id);
         this._renderCandidates();
+    }
+
+    _clearCandidateTimer(candidateId) {
+        const timerId = this._candidateTimers.get(candidateId);
+        if (timerId !== undefined) {
+            clearTimeout(timerId);
+            this._candidateTimers.delete(candidateId);
+        }
+    }
+
+    _updateCountdowns() {
+        if (this.pendingHits.size === 0) {
+            clearInterval(this._countdownInterval);
+            this._countdownInterval = null;
+            return;
+        }
+        this._renderCandidates();
+    }
+
+    _playHitSound() {
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.frequency.value = 880;
+            osc.type = "sine";
+            gain.gain.value = 0.15;
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+            osc.start(ctx.currentTime);
+            osc.stop(ctx.currentTime + 0.15);
+        } catch (e) { /* Audio not available */ }
     }
 
     _renderCandidates() {
@@ -323,6 +394,12 @@ class DartApp {
             qualityBar.appendChild(qualityFill);
             info.appendChild(qualityBar);
 
+            const countdown = document.createElement("span");
+            countdown.style.cssText = "color: var(--text-muted); font-size: 0.7rem; margin-left: 6px;";
+            const remaining = Math.max(0, 30 - Math.floor((Date.now() - (candidate._addedAt || Date.now())) / 1000));
+            countdown.textContent = remaining + "s";
+            info.appendChild(countdown);
+
             row.appendChild(info);
 
             // Buttons
@@ -351,6 +428,7 @@ class DartApp {
     async _confirmCandidate(candidateId) {
         try {
             const response = await fetch(`/api/hits/${candidateId}/confirm`, { method: "POST" });
+            if (!response.ok) { this._showError(`Fehler: ${response.status}`); return; }
             await response.json();
         } catch (e) {
             console.error("Confirm error:", e);
@@ -360,6 +438,7 @@ class DartApp {
     async _rejectCandidate(candidateId) {
         try {
             const response = await fetch(`/api/hits/${candidateId}/reject`, { method: "POST" });
+            if (!response.ok) { this._showError(`Fehler: ${response.status}`); return; }
             await response.json();
         } catch (e) {
             console.error("Reject error:", e);
@@ -391,6 +470,18 @@ class DartApp {
             if (dartEl) {
                 if (i <= dartsThrown) dartEl.classList.add("dart-icon--used");
                 else dartEl.classList.remove("dart-icon--used");
+            }
+        }
+
+        // Checkout suggestion
+        const checkoutEl = document.getElementById("checkout-suggestion");
+        if (checkoutEl) {
+            const suggestions = state.checkout || [];
+            if (suggestions.length > 0) {
+                checkoutEl.textContent = suggestions[0];
+                checkoutEl.style.display = "block";
+            } else {
+                checkoutEl.style.display = "none";
             }
         }
 
@@ -452,6 +543,7 @@ class DartApp {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ mode, players, starting_score: startingScore }),
             });
+            if (!response.ok) { this._showError(`Fehler: ${response.status}`); return; }
             const data = await response.json();
             if (data.ok === false) {
                 // A2: Show calibration error to user
@@ -468,6 +560,7 @@ class DartApp {
     async _undo() {
         try {
             const response = await fetch("/api/game/undo", { method: "POST" });
+            if (!response.ok) { this._showError(`Fehler: ${response.status}`); return; }
             const data = await response.json();
             this._updateState(data);
         } catch (e) {
@@ -478,6 +571,7 @@ class DartApp {
     async _nextPlayer() {
         try {
             const response = await fetch("/api/game/next-player", { method: "POST" });
+            if (!response.ok) { this._showError(`Fehler: ${response.status}`); return; }
             const data = await response.json();
             this._updateState(data);
             this.dartboard.clearHits();
@@ -490,7 +584,8 @@ class DartApp {
 
     async _removeDarts() {
         try {
-            await fetch("/api/game/remove-darts", { method: "POST" });
+            const response = await fetch("/api/game/remove-darts", { method: "POST" });
+            if (!response.ok) { this._showError(`Fehler: ${response.status}`); return; }
             // UI update comes via WebSocket "darts_removed" event
         } catch (e) {
             console.error("Remove darts error:", e);
@@ -502,6 +597,7 @@ class DartApp {
         if (!confirmed) return;
         try {
             const response = await fetch("/api/game/end", { method: "POST" });
+            if (!response.ok) { this._showError(`Fehler: ${response.status}`); return; }
             const data = await response.json();
             this._updateState(data);
             this.dartboard.clearHits();
@@ -529,6 +625,7 @@ class DartApp {
     async _refreshCalibrationStatus() {
         try {
             const resp = await fetch("/api/calibration/info");
+            if (!resp.ok) return;
             const data = await resp.json();
             const lensEl = document.getElementById("cal-status-lens");
             const boardEl = document.getElementById("cal-status-board");
@@ -560,6 +657,7 @@ class DartApp {
 
         try {
             const response = await fetch("/api/calibration/frame");
+            if (!response.ok) { this._showError(`Fehler: ${response.status}`); return; }
             const data = await response.json();
             if (data.ok && data.image) {
                 const canvas = document.getElementById("calibration-canvas");
@@ -587,6 +685,7 @@ class DartApp {
 
         try {
             const response = await fetch("/api/calibration/board/aruco", { method: "POST" });
+            if (!response.ok) { this._showError(`Fehler: ${response.status}`); return; }
             const data = await response.json();
             if (data.ok) {
                 await this._showCalibrationResult("Board-ArUco Alignment erfolgreich!");
@@ -616,6 +715,7 @@ class DartApp {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ preset }),
             });
+            if (!response.ok) { this._showError(`Fehler: ${response.status}`); return; }
             const data = await response.json();
             if (data.ok) {
                 if (data.charuco_board?.preset) {
@@ -719,6 +819,7 @@ class DartApp {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ points: this.calibrationPoints }),
             });
+            if (!response.ok) { this._showError(`Fehler: ${response.status}`); return; }
             const data = await response.json();
             if (data.ok) {
                 await this._showCalibrationResult("Board-Alignment (manuell) erfolgreich!");
@@ -737,6 +838,7 @@ class DartApp {
 
         try {
             const roiResp = await fetch("/api/calibration/roi-preview");
+            if (!roiResp.ok) { this._showError(`Fehler: ${roiResp.status}`); return; }
             const roiData = await roiResp.json();
             if (roiData.ok && roiData.image) {
                 const roiImg = document.getElementById("cal-roi-preview");
@@ -748,6 +850,7 @@ class DartApp {
 
         try {
             const overlayResp = await fetch("/api/calibration/overlay");
+            if (!overlayResp.ok) { this._showError(`Fehler: ${overlayResp.status}`); return; }
             const overlayData = await overlayResp.json();
             if (overlayData.ok && overlayData.image) {
                 const overlayImg = document.getElementById("cal-overlay-preview");
@@ -760,6 +863,7 @@ class DartApp {
         // B2: Fetch and render ring deviation table
         try {
             const ringResp = await fetch("/api/calibration/verify-rings", { method: "POST" });
+            if (!ringResp.ok) { this._showError(`Fehler: ${ringResp.status}`); return; }
             const ringData = await ringResp.json();
             this._renderRingDeviations(ringData);
         } catch (e) {
@@ -840,6 +944,7 @@ class DartApp {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ x, y }),
             });
+            if (!resp.ok) { this._showError(`Fehler: ${resp.status}`); return; }
             const data = await resp.json();
             if (data.ok) {
                 if (hint) {
@@ -910,6 +1015,7 @@ class DartApp {
         const info = document.getElementById("capture-info");
         try {
             const res = await fetch("/api/capture/config");
+            if (!res.ok) { this._showError(`Fehler: ${res.status}`); return; }
             const data = await res.json();
             if (!data.ok) {
                 if (info) info.textContent = data.error || "Keine Kamera";
@@ -997,6 +1103,7 @@ class DartApp {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ camera_id: cameraId, width: w, height: h, fps }),
             });
+            if (!res.ok) { this._showError(`Fehler: ${res.status}`); return; }
             const data = await res.json();
             if (data.ok) {
                 const actual = data.actual;
@@ -1039,6 +1146,7 @@ class DartApp {
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ restart_single: true, single_src: src }),
                 });
+                if (!resp.ok) { this._showError(`Fehler: ${resp.status}`); return; }
                 const data = await resp.json();
                 if (data.ok) {
                     this.multiCamRunning = false;
@@ -1055,6 +1163,7 @@ class DartApp {
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ src }),
                 });
+                if (!resp.ok) { this._showError(`Fehler: ${resp.status}`); return; }
                 const data = await resp.json();
                 if (data.ok) {
                     if (info) info.textContent = "Single-Cam aktiv (Quelle " + src + ")";
@@ -1073,6 +1182,7 @@ class DartApp {
         setInterval(async () => {
             try {
                 const response = await fetch("/api/stats");
+                if (!response.ok) return;
                 const data = await response.json();
                 const fpsEl = document.getElementById("fps-display");
                 if (fpsEl) fpsEl.textContent = "FPS: " + data.fps;
@@ -1096,6 +1206,8 @@ class DartApp {
                 this.multiCamRunning = data.multi_pipeline_running || false;
                 this.activeCameraIds = data.active_cameras || [];
                 this._updateMultiCamUI();
+                // Camera health from stats polling
+                this._updateCameraHealthFromStats(data.camera_health);
                 // A2: Update calibration validity and "New Game" button state
                 this.calibrationValid = data.board_calibrated || false;
                 this._updateNewGameButton();
@@ -1103,6 +1215,49 @@ class DartApp {
                 // Silent fail
             }
         }, 2000);
+    }
+
+    _onCameraStateChange(data) {
+        const banner = document.getElementById("camera-warning-banner");
+        const text = document.getElementById("camera-warning-text");
+        if (!banner || !text) return;
+
+        if (data.state === "connected") {
+            banner.style.display = "none";
+            banner.className = "camera-warning";
+        } else if (data.state === "reconnecting") {
+            text.textContent = `Kamera ${data.camera_id}: Verbindung unterbrochen — Reconnect läuft...`;
+            banner.className = "camera-warning camera-warning--reconnecting";
+            banner.style.display = "block";
+        } else if (data.state === "disconnected") {
+            text.textContent = `Kamera ${data.camera_id}: Nicht erreichbar — bitte USB-Verbindung prüfen`;
+            banner.className = "camera-warning camera-warning--disconnected";
+            banner.style.display = "block";
+        }
+    }
+
+    _updateCameraHealthFromStats(cameraHealth) {
+        if (!cameraHealth) return;
+        const banner = document.getElementById("camera-warning-banner");
+        const text = document.getElementById("camera-warning-text");
+        if (!banner || !text) return;
+
+        // Check if any camera is not connected
+        const entries = Object.entries(cameraHealth);
+        const degraded = entries.filter(([, h]) => h.state !== "connected");
+        if (degraded.length === 0) {
+            banner.style.display = "none";
+            return;
+        }
+        const [camId, health] = degraded[0];
+        if (health.state === "reconnecting") {
+            text.textContent = `Kamera ${camId}: Reconnect-Versuch ${health.reconnect_attempts}...`;
+            banner.className = "camera-warning camera-warning--reconnecting";
+        } else {
+            text.textContent = `Kamera ${camId}: Nicht erreichbar (${health.seconds_since_last_frame}s ohne Frame)`;
+            banner.className = "camera-warning camera-warning--disconnected";
+        }
+        banner.style.display = "block";
     }
 
     _updateNewGameButton() {
@@ -1170,6 +1325,7 @@ class DartApp {
         if (this.multiCamRunning) return;
         try {
             const resp = await fetch("/api/multi/last-config");
+            if (!resp.ok) return;
             const data = await resp.json();
             if (!data.ok || !data.cameras || data.cameras.length < 2) return;
             const list = document.getElementById("multi-cam-list");
@@ -1268,6 +1424,7 @@ class DartApp {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ cameras }),
             });
+            if (!resp.ok) { this._showError(`Fehler: ${resp.status}`); return; }
             const data = await resp.json();
             if (data.ok) {
                 this.multiCamRunning = true;
@@ -1292,7 +1449,8 @@ class DartApp {
 
     async _stopMultiPipeline() {
         try {
-            await fetch("/api/multi/stop", { method: "POST" });
+            const resp = await fetch("/api/multi/stop", { method: "POST" });
+            if (!resp.ok) { this._showError(`Fehler: ${resp.status}`); return; }
             this.multiCamRunning = false;
             this.activeCameraIds = [];
             this._refreshMultiCamStatus();
@@ -1305,6 +1463,7 @@ class DartApp {
     async _refreshMultiCamStatus() {
         try {
             const resp = await fetch("/api/multi/status");
+            if (!resp.ok) return;
             const data = await resp.json();
             const info = document.getElementById("multi-status-info");
             const btnStart = document.getElementById("btn-multi-start");
@@ -1368,6 +1527,7 @@ class DartApp {
     async _fetchReadiness(infoEl) {
         try {
             const resp = await fetch("/api/multi/readiness");
+            if (!resp.ok) return;
             const data = await resp.json();
             if (!data.ok || !data.running) return;
 
@@ -1423,6 +1583,7 @@ class DartApp {
 
         try {
             const resp = await fetch("/api/multi/readiness");
+            if (!resp.ok) return;
             const data = await resp.json();
 
             if (!data.ok || !data.running) {
@@ -1614,6 +1775,7 @@ class DartApp {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ camera_a: camA, camera_b: camB, preset }),
             });
+            if (!resp.ok) { this._showError(`Fehler: ${resp.status}`); return; }
             const data = await resp.json();
             if (data.ok) {
                 if (data.charuco_board?.preset) {

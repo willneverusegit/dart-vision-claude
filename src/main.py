@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import os
 import threading
 import time
 import uuid
@@ -155,6 +156,17 @@ def _run_pipeline(state: dict, stop_event: threading.Event | None = None,
 
         pipeline.on_dart_detected = on_dart_detected
 
+        # Camera health callback — broadcast state changes via WebSocket
+        def on_camera_state_change(src, old_state, new_state) -> None:
+            em = state.get("event_manager")
+            if em:
+                em.broadcast_sync("camera_state", {
+                    "camera_id": "default",
+                    "src": src,
+                    "old_state": old_state.value,
+                    "state": new_state.value,
+                })
+
         # Start camera
         try:
             pipeline.start()
@@ -163,6 +175,11 @@ def _run_pipeline(state: dict, stop_event: threading.Event | None = None,
             state["pipeline"] = pipeline
             state["pipeline_running"] = False
             return
+
+        # Register health callback after successful start
+        from src.cv.capture import ThreadedCamera
+        if isinstance(pipeline.camera, ThreadedCamera):
+            pipeline.camera.on_state_change(on_camera_state_change)
 
         state["pipeline"] = pipeline
         state["pipeline_running"] = True
@@ -354,8 +371,10 @@ def start_single_pipeline(state: dict, camera_src: int | str = 0) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan: start/stop pipeline and game engine."""
-    setup_logging()
-    logger.info("Dart-Vision starting up...")
+    log_file = os.environ.get("DARTVISION_LOG_FILE", None)
+    setup_logging(log_file=log_file)
+    from src.utils.logger import SESSION_ID
+    logger.info("Dart-Vision starting up... (session=%s)", SESSION_ID)
 
     # Initialize game engine and event manager
     app_state["game_engine"] = GameEngine()

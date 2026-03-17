@@ -24,12 +24,27 @@ class DartImpactDetector:
     def __init__(self, confirmation_frames: int = 3,
                  position_tolerance_px: int = 20,
                  area_min: int = 10, area_max: int = 1000,
-                 aspect_ratio_range: tuple[float, float] = (0.3, 3.0)) -> None:
+                 aspect_ratio_range: tuple[float, float] = (0.3, 3.0),
+                 max_candidates: int = 50) -> None:
+        if area_min < 0:
+            raise ValueError("area_min must be >= 0")
+        if area_min >= area_max:
+            raise ValueError("area_min must be less than area_max")
+        if confirmation_frames < 1:
+            raise ValueError("confirmation_frames must be >= 1")
+        if position_tolerance_px <= 0:
+            raise ValueError("position_tolerance_px must be > 0")
+        if aspect_ratio_range[0] <= 0 or aspect_ratio_range[1] <= 0:
+            raise ValueError("aspect_ratio_range values must be > 0")
+        if aspect_ratio_range[0] >= aspect_ratio_range[1]:
+            raise ValueError("aspect_ratio_range[0] must be less than aspect_ratio_range[1]")
+
         self.confirmation_frames = confirmation_frames
         self.position_tolerance_px = position_tolerance_px
         self.area_min = area_min
         self.area_max = area_max
         self.aspect_ratio_range = aspect_ratio_range
+        self.max_candidates = max_candidates
 
         # Temporal state
         self._candidates: list[dict] = []
@@ -68,6 +83,9 @@ class DartImpactDetector:
                 "area": best["area"],
                 "count": 1
             })
+            # Enforce max_candidates limit by removing oldest entries
+            while len(self._candidates) > self.max_candidates:
+                self._candidates.pop(0)
 
         return None
 
@@ -78,7 +96,7 @@ class DartImpactDetector:
 
         for contour in contours:
             area = cv2.contourArea(contour)
-            if not (self.area_min < area < self.area_max):
+            if not (self.area_min <= area <= self.area_max):
                 continue
 
             x, y, w, h = cv2.boundingRect(contour)

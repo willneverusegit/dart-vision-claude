@@ -112,6 +112,37 @@ python -m tests.benchmark_pipeline --duration 5 --cameras 1
 
 Wenn du Tests nicht ausfuehren konntest, benenne das explizit.
 
+### Pflicht zur Fortschrittsdokumentation
+
+Nach jeder erledigten Aufgabe oder Prioritaet aktualisiere die betroffenen Agent-Dokumente direkt im selben Arbeitsgang.
+
+Mindestens verpflichtend:
+
+- `agent_docs/priorities.md`
+- `agent_docs/current_state.md`
+
+Fuer `agent_docs/priorities.md` gilt:
+
+- schreibe kurz hinein, **wie** die Prioritaet umgesetzt wurde, nicht nur dass sie bearbeitet wurde
+- markiere eine abgeschlossene Prioritaet explizit als `erledigt`
+- pflege pro Prioritaet `Verknuepfte Weaknesses:` und `Verknuepfte Entscheidungen:` mit IDs oder `keine`
+- behalte bestehende Prioritaetsnummern unveraendert bei
+- haenge neu entdeckte Schwachstellen oder Folgearbeiten hinten mit der naechsten freien Nummer an
+- loesche erledigte Prioritaeten nicht einfach aus der Liste, solange sie fuer den Verlauf relevant bleiben
+
+Fuer `agent_docs/current_state.md` gilt:
+
+- aktualisiere den Ist-Stand nach jeder erledigten Prioritaet
+- nenne neue verifizierte Faehigkeiten, geaenderte Workflows und betriebsrelevante Einschraenkungen
+- passe Kennzahlen an, wenn sie sich durch neue Tests oder neue Verifikation geaendert haben
+
+Wenn waehrend der Arbeit neue Schwachstellen, Restluecken oder Folgearbeiten sichtbar werden:
+
+- entscheide, ob sie nur Restrisiko der aktuellen Aufgabe sind oder eine eigene Folgeprioritaet verdienen
+- fuege eigenstaendige Folgeprioritaeten in `agent_docs/priorities.md` mit neuer fortlaufender Nummer hinzu
+- pflege Rueckverlinkungen zwischen Prioritaeten, `weakness_log.md`, `decision_log.md` und Session-Reports
+- nenne in der Abschlussmeldung, welche neuen Punkte auf die Liste gekommen sind
+
 ## Aenderungsregeln nach Bereich
 
 ### CV / Pipeline
@@ -150,6 +181,7 @@ Ein guter Beitrag in diesem Repo enthaelt:
 - den eigentlichen Codefix oder die Erweiterung
 - passende Tests oder nachvollziehbare Begruendung, falls Tests fehlen
 - kurze Aktualisierung betroffener Doku, wenn sich Verhalten aendert
+- Aktualisierung von `agent_docs/priorities.md` und `agent_docs/current_state.md`, sobald eine Aufgabe inhaltlich abgeschlossen wurde
 - klare Aussage zu Restrisiken
 
 ## Codex-spezifische Erwartungen
@@ -177,3 +209,5 @@ Diese Hinweise sind besonders fuer Codex relevant:
 - `agent_docs/hardware_constraints.md` - Designgrenzen fuer das Zielgeraet
 - `agent_docs/development_workflow.md` - Arbeitsregeln, Testmatrix, Change-Checkliste
 - `agent_docs/priorities.md` - priorisierte Weiterentwicklungsziele
+- `agent_docs/weakness_log.md` - offene und erledigte Schwaechen unterhalb der Prioritaetsebene
+- `agent_docs/decision_log.md` - wichtige Projekt- und Agent-Entscheidungen

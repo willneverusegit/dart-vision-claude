@@ -53,6 +53,19 @@ Claude Code soll dieses Repo nicht nur "sauberer" machen, sondern praktisch weit
 - abstrakte Architekturarbeit ohne klaren Nutzen fuer das aktuelle Repo
 - neue Prozesskomplexitaet ohne Tests oder betriebliche Vorteile
 
+## Pflicht zur Fortschrittsdokumentation
+
+Nach jeder erledigten Aufgabe oder Prioritaet aktualisiere direkt im selben Arbeitsgang:
+
+- `agent_docs/priorities.md` — Umsetzung beschreiben, als erledigt markieren, Verknuepfte Weaknesses/Entscheidungen pflegen
+- `agent_docs/current_state.md` — Ist-Stand, Kennzahlen, neue Faehigkeiten aktualisieren
+
+Zusaetzlich:
+
+- Pflege Rueckverlinkungen zwischen Prioritaeten, `weakness_log.md`, `decision_log.md` und Session-Reports
+- Fuer jede erledigte Prioritaet MUSS mindestens eine neue Prioritaet am Ende von `priorities.md` ergaenzt werden
+- Nenne in der Abschlussmeldung, welche neuen Punkte auf die Liste gekommen sind
+
 ## Gute Abschlussform fuer Claude Code
 
 Ein guter Abschluss in diesem Repo nennt:
@@ -60,5 +73,7 @@ Ein guter Abschluss in diesem Repo nennt:
 - betroffene Bereiche
 - umgesetzte Aenderungen
 - ausgefuehrte Verifikation
+- Aktualisierung von `priorities.md` und `current_state.md`
 - offene Risiken oder bewusst nicht angefasste Folgepunkte
+- welche neuen Prioritaeten oder Schwachstellen entdeckt wurden
 

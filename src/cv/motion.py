@@ -9,6 +9,10 @@ class MotionDetector:
 
     def __init__(self, threshold: int = 500, detect_shadows: bool = True,
                  var_threshold: int = 50) -> None:
+        if threshold <= 0:
+            raise ValueError("threshold must be > 0")
+        if var_threshold <= 0:
+            raise ValueError("var_threshold must be > 0")
         self.threshold = threshold
         self.bg_subtractor = cv2.createBackgroundSubtractorMOG2(
             detectShadows=detect_shadows,
