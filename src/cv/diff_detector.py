@@ -45,6 +45,7 @@ class FrameDiffDetector:
         50 filtert Beleuchtungsrauschen gut heraus.
     min_diff_area:
         Minimale Fläche (px²) des Diff-Blobs damit es als Dart gilt.
+        Default 30 px² ermöglicht Outer-Bull-Erkennung (~40px Blobs).
     max_diff_area:
         Maximale Fläche (px²) — Sanity-Check gegen globale Beleuchtungsänderungen.
     """
@@ -53,7 +54,7 @@ class FrameDiffDetector:
         self,
         settle_frames: int = 5,
         diff_threshold: int = 50,
-        min_diff_area: int = 50,
+        min_diff_area: int = 30,
         max_diff_area: int = 8000,
         diagnostics_dir: str | None = None,
         min_elongation: float = 1.5,
@@ -76,7 +77,13 @@ class FrameDiffDetector:
         self._state = _State.IDLE
         self._baseline: np.ndarray | None = None
         self._settle_count: int = 0
+        # Three-stage morphology:
+        # 1) Opening with small kernel removes thin board-wire artefacts
+        # 2) Ellipse closing fills small gaps
+        # 3) Elongated closing connects dart shaft fragments along the main axis
+        self._opening_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
         self._closing_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        self._elongated_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 11))
 
         # Diagnostics: save diff masks + contour images on each detection
         self._diagnostics_dir: Path | None = None
@@ -227,8 +234,12 @@ class FrameDiffDetector:
         diff = cv2.absdiff(self._baseline, post_frame)
         _, thresh = cv2.threshold(diff, self.diff_threshold, 255, cv2.THRESH_BINARY)
 
-        # Morphologisches Closing: schließt Konturlücken (Dart-Schaft)
+        # 1) Opening: entfernt dünne Board-Draht-Artefakte aus dem Diff
+        thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, self._opening_kernel)
+        # 2) Closing: schließt kleine Konturlücken
         thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, self._closing_kernel)
+        # 3) Elongated closing: verbindet Dart-Schaft-Fragmente entlang der Längsachse
+        thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, self._elongated_kernel)
 
         contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if not contours:
@@ -263,7 +274,8 @@ class FrameDiffDetector:
         cy = int(M["m01"] / M["m00"])
 
         # Tip detection: find the narrow end of the dart contour
-        tip = find_dart_tip(largest)
+        # Pass post_frame for sub-pixel refinement via cornerSubPix
+        tip = find_dart_tip(largest, gray_frame=post_frame)
         if tip is not None:
             # Use tip as primary position — this is where the dart touches the board
             dart_x, dart_y = tip

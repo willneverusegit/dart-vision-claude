@@ -304,3 +304,49 @@ def test_invalid_min_elongation_raises():
     """min_elongation < 1.0 raises ValueError."""
     with pytest.raises(ValueError, match="min_elongation"):
         FrameDiffDetector(min_elongation=0.5)
+
+
+# ------------------------------------------------------------------
+# Board-wire filtering & morphology pipeline tests (Tier 1 Opt)
+# ------------------------------------------------------------------
+
+
+def test_board_wire_filtered_by_opening():
+    """Thin 1px-wide wire artefacts in the diff should be removed by opening."""
+    d = FrameDiffDetector(settle_frames=2, diff_threshold=10, min_diff_area=10, min_elongation=1.0)
+    baseline = _gray(50)
+    post = _gray(50)
+    # Simulate thin board wire: 1px wide horizontal line
+    post[50, 10:90] = 200  # 1px tall, 80px wide — should be removed by opening
+    result = _run_detection(d, baseline, post)
+    assert result is None, "Thin wire artefact should be filtered by morphological opening"
+
+
+def test_elongated_closing_connects_dart_fragments():
+    """A dart shaft with a 8px gap should be connected by elongated closing kernel."""
+    d = FrameDiffDetector(settle_frames=2, diff_threshold=10, min_diff_area=10, min_elongation=1.5)
+    baseline = _gray(50)
+    post = _gray(50)
+    # Two dart shaft segments with 8px gap (larger than 5x5 ellipse can close)
+    post[15:40, 48:54] = 200   # top segment
+    # gap at rows 40-48
+    post[48:80, 48:54] = 200   # bottom segment
+    result = _run_detection(d, baseline, post)
+    assert result is not None, "Elongated closing should connect 8px gap in dart shaft"
+
+
+def test_outer_bull_small_blob_detected():
+    """A small ~56px² blob (outer bull area) should be detected with min_diff_area=30."""
+    d = FrameDiffDetector(settle_frames=2, diff_threshold=10, min_diff_area=30, min_elongation=1.0)
+    baseline = _gray(50)
+    post = _gray(50)
+    # Small blob: 8x7 = 56 px² — simulates outer bull dart tip (survives 2x2 opening)
+    post[46:54, 47:54] = 200
+    result = _run_detection(d, baseline, post)
+    assert result is not None, "56px² blob should pass min_diff_area=30"
+
+
+def test_default_min_diff_area_is_30():
+    """Default min_diff_area should be 30 (lowered for outer bull detection)."""
+    d = FrameDiffDetector()
+    assert d.min_diff_area == 30

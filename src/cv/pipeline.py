@@ -63,7 +63,7 @@ class DartPipeline:
         self.frame_diff_detector = FrameDiffDetector(
             settle_frames=5,
             diff_threshold=50,
-            min_diff_area=50,
+            min_diff_area=30,
             max_diff_area=8000,
             diagnostics_dir=os.environ.get("DARTVISION_DIAGNOSTICS_DIR"),
         )

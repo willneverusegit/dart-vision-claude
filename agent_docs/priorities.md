@@ -579,3 +579,89 @@ Typische Arbeiten:
 - Gute Werte als neue Defaults in diff_detector.py uebernehmen
 - Diagnostics aktivieren und Diff-Masken bei Fehldetektionen analysieren
 - Ergebnisse in current_state.md dokumentieren
+
+## Prioritaet 38: Drei-Stufen-Morphologie und Sub-Pixel Tip Refinement (✅ ERLEDIGT 2026-03-18)
+
+**Umsetzung:** Tier-1-Optimierungen der Dart-Detection implementiert:
+(a) Board-Wire-Filtering via 2x2 morphologisches Opening vor Closing — entfernt duenne Draht-Artefakte scharfer Kameras aus dem Diff.
+(b) Elongierter Closing-Kernel (3x11 Rect) als dritte Morphologie-Stufe — schliesst bis zu 8px Luecken in Dart-Schaft-Fragmenten.
+(c) Sub-Pixel Tip Refinement via `cv2.cornerSubPix()` auf 20x20 ROI um den erkannten Tip — hoehere Genauigkeit an Ring/Sektor-Grenzen.
+(d) min_diff_area Default von 50 auf 30 gesenkt — Outer-Bull-Blobs (~40px²) werden nicht mehr verworfen.
+9 neue Tests. Geaenderte Dateien: `src/cv/diff_detector.py`, `src/cv/tip_detection.py`, `src/cv/pipeline.py`, `tests/test_diff_detector.py`, `tests/test_tip_detection.py`, `tests/test_cv_params_api.py`.
+
+---
+
+# Dart Detection Optimierungsplan — Konsolidierte Ideenliste
+
+Quellen: Agent-Recherche (State-of-the-Art, OpenCV-Techniken, GitHub-Projekte, DeepDarts CVPR 2021), Technical Guide ("Automatic dart scoring with computer vision"), Codebase-Audit, bekannte Issues.
+
+Priorisiert nach **Nuetzlichkeit fuer unser Setup** (Single-Cam Hauptpfad, CPU-only, Python/OpenCV, ArUco-Kalibrierung, 400x400 ROI).
+
+## TIER 1: Sofort umsetzbar, hoher Impact (✅ bereits implementiert in P38)
+
+| # | Idee | Status |
+|---|------|--------|
+| 1 | Board-Wire-Filtering (Morphological Opening 2x2 vor Closing) | ✅ P38 |
+| 2 | Elongierter Closing-Kernel (3x11 Rect) fuer Shaft-Luecken | ✅ P38 |
+| 3 | Sub-Pixel Tip Refinement via cornerSubPix | ✅ P38 |
+| 4 | min_diff_area auf 30 fuer Outer-Bull-Erkennung | ✅ P38 |
+
+## TIER 2: Naechste Schritte — einzeln umsetzbar, messbarer Gewinn
+
+| # | Idee | Quelle | Aufwand | Impact | Details |
+|---|------|--------|---------|--------|---------|
+| 5 | **HoughLinesP fuer Dart-Shaft-Detection** | Tech Guide, Autodarts | Mittel | HOCH | Autodarts-Kernansatz: `cv2.HoughLinesP()` auf Edge-Detected Diff-Image, Shaft-Linie finden, Tip = Endpunkt Richtung Board-Center. Threshold ~50 bei 720p. Deutlich robuster als Contour-Extrempunkt bei fragmentierten Konturen. Ergaenzt bestehende Tip-Detection als zweiter Algorithmus mit Confidence-Vergleich. |
+| 6 | **fitLine fuer Tip-Richtung** | Agent-Research | Klein | HOCH | `cv2.fitLine(contour, cv2.DIST_L2)` durch Dart-Contour, Tip = Endpunkt der Linie naeher am Bullseye. Robuster als minAreaRect bei unregelmaessigen Konturen. Kann als Fallback/Vergleich zu aktuellem Narrowing-Ansatz dienen. |
+| 7 | **Temporal Stability Gating (3-Frame-Bestaetigung)** | Tech Guide, Flight Club Patent | Klein | HOCH | Nach SETTLING: 3+ aufeinanderfolgende Frames mit stabiler Position (Centroid-Drift < 3px) bevor Dart-Landed bestaetigt wird. Reduziert False Positives durch Vibration. Board-Vibration dauert 200-500ms. Aktuell: settle_frames=5 prueft nur Motion-Flag, nicht Positionsstabilitaet. |
+| 8 | **Kamera-Sharpness Auto-Detection** | Agent-Research, P26 | Klein | MITTEL | Laplacian-Varianz (`cv2.Laplacian(gray, cv2.CV_64F).var()`) als Schaerfe-Metrik. Automatisch diff_threshold und min_diff_area pro Kamera anpassen. Scharfe Kamera: niedrigerer Threshold. Unscharfe Kamera: hoeherer Threshold, groessere min_area. |
+| 9 | **Progressive Reference Frame Updates** | Tech Guide, alle Systeme | Klein | HOCH | Nach jedem bestatigten Dart: aktuellen Frame als neue Baseline setzen. Dadurch wird nur der NEUE Dart im Diff sichtbar, nicht alle bisherigen. Aktuell: Baseline wird in IDLE kontinuierlich aktualisiert — funktioniert bei unserem State-Machine-Ansatz bereits korrekt, aber explizit nach Scoring-Bestaetigung forcen ist robuster. |
+| 10 | **Bounce-Out Detection** | Tech Guide, Flight Club Patent | Mittel | HOCH | Temporal Signature: kurzer Motion-Spike (2-5 Frames) gefolgt von Rueckkehr zum Pre-Throw-State. Vergleich Post-Frame vs. Baseline nach Settling — wenn Diff unter Threshold: Dart hat Board nicht getroffen. Wichtig fuer korrekte Spiellogik. |
+| 11 | **Contour Shape Confidence Score** | Agent-Research, Tech Guide | Klein | MITTEL | Dart-Konturen: Aspect-Ratio 3-8, Solidity >0.6, Area 50-2000px. Score berechnen aus diesen Metriken, als Gewicht in Detection-Confidence einfliessen lassen. Aktuell: Confidence = area/500, sehr simpel. Besser: gewichteter Score aus Area + Elongation + Solidity. |
+| 12 | **Light Stability Monitor** | Agent-Research | Klein | MITTEL | Pixel-Intensitaets-Varianz ueber die letzten N Frames tracken. Wenn Varianz zu hoch (schnelle Lichtaenderung): Diff-Berechnung pausieren oder Threshold temporaer erhoehen. Verhindert Fehldetektionen bei Lichtschalter/Wolken. |
+| 13 | **Downscaled Motion Detection** | Tech Guide, Autodarts | Klein | MITTEL | Motion-Detection auf 4x herunterskaliertem Frame (100x100 statt 400x400). Nur bei Motion-Trigger volle Aufloesung analysieren. Spart ~75% CPU im Idle. Autodarts nutzt diesen Ansatz. |
+| 14 | **Temporal Lock nach Scoring** | Tech Guide | Klein | MITTEL | ~2 Sekunden Motion-Ignore nach bestaetiger Erkennung. Verhindert False Positives durch Hand beim Dart-Herausziehen. Aktuell nicht implementiert — Hand-Motion kann neuen Detection-Cycle triggern. |
+
+## TIER 3: Mittelfristig — groesserer Aufwand, signifikanter Gewinn
+
+| # | Idee | Quelle | Aufwand | Impact | Details |
+|---|------|--------|---------|--------|---------|
+| 15 | **360° LED Ring Light** | Tech Guide, Scolia, Autodarts, alle Systeme | Hardware | SEHR HOCH | "Accuracy depends more on lighting uniformity than on algorithmic sophistication." Universelle Hardware-Empfehlung aller Systeme. Eliminiert Richtungsschatten komplett. Single biggest improvement fuer Erkennungsqualitaet. Kostet ~20-40€. |
+| 16 | **Zweite/Dritte Kamera bei 120° Intervall** | Tech Guide, Autodarts | Hardware+SW | SEHR HOCH | Multi-Cam-Triangulation erreicht 99%+ vs. ~95% Single-Cam. Drei OV9732 bei 120° ist der Goldstandard. Unser Multi-Cam-Code ist vorbereitet (P29-P36). 3 Kameras bei 720p kosten ~30-50€. |
+| 17 | **Homography-Fallback bei Marker-Occlusion** | Tech Guide | Mittel | HOCH | Wenn Marker durch Hand verdeckt: letzte gueltige Homography weiternutzen, "homography age" Counter fuehren, Warnung nach N Frames ohne Marker-Re-Detektion. |
+| 18 | **LAB-Farbraum statt Grayscale fuer Diff** | Tech Guide | Mittel | MITTEL | CLAHE auf L-Kanal in LAB statt auf Grayscale. LAB trennt Luminanz von Chrominanz — robuster bei farbiger Beleuchtung. "LAB color space separates luminance from chrominance, making it ideal for lighting-invariant processing." |
+| 19 | **HSV-basierte Flight-Color-Detection als Fallback** | Tech Guide | Mittel | MITTEL | Wenn Contour-basierte Detection versagt: HSV-Filterung auf bekannte Flight-Farben als Fallback. Setzt voraus: Dart-Farbe ist konfiguriert. Scolia hat Probleme mit dunklen Darts — helle Flights empfohlen. |
+| 20 | **Gaussian Fitting fuer Sub-Pixel Tip** | Tech Guide | Mittel | MITTEL | Statt cornerSubPix: Gaussian-Fit auf Intensitaetsprofil um den erkannten Tip. Erreicht ~0.1-0.5 Pixel Genauigkeit (~1mm am Board). Akademisch besser als cornerSubPix, aber aufwaendiger. |
+| 21 | **Multi-Dart Discrimination: Masking bekannter Darts** | Tech Guide | Mittel | HOCH | Bekannte Dart-Positionen im Diff maskieren um Re-Detektion zu vermeiden. Bei dicht gruppierten Darts: Contour-Area gegen erwartete Einzel-Dart-Flaeche pruefen. Robin-Hood-Detection als Spezialfall. |
+| 22 | **Directional Morphological Kernels (Multi-Angle)** | Tech Guide (matherm) | Mittel | MITTEL | Rotierte Linien-Kernel bei 0°, 30°, 60°, ... 150°: der Winkel mit laengstem Contour-Match = Dart-Orientierung. Dann fitLine entlang dieser Richtung. Robuster als einzelner fixer Kernel. |
+
+## TIER 4: Langfristig — Gamechanger, hoher Aufwand
+
+| # | Idee | Quelle | Aufwand | Impact | Details |
+|---|------|--------|---------|--------|---------|
+| 23 | **YOLOv8n Dart-Tip-Detection (ONNX)** | DeepDarts CVPR 2021, Dart Sense, Tech Guide | Gross | SEHR HOCH | 6 MB Modell, ~20-40ms CPU via `cv2.dnn.readNetFromONNX()`. Kein PyTorch/TF noetig. Trainiert auf Dart-Tip + Calibration-Keypoints (DeepDarts-Ansatz). Loest Occlusion-Problem das klassisches CV nicht kann. 94.7% Single-Cam (DeepDarts), 99.3% (Gran Eye). Braucht 16k+ annotierte Trainingsbilder. |
+| 24 | **Piezoelektrischer Kontakt-Mikrofon Trigger** | Tech Guide (Patent), Flight Club | Hardware | HOCH | Piezo-Sensor auf Board-Rueckseite als Impact-Trigger. CV-Pipeline nur bei Vibration aktivieren → drastisch reduzierte CPU-Last. Board selbst filtert Umgebungsgeraeusche. Kostet ~5€. Komplementaer zu CV, nicht als Ersatz. |
+| 25 | **Vibrationssensor + CV Hybrid** | Tech Guide (Patent US20170307341A1) | Hardware+SW | HOCH | Kombination aus Piezo-Trigger und CV-Validierung. Piezo triggert schneller als Motion-Detection (~10ms vs. ~170ms). CV bestaetigt und lokalisiert. Beste Latenz bei niedrigstem CPU-Verbrauch. |
+| 26 | **Semi-Supervised Bootstrapping fuer Trainingsdaten** | Tech Guide, DeepDarts | Gross | MITTEL | Aktuelles klassisches System nutzen um Trainingsbilder fuer ML-Modell vorzulabeln. Manuell korrigieren. Iterativ besseres Modell trainieren. Einziger praktischer Weg zu 16k+ Trainingsbildern. |
+| 27 | **Event Camera (DVS)** | Tech Guide | Sehr gross | MITTEL | Microsekunden-Aufloesung, 120+ dB Dynamik, natuerliche Filterung statischer Hintergruende. Ideal fuer Dart-in-Flight-Detection. Aber: >1000€, niedrige Aufloesung, experimentell. Langfristige Zukunftstechnologie. |
+
+## TIER 5: Quick-Wins — kleine Aenderungen, kleiner aber spuerbarer Gewinn
+
+| # | Idee | Quelle | Aufwand | Impact | Details |
+|---|------|--------|---------|--------|---------|
+| 28 | **detectShadows=False in MOG2** | Agent-Research, Tech Guide | Trivial | KLEIN | Spart ~10-15% Verarbeitungszeit. Aktuell `detectShadows=True` in motion.py. Schatten-Detection unnoetig da Diff-basierte Erkennung genutzt wird. |
+| 29 | **MOG2 learningRate senken** | Tech Guide | Trivial | KLEIN | `bg_sub.apply(frame, learningRate=0.002)` statt Default ~0.01. Darts auf dem Board werden langsamer in Background absorbiert. Verhindert dass gelandete Darts zu schnell "verschwinden". |
+| 30 | **Kamera-Fokus-Qualitaetscheck beim Start** | Tech Guide | Klein | MITTEL | "Camera focus is the single most impactful quality factor." Laplacian-Varianz beim Pipeline-Start pruefen und Warnung wenn unter Schwelle. |
+| 31 | **Helle Flights empfehlen / warnen** | Tech Guide, Scolia | Trivial | KLEIN | Doku/UI-Hinweis: "Dunkle Darts reduzieren Erkennungsgenauigkeit. Helle, kontrastreiche Flights empfohlen." Scolia und alle Systeme bestaetigen dies. |
+| 32 | **cv2.setNumThreads() setzen** | Agent-Research | Trivial | KLEIN | Sicherstellen dass OpenCV alle verfuegbaren CPU-Kerne nutzt. Default ist oft nur 1 Thread. |
+| 33 | **Frame-Skip im Idle** | Agent-Research, Tech Guide | Klein | MITTEL | Jeden 2. oder 3. Frame im Idle ueberspringen. Bei Motion auf jeden Frame wechseln. Halbiert CPU-Last im Leerlauf. |
+
+## Empfohlene Reihenfolge fuer naechste Implementierung
+
+1. **P37 Live-Realtest** — Ohne echte Board-Validierung sind weitere Algorithmus-Aenderungen blind
+2. **#15 LED Ring Light** — Groesster Hardware-Impact, loest viele Software-Probleme
+3. **#5 HoughLinesP** — Autodarts-Kernansatz, zweiter Tip-Detection-Algorithmus
+4. **#7 Temporal Stability Gating** — Reduziert False Positives durch Vibration
+5. **#10 Bounce-Out Detection** — Wichtig fuer korrekte Spiellogik
+6. **#28-33 Quick-Wins** — Schnell umsetzbar, kumulativer Effekt
+7. **#8 Camera Sharpness** — Automatische Kompensation fuer verschiedene Kameras
+8. **#16 Zweite Kamera** — Sprung auf 99%+ Genauigkeit

@@ -26,16 +26,25 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
-def find_dart_tip(contour: np.ndarray) -> tuple[int, int] | None:
+def find_dart_tip(
+    contour: np.ndarray,
+    gray_frame: np.ndarray | None = None,
+) -> tuple[int, int] | None:
     """Find the tip of a dart from its diff contour.
 
     The tip is the point at the narrow end of the dart silhouette.
     Returns (x, y) pixel coordinates or None if detection fails.
 
+    When *gray_frame* is provided, sub-pixel refinement via
+    ``cv2.cornerSubPix`` is applied around the detected tip for
+    higher accuracy at ring/sector boundaries.
+
     Parameters
     ----------
     contour:
         OpenCV contour (Nx1x2 array) of the dart's diff blob.
+    gray_frame:
+        Optional grayscale frame for sub-pixel refinement.
     """
     if contour is None or len(contour) < 10:
         logger.debug("tip_detection: contour too small (%s points)", len(contour) if contour is not None else 0)
@@ -104,6 +113,10 @@ def find_dart_tip(contour: np.ndarray) -> tuple[int, int] | None:
     tip = tip_candidates[tip_idx]
     tip_x, tip_y = int(round(tip[0])), int(round(tip[1]))
 
+    # Sub-pixel refinement if grayscale frame is available
+    if gray_frame is not None:
+        tip_x, tip_y = _refine_subpixel(gray_frame, tip_x, tip_y)
+
     logger.debug(
         "tip_detection: tip=(%d,%d) pos_width=%.1f neg_width=%.1f ratio=%.2f",
         tip_x, tip_y, pos_width, neg_width,
@@ -111,3 +124,39 @@ def find_dart_tip(contour: np.ndarray) -> tuple[int, int] | None:
     )
 
     return (tip_x, tip_y)
+
+
+def _refine_subpixel(
+    gray: np.ndarray, tip_x: int, tip_y: int, win: int = 10,
+) -> tuple[int, int]:
+    """Refine tip position to sub-pixel accuracy using cornerSubPix.
+
+    Crops a small ROI around the tip, finds corners, and picks the one
+    closest to the original tip estimate.  Falls back to the original
+    position if refinement fails.
+    """
+    h, w = gray.shape[:2]
+    x0 = max(tip_x - win, 0)
+    y0 = max(tip_y - win, 0)
+    x1 = min(tip_x + win, w)
+    y1 = min(tip_y + win, h)
+    if x1 - x0 < 5 or y1 - y0 < 5:
+        return tip_x, tip_y
+
+    roi = gray[y0:y1, x0:x1]
+    corners = cv2.goodFeaturesToTrack(roi, maxCorners=8, qualityLevel=0.01, minDistance=3)
+    if corners is None or len(corners) == 0:
+        return tip_x, tip_y
+
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.01)
+    refined = cv2.cornerSubPix(roi, corners, winSize=(3, 3), zeroZone=(-1, -1), criteria=criteria)
+
+    # Pick corner closest to original tip (in ROI coords)
+    local_tip = np.array([tip_x - x0, tip_y - y0], dtype=np.float32)
+    dists = np.linalg.norm(refined.reshape(-1, 2) - local_tip, axis=1)
+    best = refined[np.argmin(dists)].reshape(2)
+
+    rx = int(round(best[0] + x0))
+    ry = int(round(best[1] + y0))
+    logger.debug("tip_detection: subpixel refined (%d,%d) → (%d,%d)", tip_x, tip_y, rx, ry)
+    return rx, ry

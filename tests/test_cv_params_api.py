@@ -14,7 +14,7 @@ class TestFrameDiffDetectorParams:
         params = det.get_params()
         assert params["settle_frames"] == 5
         assert params["diff_threshold"] == 50
-        assert params["min_diff_area"] == 50
+        assert params["min_diff_area"] == 30
         assert params["max_diff_area"] == 8000
         assert params["min_elongation"] == 1.5
         assert params["diagnostics_enabled"] is False
@@ -25,7 +25,7 @@ class TestFrameDiffDetectorParams:
         assert result["diff_threshold"] == 80
         assert result["settle_frames"] == 3
         # Others unchanged
-        assert result["min_diff_area"] == 50
+        assert result["min_diff_area"] == 30
 
     def test_set_params_partial_update(self):
         det = FrameDiffDetector()

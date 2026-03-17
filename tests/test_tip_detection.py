@@ -4,7 +4,7 @@ import numpy as np
 import cv2
 import pytest
 
-from src.cv.tip_detection import find_dart_tip
+from src.cv.tip_detection import find_dart_tip, _refine_subpixel
 
 
 class TestFindDartTip:
@@ -115,3 +115,50 @@ class TestFindDartTip:
         assert abs(tip[0] - 50) < abs(cx - 50), (
             f"Tip ({tip[0]}) should be closer to 50 than centroid ({cx})"
         )
+
+    def test_subpixel_refinement_with_gray_frame(self):
+        """When gray_frame is passed, sub-pixel refinement runs without error."""
+        # Create a gray image with a sharp edge feature at the tip location
+        gray = np.zeros((400, 400), dtype=np.uint8)
+        gray[180:220, 40:60] = 200  # bright region near tip
+
+        contour = self._make_dart_contour(50, 200, 250, 200)
+        tip = find_dart_tip(contour, gray_frame=gray)
+        assert tip is not None
+        # Should still be near the expected tip position
+        assert abs(tip[0] - 50) < 25
+
+    def test_subpixel_refinement_without_gray_frame(self):
+        """Without gray_frame, function works as before (no refinement)."""
+        contour = self._make_dart_contour(50, 200, 250, 200)
+        tip_no_gray = find_dart_tip(contour, gray_frame=None)
+        tip_default = find_dart_tip(contour)
+        assert tip_no_gray == tip_default
+
+
+class TestRefineSubpixel:
+    """Test the sub-pixel refinement helper directly."""
+
+    def test_returns_original_on_blank_image(self):
+        """On a uniform image with no corners, returns original position."""
+        gray = np.full((100, 100), 128, dtype=np.uint8)
+        rx, ry = _refine_subpixel(gray, 50, 50)
+        # Should not crash; may return original or nearby
+        assert 40 <= rx <= 60
+        assert 40 <= ry <= 60
+
+    def test_returns_original_on_edge_position(self):
+        """Tip near image border should not crash."""
+        gray = np.full((100, 100), 128, dtype=np.uint8)
+        rx, ry = _refine_subpixel(gray, 2, 2, win=10)
+        assert rx >= 0 and ry >= 0
+
+    def test_refines_near_sharp_corner(self):
+        """On an image with a clear corner, refinement should succeed."""
+        gray = np.zeros((100, 100), dtype=np.uint8)
+        # Create a clear L-shaped corner at (50, 50)
+        gray[50:80, 50:80] = 200
+        rx, ry = _refine_subpixel(gray, 52, 52, win=10)
+        # Should be close to the actual corner
+        assert abs(rx - 50) < 5
+        assert abs(ry - 50) < 5
