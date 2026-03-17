@@ -66,7 +66,8 @@
       "Bash(.venv/Scripts/python.exe -m pytest tests/test_tip_detection.py -v)",
       "Bash(.venv/Scripts/python.exe scripts/validate_tip_detection.py)",
       "Bash(.venv/Scripts/python.exe -m pytest -q)",
-      "Bash(ls \"C:\\\\Users\\\\domes\\\\OneDrive\\\\Desktop\\\\dart-vision-claude\\\\.agent-memory\\\\iterations\"\" 2>/dev/null && echo \"EXISTS\" || echo \"NOT_FOUND \")"
+      "Bash(ls \"C:\\\\Users\\\\domes\\\\OneDrive\\\\Desktop\\\\dart-vision-claude\\\\.agent-memory\\\\iterations\"\" 2>/dev/null && echo \"EXISTS\" || echo \"NOT_FOUND \")",
+      "Bash(claude mcp:*)"
     ]
   },
   "hooks": {
@@ -77,6 +78,17 @@
           {
             "type": "command",
             "command": "bash -c 'ARGS=\"$CLAUDE_TOOL_INPUT\"; if echo \"$ARGS\" | grep -q \"git commit\"; then bash scripts/pre_commit_check.sh; fi'"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'FILE=\"$CLAUDE_FILE_PATH\"; if [[ \"$FILE\" == *.py ]]; then ruff check --fix \"$FILE\" 2>/dev/null; fi'"
           }
         ]
       }
