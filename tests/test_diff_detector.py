@@ -154,3 +154,12 @@ def test_second_dart_uses_updated_baseline():
     # Centroid sollte beim zweiten Blob liegen (~75, 75)
     assert abs(r2.center[0] - 75) < 8
     assert abs(r2.center[1] - 75) < 8
+
+
+def test_color_frame_raises():
+    """Color frame must raise ValueError, not silently fail."""
+    d = FrameDiffDetector(settle_frames=2, diff_threshold=10, min_diff_area=10)
+    color = np.full((100, 100, 3), 128, dtype=np.uint8)
+    d.update(np.full((100, 100), 100, dtype=np.uint8), has_motion=False)  # grayscale baseline
+    with pytest.raises(ValueError, match="grayscale"):
+        d._compute_diff(color)

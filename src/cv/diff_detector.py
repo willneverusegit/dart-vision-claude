@@ -76,6 +76,7 @@ class FrameDiffDetector:
         """Einen Frame verarbeiten. Gibt DartDetection zurück wenn Dart gelandet.
 
         Muss für JEDEN Frame aufgerufen werden — auch wenn has_motion=False.
+        Frames müssen single-channel (Grayscale) sein.
         """
         if self._state == _State.IDLE:
             return self._handle_idle(frame, has_motion)
@@ -127,7 +128,7 @@ class FrameDiffDetector:
             logger.debug("FrameDiff: SETTLING → IN_MOTION (motion resumed)")
             return None
 
-        self._settle_count += 1
+        self._settle_count += 1  # count starts at 1 (set in _handle_in_motion) → fires when == settle_frames
         if self._settle_count < self.settle_frames:
             return None
 
@@ -145,6 +146,9 @@ class FrameDiffDetector:
         if self._baseline is None:
             logger.warning("FrameDiff: _compute_diff aufgerufen ohne Baseline — übersprungen")
             return None
+
+        if post_frame.ndim != 2 or self._baseline.ndim != 2:
+            raise ValueError("FrameDiffDetector requires single-channel (grayscale) frames")
 
         diff = cv2.absdiff(self._baseline, post_frame)
         _, thresh = cv2.threshold(diff, self.diff_threshold, 255, cv2.THRESH_BINARY)
