@@ -1,6 +1,6 @@
 # Current State
 
-Stand dieser Zusammenfassung: 2026-03-17 (P7, P13-P19 erledigt)
+Stand dieser Zusammenfassung: 2026-03-17 (P7, P8, P10, P13-P19 erledigt)
 
 ## Technischer Kern
 
@@ -44,6 +44,15 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 - Wurf-Badges im Scoreboard statt Klartext
 - Pulsierender Glow-Effekt fuer aktiven Spieler
 - X01-Checkout-Vorschlaege (Scores 2-170) mit Backend-Lookup
+- Performance-Monitoring: TelemetryHistory mit Ring-Buffer (300 Samples), FPS/Queue-Alerts
+- Telemetrie-API (`/api/telemetry/history`) mit History, Alerts, Summary
+- Frontend Performance-Monitor-Panel mit Canvas-Chart und Alert-Banner
+- WebSocket-Broadcast bei Telemetrie-Alert-Zustandsaenderung
+- Optionales CPU-Monitoring via psutil
+- Responsive Layout (Mobile 375px, Tablet 768px, Desktop)
+- Loading-Spinner beim Pipeline-Start
+- Keyboard-Shortcut-Hints (Enter/Del/U)
+- Kamera-Feed mit korrektem Aspektverhaeltnis (object-fit:contain)
 
 ## Was heute als fortgeschritten, aber noch sensibel gilt
 
@@ -66,6 +75,7 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 - `config/calibration_config.yaml` enthaelt eine gueltige Kalibrierung fuer `default`
 - `config/multi_cam.yaml` speichert jetzt auch `last_cameras` fuer schnellen Multi-Cam-Neustart
 - Telemetrie-Endpunkt `/api/stats` liefert FPS, Dropped Frames, Queue-Druck, RAM
+- Telemetrie-Historie-Endpunkt `/api/telemetry/history` liefert zeitliche Verlaeufe und Alerts
 - `/api/multi/readiness` liefert pro-Kamera-Diagnose fuer Multi-Cam-Setup
 - Alle API-Fehlermeldungen sind deutsch und handlungsorientiert
 

@@ -1,46 +1,34 @@
-# Project Context — Dart-Vision
+# Project Context — DartVision
 
 ## Projektziel
-
-CPU-optimiertes Dart-Scoring-System mit Computer Vision. Erkennt Dart-Wuerfe per Kamera, mappt Treffer auf Dartboard-Segmente, fuehrt Spielstand in Echtzeit.
+Lokales Dart-Scoring-System mit Computer Vision zur automatischen Treffererkennung auf einer Dartscheibe.
 
 ## Tech Stack
-
-- **Backend:** Python 3.14, FastAPI, Uvicorn
-- **CV:** OpenCV (opencv-contrib-python), NumPy
-- **Frontend:** Vanilla JS, HTML/CSS, WebSocket + MJPEG
-- **Tests:** pytest, pytest-asyncio, pytest-cov
-- **Config:** YAML (PyYAML)
-- **Plattform:** Windows 11, CPU-only (kein GPU)
+- **Backend:** Python 3.14, FastAPI, WebSockets
+- **CV:** OpenCV, NumPy (CPU-only, keine GPU)
+- **Frontend:** Vanilla JS, HTML/CSS, Web Audio API
+- **Tests:** pytest
+- **Config:** YAML (calibration_config.yaml)
 
 ## Architektur
-
-- `src/main.py` — App-Start, Lifespan, globaler Zustand
-- `src/web/routes.py` — REST + WebSocket + MJPEG
-- `src/cv/pipeline.py` — Single-Camera-Orchestrierung
-- `src/cv/multi_camera.py` — Multi-Cam-Pipeline
-- `src/cv/detector.py` — Dart-Impact-Erkennung (Shape + temporal confirmation)
-- `src/cv/calibration.py` — ArUco/ChArUco Board-Kalibrierung
-- `src/game/engine.py` — Spiellogik (X01, Cricket, Free Play)
-- `src/utils/config.py` — YAML-Config-Management mit Schema-Validierung
-
-## Aktueller Stand (2026-03-17)
-
-- 483 Tests, ~72% Coverage
-- Single-Cam stabil, Multi-Cam funktional aber sensibel
-- P1-P6, P13-P17 erledigt (Input-Validierung, CV-Validierung, Frontend-Fehlerbehandlung, Config-Schema)
-- P7-P12 offen (UX, Performance-Monitoring, Multi-Cam UX, UI-Design, E2E mit echten Clips, Detector Area-Range)
+- Single-Camera als stabiler Hauptpfad
+- Multi-Camera (Stereo-Triangulation) als experimenteller Pfad
+- CV-Pipeline: ArUco-Detektion → Board-Erkennung → Motion Detection → Hit Scoring
+- Game Engine: X01, Cricket, Free Play
+- WebSocket-basierter Eventfluss (Treffer, Kamerastatus, Telemetrie)
 
 ## Constraints
+- CPU-only, keine GPU-Pflicht
+- Hardwarelast konservativ halten
+- Kalibrierungsdateien nicht leichtfertig aendern
+- Multi-Cam ist High-Risk-Bereich
 
-- CPU-only Laptop als Zielplattform
-- Kein Deep Learning, keine GPU-Pflicht
-- Single-Cam ist Hauptpfad, Multi-Cam High-Risk
-- Config-Dateien sind reale Betriebsdaten
-- Hit-Candidate-Review-Flow (kein Auto-Scoring)
+## Aktueller Status (2026-03-17)
+- P1-P7 und P8, P10, P13-P17 erledigt
+- Stabil: Single-Cam, Game Engine, Board-Geometrie, WebSocket-Events, Pipeline-Lifecycle
+- Telemetrie, Diagnose-CLI, Windows-Startskript vorhanden
+- E2E-Replay-Tests mit synthetischen Clips implementiert
 
 ## Offene Fragen
-
-- Wie robust ist die Erkennung bei realer Beleuchtung? (P11: echte Videoclips fehlen)
-- Outer-Bull-Erkennung zu schwach (P12: area_min Problem)
-- Multi-Cam UX fuer Nicht-Experten noch nicht bedienbar (P9)
+- Echtmaterial-Validierung steht noch aus
+- Multi-Cam Robustheit noch nicht produktionsreif

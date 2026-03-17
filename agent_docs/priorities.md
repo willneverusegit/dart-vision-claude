@@ -114,7 +114,9 @@ Typische Arbeiten:
 - Scoreboard: aktueller Spieler visuell hervorheben
 - Checkout-Vorschlaege bei X01 (z.B. "T20 D16" bei 76 Restpunkten)
 
-## Prioritaet 8: Performance-Monitoring und Alerting (NIEDRIG)
+## Prioritaet 8: Performance-Monitoring und Alerting (✅ ERLEDIGT 2026-03-17)
+
+**Umsetzung:** TelemetryHistory-Modul mit Ring-Buffer (300 Samples), FPS/Queue-Alert-Erkennung mit konfigurierbarem Sustain-Intervall (5s). Async-Telemetrie-Sammlung im Lifespan (1s Intervall). API-Endpunkt `/api/telemetry/history` mit History, Alerts, Summary. WebSocket-Broadcast bei Alert-Zustandsaenderung (`telemetry_alert`). Frontend: Performance-Monitor-Panel mit Canvas-Chart (FPS + Queue + Threshold-Linie), Summary-Anzeige, Alert-Banner. Optionales CPU-Monitoring via psutil. 17 neue Tests. Geaenderte Dateien: `src/utils/telemetry.py`, `src/main.py`, `src/web/routes.py`, `static/js/app.js`, `static/css/style.css`, `templates/index.html`, `tests/test_telemetry.py`.
 
 Ziel:
 
@@ -141,7 +143,9 @@ Typische Arbeiten:
 - Board-Pose: visuelles Feedback (erkannte Marker im Bild einblenden)
 - Setup-Wizard: automatisch zum naechsten Schritt wechseln wenn ein Schritt erledigt ist
 
-## Prioritaet 10: UI-Design und Responsiveness (NIEDRIG)
+## Prioritaet 10: UI-Design und Responsiveness (✅ ERLEDIGT 2026-03-17)
+
+**Umsetzung:** 5 UI-Verbesserungen: (a) Responsive Breakpoints fuer Mobile (375px) und Tablet (768px) — Header wrapping, kompakte Panels, vertikale Buttons. (b) Loading-Spinner beim Pipeline-Start (verschwindet bei erstem Frame). (c) Keyboard-Shortcut-Hints unterhalb der Game Controls (Enter/Del/U). (d) Kompakteres Scoreboard auf Mobile (kleinere Fonts, reduzierte min-height). (e) Kamera-Feed mit object-fit:contain und aspect-ratio:4/3. Geaenderte Dateien: `static/css/style.css`, `static/js/app.js`, `templates/index.html`.
 
 Ziel:
 
@@ -302,3 +306,30 @@ Typische Arbeiten:
 ## Prioritaet 19: Before/After-Frame-Vergleich fuer Treffererkennung (✅ ERLEDIGT 2026-03-17)
 
 **Umsetzung:** FrameDiffDetector mit IDLE/IN_MOTION/SETTLING-State-Machine in `src/cv/diff_detector.py`. MOG2 bleibt Motion-Trigger, Positionsbestimmung via cv2.absdiff() zwischen Baseline und stabilem Post-Wurf-Frame. register_confirmed() public method in DartImpactDetector. Integration in DartPipeline.process_frame() — update() vor Motion-Gate-Early-Return. reset_turn() setzt alle drei Detektoren zurück (dart_detector, frame_diff_detector, motion_detector). Geaenderte Dateien: `src/cv/diff_detector.py`, `src/cv/detector.py`, `src/cv/pipeline.py`, `tests/test_diff_detector.py`, `tests/test_detector.py`, `tests/test_pipeline_diff_integration.py`.
+
+## Prioritaet 22: Telemetrie-Export und Post-Mortem-Analyse (neu — entdeckt bei Arbeit an P8)
+
+Ziel:
+
+- Telemetrie-Daten persistent speichern fuer spaetere Fehleranalyse
+
+Typische Arbeiten:
+
+- Telemetrie-Samples optional als JSONL in Logfile schreiben (via DARTVISION_TELEMETRY_FILE Env)
+- Export-Endpunkt `/api/telemetry/export` als CSV/JSON-Download
+- Session-bezogene Telemetrie mit Session-ID verknuepfen
+- Frontend: Download-Button im Performance-Monitor-Panel
+
+## Prioritaet 23: Dark/Light-Theme-Umschaltung und Accessibility (neu — entdeckt bei Arbeit an P10)
+
+Ziel:
+
+- Theme-Wechsel fuer verschiedene Umgebungen (helle Raeume) und bessere Zugaenglichkeit
+
+Typische Arbeiten:
+
+- CSS Custom Properties bereits vorhanden — Light-Theme-Variante als alternatives Farbschema
+- Toggle-Button im Header oder Settings-Bereich
+- `prefers-color-scheme` Media Query als Default
+- Kontrast-Pruefung: WCAG AA Minimum fuer alle Text-Elemente
+- Focus-Styles fuer Tastaturnavigation auf Buttons und Inputs

@@ -27,6 +27,9 @@ class DartApp {
         this._bindCharucoBoardSelectors();
         this._syncCharucoBoardSelectors(this.charucoPreset);
         this._refreshCharucoBoardPresetFromServer();
+        this._telemetryData = [];
+        this._telemetryVisible = false;
+        this._bindTelemetry();
         this.ws.connect();
         this._startStatsPolling();
     }
@@ -46,6 +49,14 @@ class DartApp {
     }
 
     _bindEvents() {
+        // Hide loading spinner when video feed loads
+        const videoFeed = document.getElementById("video-feed");
+        const videoLoading = document.getElementById("video-loading");
+        if (videoFeed && videoLoading) {
+            videoFeed.addEventListener("load", () => { videoLoading.style.display = "none"; });
+            videoFeed.addEventListener("error", () => { videoLoading.style.display = "none"; });
+        }
+
         // New Game
         const btnNewGame = document.getElementById("btn-new-game");
         if (btnNewGame) btnNewGame.addEventListener("click", () => this._newGame());
@@ -1795,6 +1806,145 @@ class DartApp {
             if (resultEl) resultEl.textContent = "\u274C Verbindungsfehler";
         } finally {
             if (btn) btn.disabled = false;
+        }
+    }
+    // --- Telemetry ---
+
+    _bindTelemetry() {
+        const btn = document.getElementById("btn-telemetry");
+        const closeBtn = document.getElementById("btn-close-telemetry");
+        const panel = document.getElementById("telemetry-panel");
+        if (btn && panel) {
+            btn.addEventListener("click", () => {
+                this._telemetryVisible = !this._telemetryVisible;
+                panel.style.display = this._telemetryVisible ? "block" : "none";
+                if (this._telemetryVisible) this._fetchTelemetryHistory();
+            });
+        }
+        if (closeBtn) {
+            closeBtn.addEventListener("click", () => {
+                this._telemetryVisible = false;
+                if (panel) panel.style.display = "none";
+            });
+        }
+        // Listen for telemetry alerts via WebSocket
+        this.ws.on("telemetry_alert", (data) => this._onTelemetryAlert(data));
+        // Poll telemetry history when panel is open
+        setInterval(() => {
+            if (this._telemetryVisible) this._fetchTelemetryHistory();
+        }, 2000);
+    }
+
+    async _fetchTelemetryHistory() {
+        try {
+            const response = await fetch("/api/telemetry/history?last_n=60");
+            if (!response.ok) return;
+            const data = await response.json();
+            if (!data.ok) return;
+            this._telemetryData = data.history || [];
+            this._drawTelemetryChart();
+            this._updateTelemetrySummary(data.summary);
+            this._onTelemetryAlert(data.alerts);
+        } catch (e) {
+            // Silent fail
+        }
+    }
+
+    _drawTelemetryChart() {
+        const canvas = document.getElementById("telemetry-chart");
+        if (!canvas || !this._telemetryData.length) return;
+        const ctx = canvas.getContext("2d");
+        const w = canvas.width = canvas.offsetWidth * (window.devicePixelRatio || 1);
+        const h = canvas.height = 120 * (window.devicePixelRatio || 1);
+        ctx.scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
+        const dw = canvas.offsetWidth;
+        const dh = 120;
+
+        ctx.clearRect(0, 0, dw, dh);
+
+        const data = this._telemetryData;
+        const n = data.length;
+        if (n < 2) return;
+
+        const maxFps = Math.max(35, ...data.map(d => d.fps));
+        const xStep = dw / (n - 1);
+
+        // FPS line (green)
+        ctx.beginPath();
+        ctx.strokeStyle = "#2ed573";
+        ctx.lineWidth = 1.5;
+        data.forEach((d, i) => {
+            const x = i * xStep;
+            const y = dh - (d.fps / maxFps) * (dh - 10) - 5;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+
+        // Queue pressure line (orange)
+        ctx.beginPath();
+        ctx.strokeStyle = "#ffa502";
+        ctx.lineWidth = 1.5;
+        data.forEach((d, i) => {
+            const x = i * xStep;
+            const y = dh - d.queue * (dh - 10) - 5;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+
+        // FPS threshold line (red dashed)
+        const threshY = dh - (15 / maxFps) * (dh - 10) - 5;
+        ctx.beginPath();
+        ctx.strokeStyle = "#e94560";
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+        ctx.moveTo(0, threshY);
+        ctx.lineTo(dw, threshY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Legend
+        ctx.font = "10px sans-serif";
+        ctx.fillStyle = "#2ed573";
+        ctx.fillText("FPS", 5, 12);
+        ctx.fillStyle = "#ffa502";
+        ctx.fillText("Queue", 35, 12);
+        ctx.fillStyle = "#e94560";
+        ctx.fillText("Limit", 75, 12);
+    }
+
+    _updateTelemetrySummary(summary) {
+        const el = document.getElementById("telemetry-summary");
+        if (!el || !summary || !summary.samples) return;
+        while (el.firstChild) el.removeChild(el.firstChild);
+        const items = [
+            "FPS: " + summary.fps_avg + " (min " + summary.fps_min + ")",
+            "Queue max: " + Math.round(summary.queue_max * 100) + "%",
+            "Drops: " + (summary.total_drops || 0),
+        ];
+        items.forEach(text => {
+            const span = document.createElement("span");
+            span.textContent = text;
+            el.appendChild(span);
+        });
+    }
+
+    _onTelemetryAlert(data) {
+        if (!data) return;
+        const banner = document.getElementById("telemetry-alert-banner");
+        const text = document.getElementById("telemetry-alert-text");
+        if (!banner || !text) return;
+
+        const messages = [];
+        if (data.fps_low) messages.push("FPS unter " + data.fps_threshold + " — Performance-Problem!");
+        if (data.queue_high) messages.push("Queue-Druck ueber " + Math.round(data.queue_threshold * 100) + "%");
+
+        if (messages.length > 0) {
+            text.textContent = messages.join(" | ");
+            banner.style.display = "block";
+        } else {
+            banner.style.display = "none";
         }
     }
 }

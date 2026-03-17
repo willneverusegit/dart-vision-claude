@@ -1,28 +1,27 @@
-# Last Session Summary
+# Session Summary
 
-*Session: 2026-03-17*
+*Date: 2026-03-17*
+*Agent: Claude Sonnet 4.6 (Claude Code)*
 
-## What was done
-- Codebase analysiert und 5 neue Priorities (P13-P17) identifiziert und umgesetzt
-- P13: Input-Validierung in Web-Routes (score, sector, multiplier, ring)
-- P14: Game-Engine Robustheit (KeyError-Schutz, >3 Darts, starting_score)
-- P15: CV-Pipeline Konfigurations-Validierung (area bounds, thresholds, max_candidates)
-- P16: Frontend Fehlerbehandlung (response.ok auf allen fetch-Aufrufen, Error-Toast)
-- P17: Config-Schema-Validierung (load-time Warn-Logging, save-time ValueError)
-- 57 neue Tests geschrieben (483 total)
-- AGENTS.md um Fortschrittsdoku-Pflicht erweitert
-- CLAUDE.md, claude_code.md, INDEX.md entsprechend synchronisiert
-- Regel ergaenzt: pro erledigter Prioritaet mindestens eine neue
+## Completed
 
-## Open items
-- P7: Spielablauf-UX (Hit-Candidate-Timeout, Audio-Feedback, Checkout-Vorschlaege)
-- P8: Performance-Monitoring (Telemetrie-Historie, FPS-Warnung, CPU-Last)
-- P9: Multi-Cam UX (Kamera-Vorschau, Drag-and-Drop, Setup-Wizard)
-- P10: UI-Design und Responsiveness (Mobile, Dark/Light, Tastaturkuerzel)
+- P19 implementiert: FrameDiffDetector mit Before/After-Frame-Diff-Ansatz
+  - IDLE/IN_MOTION/SETTLING-State-Machine in src/cv/diff_detector.py
+  - register_confirmed() public method in DartImpactDetector
+  - Integration in DartPipeline (update() vor Motion-Gate, reset_turn() fuer alle Detektoren)
+  - 18 neue Tests (512 gesamt)
+- Priorities P22/P23 aus Haupt-Repo-Stash aufgeloest und eingetragen
+- PROJEKTSTAND_2026-03-17.md erstellt
+
+## Open Items
+
+- P20: Tip-Detection via Convex Hull (Centroid noch als Platzhalter)
+- P21: Kontur-Robustheit gegen Schatten/Luecken
 - P11: E2E-Tests mit echten Videoclips
-- P12: DartImpactDetector Area-Range erweitern
+- frame_count-Semantik in DartDetection klaeren (wird bei P20 bereinigt)
 
-## Recommended next steps
-1. P7 umsetzen — Spielablauf-UX hat hoechsten Nutzerimpact der offenen Priorities
-2. P12 angehen — Outer-Bull-Erkennung ist ein realer CV-Bug
-3. .agent-memory mit Pattern-Extraktion aus bisherigen Sessions fuellen
+## Recommended Next Steps
+
+1. P20 — Dart-Tip-Detection: minAreaRect, Extrempunkt entlang Hauptachse
+2. P21 — Morphologisches Closing + Elongierungsfilter
+3. Realen Testbetrieb mit P19 beobachten, Threshold ggf. anpassen

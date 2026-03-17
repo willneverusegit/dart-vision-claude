@@ -15,6 +15,7 @@ from src.game.engine import GameEngine
 from src.web.events import EventManager
 from src.web.routes import setup_routes
 from src.utils.logger import setup_logging
+from src.utils.telemetry import TelemetryHistory, TelemetrySample
 
 logger = logging.getLogger(__name__)
 
@@ -385,6 +386,84 @@ async def lifespan(app: FastAPI):
     app_state["pending_hits_lock"] = threading.Lock()
     app_state["pipeline_lock"] = threading.Lock()  # A1: pipeline lifecycle guard
 
+    # Telemetry history
+    telemetry = TelemetryHistory(max_samples=300, fps_alert_threshold=15.0, queue_alert_threshold=0.8)
+    app_state["telemetry"] = telemetry
+
+    # Start telemetry collection background task
+    async def _collect_telemetry():
+        """Collect telemetry samples every second."""
+        prev_fps_alert = False
+        prev_queue_alert = False
+        while not app_state["shutdown_event"].is_set():
+            pipeline = app_state.get("pipeline")
+            fps = 0.0
+            dropped = 0
+            queue_pressure = 0.0
+            try:
+                if pipeline and hasattr(pipeline, "fps_counter"):
+                    fps = float(pipeline.fps_counter.fps())
+                if pipeline and hasattr(pipeline, "_dropped_frames"):
+                    dropped = int(pipeline._dropped_frames)
+                if pipeline and hasattr(pipeline, "camera") and pipeline.camera is not None:
+                    if hasattr(pipeline.camera, "queue_pressure"):
+                        queue_pressure = float(pipeline.camera.queue_pressure)
+            except (TypeError, ValueError):
+                pass
+
+            # Memory (lightweight)
+            memory_mb = 0.0
+            try:
+                import ctypes
+                from ctypes import wintypes
+                class _PMC(ctypes.Structure):
+                    _fields_ = [("cb", wintypes.DWORD),
+                                ("PageFaultCount", wintypes.DWORD),
+                                ("PeakWorkingSetSize", ctypes.c_size_t),
+                                ("WorkingSetSize", ctypes.c_size_t)]
+                _fn = ctypes.windll.psapi.GetProcessMemoryInfo
+                _fn.argtypes = [wintypes.HANDLE, ctypes.POINTER(_PMC), wintypes.DWORD]
+                _fn.restype = wintypes.BOOL
+                pmc = _PMC()
+                pmc.cb = ctypes.sizeof(pmc)
+                handle = ctypes.windll.kernel32.GetCurrentProcess()
+                if _fn(handle, ctypes.byref(pmc), pmc.cb):
+                    memory_mb = round(pmc.WorkingSetSize / (1024 * 1024), 1)
+            except Exception:
+                pass
+
+            # Optional CPU via psutil
+            cpu = None
+            try:
+                import psutil
+                cpu = psutil.cpu_percent(interval=None)
+            except ImportError:
+                pass
+
+            sample = TelemetrySample(
+                timestamp=time.time(),
+                fps=fps,
+                queue_pressure=queue_pressure,
+                dropped_frames=dropped,
+                memory_mb=memory_mb,
+                cpu_percent=cpu,
+            )
+            telemetry.record(sample)
+
+            # Broadcast alerts on state change
+            fps_alert = telemetry.fps_alert_active
+            queue_alert = telemetry.queue_alert_active
+            if fps_alert != prev_fps_alert or queue_alert != prev_queue_alert:
+                em_ref = app_state.get("event_manager")
+                if em_ref:
+                    em_ref.broadcast_sync("telemetry_alert", telemetry.get_alerts())
+                prev_fps_alert = fps_alert
+                prev_queue_alert = queue_alert
+
+            await asyncio.sleep(1.0)
+
+    telemetry_task = asyncio.create_task(_collect_telemetry())
+
     # Start CV pipeline — single or multi camera depending on config
     from src.utils.config import get_startup_cameras
     startup_cameras = get_startup_cameras()
@@ -411,6 +490,11 @@ async def lifespan(app: FastAPI):
     # Shutdown: signal all threads via both app-level and per-thread events
     logger.info("Dart-Vision shutting down...")
     app_state["shutdown_event"].set()
+    telemetry_task.cancel()
+    try:
+        await telemetry_task
+    except asyncio.CancelledError:
+        pass
     stop_pipeline_thread(app_state, "single", timeout=5.0)
     stop_pipeline_thread(app_state, "multi", timeout=5.0)
     logger.info("Shutdown complete")

@@ -35,6 +35,13 @@ Claude-Code-spezifischer Einstieg fuer dieses Repository.
 - verschlechtere nicht aus Versehen Startpfad, Kamera-Lifecycle oder Kalibrierung
 - aktualisiere Doku mit, wenn Workflows oder Prioritaeten sich aendern
 
+## Iteration protokollieren
+
+Nach jedem geloesten Bug, jeder nicht-trivialen Fehlerbehebung oder wenn ein Ansatz gescheitert ist:
+- Aktiviere `self-improving-agent:iteration-logger`
+- Das erfasst Problem, Root Cause, Loesung und gescheiterte Ansaetze automatisch in `.agent-memory/`
+- Auch gescheiterte Ansaetze ohne endgueltige Loesung protokollieren — sie sind wertvoll fuer Pattern-Erkennung
+
 ## Architektur-Entscheidungen dokumentieren
 
 - Wenn eine nicht-triviale Designentscheidung getroffen wird: als ADR in `agent_docs/decisions.md` festhalten
@@ -80,7 +87,8 @@ Claude-Code-spezifischer Einstieg fuer dieses Repository.
 ## Session-Start: Kontext aufbauen
 
 Vor Beginn jeder neuen Arbeitssession:
-- Lies die letzten 3-5 Session-Logs in `agent_docs/session_logs/` (neueste zuerst)
+- Aktiviere `self-improving-agent:session-bootstrap` fuer ein kompaktes Projekt-Briefing mit Warnungen und Statistiken
+- Lies zusaetzlich die letzten 2-3 Session-Logs in `agent_docs/session_logs/` (neueste zuerst)
 - Nimm Erkenntnisse und bekannte Probleme aus den Logs in deine Planung auf
 - Wiederhole nicht Fehler die in frueheren Sessions dokumentiert wurden
 
@@ -95,6 +103,13 @@ Nenne am Ende immer:
 ## Session-Ende: Protokoll und Selbstverbesserung
 
 Am Ende jeder Arbeitssession (oder per `/session-log`):
+
+### Pattern-Analyse (wenn Iterationen geloggt wurden)
+
+- Wenn in dieser Session mindestens 3 Iterationen via `iteration-logger` erfasst wurden:
+  - Aktiviere `self-improving-agent:pattern-extractor` um wiederkehrende Muster zu erkennen
+  - Bei gefundenen `skill_candidate`-Patterns: `self-improving-agent:skill-generator` vorschlagen
+- Aktualisiere `.agent-memory/session-summary.md` mit Zusammenfassung der Session
 
 ### Session-Log schreiben
 
@@ -176,3 +191,8 @@ Nach jeder Aufgabe aktiv pruefen:
 Fuer jede als erledigt markierte Prioritaet MUSS mindestens eine neue Prioritaet am Ende von `priorities.md` ergaenzt werden. Die neue Prioritaet kann sich aus der erledigten Arbeit ergeben (Folgethema, entdeckte Schwachstelle) oder aus einer anderen Analyse des Projekts stammen. Ziel: Die Prioritaetenliste waechst und bleibt als lebendige Roadmap aktuell — sie schrumpft nie auf null offene Eintraege.
 
 Dieser Schritt ist nicht optional — er haelt die Prioritaetenliste als lebendiges Dokument aktuell.
+
+### 5. Kontext in .agent-memory aktualisieren
+
+- Aktiviere `self-improving-agent:context-keeper` um Architektur-Entscheidungen und Statusaenderungen in `.agent-memory/` festzuhalten
+- Besonders bei: Stack-Aenderungen, neuen Constraints, Architektur-Entscheidungen, Modul-Statuswechseln

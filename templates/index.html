@@ -15,12 +15,26 @@
             <span id="queue-display" class="header__metric" title="Queue-Druck">Q: 0%</span>
             <span id="memory-display" class="header__metric" title="Speicherverbrauch (RAM)">RAM: --</span>
             <span id="pending-count" class="pending-badge" style="display:none;">0 Kandidaten</span>
+            <button id="btn-telemetry" class="btn btn--secondary btn--tiny" title="Performance Monitor">Perf</button>
             <span id="ws-status" class="ws-status ws-status--disconnected">Offline</span>
         </div>
     </header>
 
     <div id="camera-warning-banner" class="camera-warning" style="display:none;">
         <span id="camera-warning-text">Kamera-Verbindung unterbrochen — Reconnect läuft...</span>
+    </div>
+
+    <div id="telemetry-alert-banner" class="telemetry-alert" style="display:none;">
+        <span id="telemetry-alert-text"></span>
+    </div>
+
+    <div id="telemetry-panel" class="telemetry-panel" style="display:none;">
+        <div class="telemetry-panel__header">
+            <span>Performance Monitor</span>
+            <button id="btn-close-telemetry" class="btn btn--secondary btn--tiny">X</button>
+        </div>
+        <canvas id="telemetry-chart" class="telemetry-chart" width="400" height="120"></canvas>
+        <div class="telemetry-panel__summary" id="telemetry-summary"></div>
     </div>
 
     <main class="main-layout">
@@ -30,6 +44,10 @@
             <!-- Single camera feed (default) -->
             <div id="single-video-wrapper">
                 <div class="video-container">
+                    <div id="video-loading" class="video-loading">
+                        <div class="video-loading__spinner"></div>
+                        <span>Pipeline startet...</span>
+                    </div>
                     <img id="video-feed" src="/video/feed" alt="Live Camera Feed" class="video-feed">
                     <div id="video-overlay" class="video-overlay"></div>
                 </div>
@@ -125,6 +143,11 @@
                     </div>
                     <div class="game-controls__destructive">
                         <button id="btn-end-game" class="btn btn--danger btn--tiny">Spiel beenden</button>
+                    </div>
+                    <div class="shortcut-hints">
+                        <span><kbd>Enter</kbd> Bestaetigen</span>
+                        <span><kbd>Del</kbd> Ablehnen</span>
+                        <span><kbd>U</kbd> Undo</span>
                     </div>
                 </div>
             </div>

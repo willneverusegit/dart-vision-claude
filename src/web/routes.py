@@ -1291,6 +1291,22 @@ def setup_routes(app_state: dict) -> APIRouter:
             return {"ok": False, "error": "Keine aktive Kamera verfuegbar"}
         return {"ok": True, "cameras": health}
 
+    # --- Telemetry ---
+
+    @router.get("/api/telemetry/history")
+    async def get_telemetry_history(last_n: int = 60) -> dict:
+        """Return telemetry history (FPS, queue, drops, memory over time)."""
+        telemetry = app_state.get("telemetry")
+        if not telemetry:
+            return {"ok": False, "error": "Telemetry not initialized"}
+        clamped = max(1, min(last_n, 300))
+        return {
+            "ok": True,
+            "history": telemetry.get_history(last_n=clamped),
+            "alerts": telemetry.get_alerts(),
+            "summary": telemetry.get_summary(),
+        }
+
     # --- Stats ---
 
     @router.get("/api/stats")

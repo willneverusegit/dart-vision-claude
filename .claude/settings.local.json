@@ -54,7 +54,10 @@
       "Bash(python -m pytest tests/test_input_validation.py::TestRouteCorrectHitValidation::test_correct_hit_valid -xvs)",
       "Bash(python -m pytest tests/test_input_validation.py::TestRouteCorrectHitValidation -xvs)",
       "Bash(python -m pytest tests/test_input_validation.py -xvs)",
-      "Bash(python -m pytest tests/test_checkout.py -v)"
+      "Bash(python -m pytest tests/test_checkout.py -v)",
+      "Bash(python -m pytest tests/test_telemetry.py -v)",
+      "Bash(python -m pytest tests/test_routes_coverage2.py::TestStatsEndpoint::test_get_stats_with_pipeline -v)",
+      "Bash(python -m pytest tests/test_routes_coverage2.py -q)"
     ]
   },
   "hooks": {
