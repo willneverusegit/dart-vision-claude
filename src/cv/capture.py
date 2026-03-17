@@ -132,6 +132,13 @@ class ThreadedCamera:
         return self._running
 
     @property
+    def queue_pressure(self) -> float:
+        """Return queue fill ratio (0.0 = empty, 1.0 = full)."""
+        if self.frame_queue.maxsize <= 0:
+            return 0.0
+        return self.frame_queue.qsize() / self.frame_queue.maxsize
+
+    @property
     def frame_size(self) -> tuple[int, int]:
         """Return (width, height) of captured frames."""
         w = int(self.capture.get(cv2.CAP_PROP_FRAME_WIDTH))

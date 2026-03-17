@@ -928,6 +928,102 @@ def setup_routes(app_state: dict) -> APIRouter:
 
     # --- Multi-Camera Pipeline Routes ---
 
+    @router.get("/api/multi/readiness")
+    async def multi_readiness() -> dict:
+        """Check multi-camera setup readiness.
+
+        Returns per-camera diagnostic: lens intrinsics, board calibration,
+        board-pose transform, stereo pairs. Helps users understand what
+        setup steps are still missing before multi-cam can work optimally.
+        """
+        multi = app_state.get("multi_pipeline")
+        if multi is None:
+            # Check if there's saved config we can report on
+            from src.utils.config import load_multi_cam_config
+            cfg = load_multi_cam_config()
+            saved = cfg.get("last_cameras", [])
+            return {
+                "ok": True,
+                "running": False,
+                "saved_cameras": saved,
+                "message": "Multi-Pipeline nicht aktiv. Starte zuerst die Multi-Kamera Pipeline.",
+            }
+
+        pipelines = multi.get_pipelines()
+        camera_ids = list(pipelines.keys())
+        camera_readiness = []
+
+        for cam_id in camera_ids:
+            pipe = pipelines[cam_id]
+            status = {"camera_id": cam_id, "issues": []}
+
+            # Check lens intrinsics
+            has_lens = False
+            if hasattr(pipe, "camera_calibration"):
+                intr = pipe.camera_calibration.get_intrinsics()
+                has_lens = intr is not None
+            status["lens_calibrated"] = has_lens
+            if not has_lens:
+                status["issues"].append(
+                    "Keine Lens-Kalibrierung. Fuehre 'Lens Setup (ChArUco)' aus."
+                )
+
+            # Check board calibration
+            has_board = False
+            if hasattr(pipe, "board_calibration"):
+                has_board = pipe.board_calibration.is_valid()
+            status["board_calibrated"] = has_board
+            if not has_board:
+                status["issues"].append(
+                    "Keine Board-Kalibrierung. Fuehre 'Board Manuell' oder 'Board ArUco' aus."
+                )
+
+            # Check board-pose transform
+            has_pose = cam_id in multi._board_transforms
+            status["board_pose"] = has_pose
+            if not has_pose:
+                status["issues"].append(
+                    "Keine Board-Pose. Fuehre 'Board-Pose kalibrieren' aus (benoetigt Lens-Kalibrierung)."
+                )
+
+            status["ready"] = has_lens and has_board and has_pose
+            camera_readiness.append(status)
+
+        # Check stereo pairs
+        stereo_pairs = []
+        for i, cam_a in enumerate(camera_ids):
+            for cam_b in camera_ids[i + 1:]:
+                has_stereo = (
+                    cam_a in multi._stereo_params and cam_b in multi._stereo_params
+                )
+                stereo_pairs.append({
+                    "camera_a": cam_a,
+                    "camera_b": cam_b,
+                    "calibrated": has_stereo,
+                })
+
+        all_ready = all(c["ready"] for c in camera_readiness)
+        any_stereo = any(p["calibrated"] for p in stereo_pairs)
+
+        overall_issues = []
+        if not all_ready:
+            overall_issues.append("Nicht alle Kameras sind vollstaendig kalibriert.")
+        if not any_stereo and len(camera_ids) >= 2:
+            overall_issues.append(
+                "Keine Stereo-Kalibrierung vorhanden. "
+                "Triangulation ist deaktiviert, Voting-Fallback wird verwendet."
+            )
+
+        return {
+            "ok": True,
+            "running": True,
+            "cameras": camera_readiness,
+            "stereo_pairs": stereo_pairs,
+            "all_ready": all_ready,
+            "triangulation_possible": any_stereo and all_ready,
+            "issues": overall_issues,
+        }
+
     @router.post("/api/multi/start")
     async def multi_start(request: Request) -> dict:
         """Start multi-camera pipeline.
@@ -944,9 +1040,14 @@ def setup_routes(app_state: dict) -> APIRouter:
             return {"ok": False, "error": "Need at least 2 cameras"}
 
         # Validate camera configs
+        seen_ids = set()
         for cam in cameras:
             if "camera_id" not in cam:
-                return {"ok": False, "error": "Each camera must have a camera_id"}
+                return {"ok": False, "error": "Jede Kamera braucht eine camera_id"}
+            cid = cam["camera_id"]
+            if cid in seen_ids:
+                return {"ok": False, "error": f"Doppelte camera_id: '{cid}'"}
+            seen_ids.add(cid)
 
         # Stop the existing single pipeline thread cleanly
         from src.main import stop_pipeline_thread
@@ -981,16 +1082,43 @@ def setup_routes(app_state: dict) -> APIRouter:
                 break
 
         if not app_state.get("multi_pipeline_running"):
+            # Check camera errors for better diagnostics
+            multi = app_state.get("multi_pipeline")
+            cam_errors = multi.get_camera_errors() if multi else {}
+            error_detail = ""
+            if cam_errors:
+                error_detail = " Kamera-Fehler: " + "; ".join(
+                    f"{cid}: {err}" for cid, err in cam_errors.items()
+                )
             return {
                 "ok": False,
-                "error": "Multi-Pipeline konnte nicht gestartet werden. Prüfe ob alle Kameras angeschlossen sind.",
+                "error": (
+                    "Multi-Pipeline konnte nicht gestartet werden."
+                    " Pruefe ob alle Kameras angeschlossen sind."
+                    + error_detail
+                ),
+                "camera_errors": cam_errors,
             }
+
+        # Persist camera config for quick re-start
+        from src.utils.config import save_last_cameras
+        try:
+            save_last_cameras(cameras)
+        except Exception:
+            pass  # non-fatal
 
         return {
             "ok": True,
             "cameras": [c["camera_id"] for c in cameras],
             "running": True,
         }
+
+    @router.get("/api/multi/last-config")
+    async def multi_last_config() -> dict:
+        """Get the last-used multi-camera configuration for quick re-start."""
+        from src.utils.config import get_last_cameras
+        cameras = get_last_cameras()
+        return {"ok": True, "cameras": cameras}
 
     @router.post("/api/multi/stop")
     async def multi_stop(request: Request) -> dict:
@@ -1102,12 +1230,20 @@ def setup_routes(app_state: dict) -> APIRouter:
 
     @router.get("/api/stats")
     async def get_stats() -> dict:
-        """Get system stats (FPS, connections, etc)."""
+        """Get system stats (FPS, connections, dropped frames, queue pressure, memory)."""
+        import os
         em = app_state.get("event_manager")
         pipeline = app_state.get("pipeline")
         fps = 0.0
+        dropped_frames = 0
+        queue_pressure = 0.0
         if pipeline and hasattr(pipeline, "fps_counter"):
             fps = pipeline.fps_counter.fps()
+        if pipeline and hasattr(pipeline, "_dropped_frames"):
+            dropped_frames = pipeline._dropped_frames
+        if pipeline and hasattr(pipeline, "camera") and pipeline.camera is not None:
+            if hasattr(pipeline.camera, "queue_pressure"):
+                queue_pressure = pipeline.camera.queue_pressure
         lock = app_state.get("pending_hits_lock")
         pending_count = 0
         if lock:
@@ -1116,6 +1252,42 @@ def setup_routes(app_state: dict) -> APIRouter:
         board_calibrated = False
         if pipeline and hasattr(pipeline, "board_calibration"):
             board_calibrated = pipeline.board_calibration.is_valid()
+
+        # Lightweight process memory (RSS) — works on Linux and Windows without psutil
+        memory_mb = 0.0
+        try:
+            import resource
+            rusage = resource.getrusage(resource.RUSAGE_SELF)
+            memory_mb = round(rusage.ru_maxrss / 1024, 1)  # Linux: KB -> MB
+        except (ImportError, AttributeError):
+            try:
+                import ctypes
+                from ctypes import wintypes
+                class _PMC(ctypes.Structure):
+                    _fields_ = [
+                        ("cb", wintypes.DWORD),
+                        ("PageFaultCount", wintypes.DWORD),
+                        ("PeakWorkingSetSize", ctypes.c_size_t),
+                        ("WorkingSetSize", ctypes.c_size_t),
+                        ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                        ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                        ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                        ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                        ("PagefileUsage", ctypes.c_size_t),
+                        ("PeakPagefileUsage", ctypes.c_size_t),
+                        ("PrivateUsage", ctypes.c_size_t),
+                    ]
+                _fn = ctypes.windll.psapi.GetProcessMemoryInfo
+                _fn.argtypes = [wintypes.HANDLE, ctypes.POINTER(_PMC), wintypes.DWORD]
+                _fn.restype = wintypes.BOOL
+                pmc = _PMC()
+                pmc.cb = ctypes.sizeof(pmc)
+                handle = ctypes.windll.kernel32.GetCurrentProcess()
+                if _fn(handle, ctypes.byref(pmc), pmc.cb):
+                    memory_mb = round(pmc.WorkingSetSize / (1024 * 1024), 1)
+            except Exception:
+                pass
+
         return {
             "fps": round(fps, 1),
             "connections": em.connection_count if em else 0,
@@ -1124,6 +1296,9 @@ def setup_routes(app_state: dict) -> APIRouter:
             "active_cameras": app_state.get("active_camera_ids", []),
             "pending_hits": pending_count,
             "board_calibrated": board_calibrated,
+            "dropped_frames": dropped_frames,
+            "queue_pressure": round(queue_pressure, 2),
+            "memory_mb": memory_mb,
         }
 
     # --- Video Stream ---

@@ -1,67 +1,11 @@
-# Multi-camera extrinsics: stereo pairs + per-camera board poses
-# Schema version 2
-#
-# STRUCTURE
-# ---------
-# startup:
-#   mode: "multi"        # "single" | "multi" — controls which pipeline lifespan() starts
-#   cameras:
-#     - camera_id: cam_left
-#       src: 0           # OpenCV capture index or RTSP URL
-#       capture_width: 640    # optional, default 640
-#       capture_height: 480   # optional, default 480
-#       capture_fps: 30       # optional, default 30
-#     - camera_id: cam_right
-#       src: 1
-#
-# cameras:
-#   <camera_id>:
-#     board_transform:
-#       R_cb: [[...], [...], [...]]   # 3x3 rotation: camera frame → board frame
-#       t_cb: [x, y, z]               # translation (meters): camera frame → board frame
-#       # Computed by POST /api/calibration/board-pose
-#
-# pairs:
-#   <cam_a>--<cam_b>:
-#     R: [[...], [...], [...]]        # 3x3 rotation from cam_a to cam_b
-#     T: [x, y, z]                   # translation (meters) from cam_a to cam_b
-#     reprojection_error: 0.0         # stereo RMS reprojection error in pixels
-#     calibrated_utc: "..."           # ISO-8601 timestamp of calibration run
-#     # Computed by POST /api/calibration/stereo
-#
-# CALIBRATION WORKFLOW
-# --------------------
-# 1. Lens intrinsics (per camera):  POST /api/calibration/lens/charuco
-# 2. Board geometry (per camera):   POST /api/calibration/board/aruco
-# 3. Stereo extrinsics (pair):      POST /api/calibration/stereo
-#       body: {"camera_a": "cam_left", "camera_b": "cam_right", "num_pairs": 15}
-# 4. Board pose (per camera):       POST /api/calibration/board-pose
-#       body: {"camera_id": "cam_left"}
-#       (repeat for each camera)
-# 5. Reload (optional, auto after 3+4): POST /api/calibration/stereo/reload
-#
-# COORDINATE CONVENTIONS
-# ----------------------
-# Board frame: origin at board center, Z = 0 on board face (pointing towards viewer),
-#              X right, Y up.  dart_depth_mm ≈ |Z * 1000|, expected < 15 mm.
-# Camera frame: origin at camera-1 lens (set by cv2.stereoCalibrate).
-
-schema_version: 2
-pairs: {}
-#   cam_left--cam_right:
-#     R: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
-#     T: [0.3, 0.0, 0.0]
-#     reprojection_error: 0.5
-#     calibrated_utc: "2026-01-01T00:00:00+00:00"
 cameras: {}
-#   cam_left:
-#     board_transform:
-#       R_cb: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
-#       t_cb: [0.0, 0.0, 2.5]
+last_cameras:
+- camera_id: cam_left
+  src: 0
+- camera_id: cam_right
+  src: 2
+pairs: {}
+schema_version: 2
 startup:
-  mode: single          # Change to "multi" to activate multi-camera pipeline at startup
   cameras: []
-  #   - camera_id: cam_left
-  #     src: 0
-  #   - camera_id: cam_right
-  #     src: 1
+  mode: single

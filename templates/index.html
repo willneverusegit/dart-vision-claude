@@ -11,6 +11,9 @@
         <h1 class="header__title">Dart-Vision</h1>
         <div class="header__stats">
             <span id="fps-display">FPS: --</span>
+            <span id="dropped-display" class="header__metric" title="Verworfene Frames">Drop: 0</span>
+            <span id="queue-display" class="header__metric" title="Queue-Druck">Q: 0%</span>
+            <span id="memory-display" class="header__metric" title="Speicherverbrauch (RAM)">RAM: --</span>
             <span id="pending-count" class="pending-badge" style="display:none;">0 Kandidaten</span>
             <span id="ws-status" class="ws-status ws-status--disconnected">Offline</span>
         </div>
@@ -267,6 +270,15 @@
                     <button id="btn-multi-stop" class="btn btn--warning" style="display:none;">Stoppen</button>
                 </div>
                 <div id="multi-status-info" class="multi-status-info" style="display:none;"></div>
+
+                <!-- Guided Setup Checklist (shown after multi is running) -->
+                <div id="multi-setup-guide" class="multi-setup-guide" style="display:none;">
+                    <p class="modal__text" style="margin-bottom:8px;"><strong>Setup-Schritte:</strong></p>
+                    <div id="setup-checklist" class="setup-checklist"></div>
+                    <div class="modal__actions" style="margin-top:8px;">
+                        <button id="btn-setup-refresh" class="btn btn--secondary btn--tiny">Status aktualisieren</button>
+                    </div>
+                </div>
             </div>
 
             <!-- Step 2: Stereo Calibration -->

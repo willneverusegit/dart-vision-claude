@@ -66,6 +66,20 @@ body {
     opacity: 1;
 }
 
+.header__metric {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    opacity: 0.5;
+    transition: opacity 0.2s;
+}
+.header__metric:hover {
+    opacity: 1;
+}
+.header__metric--warn {
+    color: var(--accent);
+    opacity: 0.9;
+}
+
 .ws-status {
     padding: 3px 10px;
     border-radius: 12px;
@@ -867,6 +881,47 @@ body {
     font-size: 0.85rem;
     color: var(--text-secondary);
     line-height: 1.6;
+}
+
+/* Multi-Cam Setup Guide */
+.multi-setup-guide {
+    margin-top: 12px;
+    padding: 12px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+}
+
+.setup-checklist {
+    font-size: 0.85rem;
+    line-height: 1.8;
+}
+
+.setup-step {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+}
+
+.setup-step__icon {
+    flex-shrink: 0;
+    width: 18px;
+    text-align: center;
+}
+
+.setup-step--done .setup-step__text {
+    color: var(--text-secondary);
+}
+
+.setup-step--pending .setup-step__text {
+    color: #ffa502;
+}
+
+.setup-step__action {
+    margin-left: auto;
+    font-size: 0.75rem;
+    padding: 2px 8px;
 }
 
 /* Stereo Calibration */

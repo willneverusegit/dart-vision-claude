@@ -31,7 +31,7 @@ cameras:
     - - 0.0016248966696410117
       - -0.0003243713907537211
       - 1.0
-    last_update_utc: '2026-03-14T10:31:07.809820+00:00'
+    last_update_utc: '2026-03-17T00:36:01.698299+00:00'
     lens_image_size:
     - 640
     - 480
@@ -51,6 +51,9 @@ cameras:
     marker_spacing_mm: 410
     method: aruco
     mm_per_px: 2.268985272431662
+    optical_center_roi_px:
+    - 200.0
+    - 200.0
     radii_px:
     - 6.7
     - 16.7

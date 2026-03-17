@@ -1056,6 +1056,22 @@ class DartApp {
                 const data = await response.json();
                 const fpsEl = document.getElementById("fps-display");
                 if (fpsEl) fpsEl.textContent = "FPS: " + data.fps;
+                // Telemetry indicators
+                const dropEl = document.getElementById("dropped-display");
+                if (dropEl) {
+                    dropEl.textContent = "Drop: " + (data.dropped_frames || 0);
+                    dropEl.classList.toggle("header__metric--warn", (data.dropped_frames || 0) > 10);
+                }
+                const qEl = document.getElementById("queue-display");
+                if (qEl) {
+                    const pct = Math.round((data.queue_pressure || 0) * 100);
+                    qEl.textContent = "Q: " + pct + "%";
+                    qEl.classList.toggle("header__metric--warn", pct > 60);
+                }
+                const memEl = document.getElementById("memory-display");
+                if (memEl && data.memory_mb != null && data.memory_mb > 0) {
+                    memEl.textContent = "RAM: " + data.memory_mb + "MB";
+                }
                 // Track multi-cam state for UI
                 this.multiCamRunning = data.multi_pipeline_running || false;
                 this.activeCameraIds = data.active_cameras || [];
@@ -1099,6 +1115,9 @@ class DartApp {
         const btnMultiAddCam = document.getElementById("btn-multi-add-cam");
         if (btnMultiAddCam) btnMultiAddCam.addEventListener("click", () => this._addCameraEntry());
 
+        const btnSetupRefresh = document.getElementById("btn-setup-refresh");
+        if (btnSetupRefresh) btnSetupRefresh.addEventListener("click", () => this._refreshSetupGuide());
+
         // Stereo calibration buttons
         const btnStereoCalibrate = document.getElementById("btn-stereo-calibrate");
         if (btnStereoCalibrate) btnStereoCalibrate.addEventListener("click", () => this._runStereoCalibration());
@@ -1123,6 +1142,48 @@ class DartApp {
         if (modal) modal.style.display = "flex";
         this._refreshCharucoBoardPresetFromServer();
         this._refreshMultiCamStatus();
+        this._loadLastMultiConfig();
+    }
+
+    async _loadLastMultiConfig() {
+        // Only populate if pipeline is not running and there's no user edits yet
+        if (this.multiCamRunning) return;
+        try {
+            const resp = await fetch("/api/multi/last-config");
+            const data = await resp.json();
+            if (!data.ok || !data.cameras || data.cameras.length < 2) return;
+            const list = document.getElementById("multi-cam-list");
+            if (!list) return;
+            // Only overwrite if current entries still have defaults
+            const entries = list.querySelectorAll(".multi-cam-entry");
+            if (entries.length === 2) {
+                const firstId = entries[0].querySelector(".multi-cam-id")?.value;
+                if (firstId === "cam_left" || firstId === "") {
+                    // Replace with saved config
+                    while (list.firstChild) list.removeChild(list.firstChild);
+                    data.cameras.forEach(cam => {
+                        const entry = document.createElement("div");
+                        entry.className = "multi-cam-entry";
+                        const idInput = document.createElement("input");
+                        idInput.type = "text";
+                        idInput.className = "input multi-cam-id";
+                        idInput.placeholder = "Kamera-ID";
+                        idInput.value = cam.camera_id || "";
+                        const srcInput = document.createElement("input");
+                        srcInput.type = "number";
+                        srcInput.className = "input multi-cam-src";
+                        srcInput.placeholder = "Quelle (0,1,...)";
+                        srcInput.value = String(cam.src || 0);
+                        srcInput.min = "0";
+                        entry.appendChild(idInput);
+                        entry.appendChild(srcInput);
+                        list.appendChild(entry);
+                    });
+                }
+            }
+        } catch (e) {
+            // Non-fatal
+        }
     }
 
     _closeMultiCamModal() {
@@ -1266,6 +1327,9 @@ class DartApp {
                             info.appendChild(errLine);
                         });
                     }
+                    // Fetch and show readiness info
+                    this._fetchReadiness(info);
+                    this._refreshSetupGuide();
                 }
                 // Populate stereo dropdowns
                 this._populateStereoDropdowns(data.cameras.map(c => c.camera_id));
@@ -1273,10 +1337,141 @@ class DartApp {
                 if (btnStart) btnStart.style.display = "inline-block";
                 if (btnStop) btnStop.style.display = "none";
                 if (info) info.style.display = "none";
+                const guide = document.getElementById("multi-setup-guide");
+                if (guide) guide.style.display = "none";
             }
         } catch (e) {
             console.error("Multi status error:", e);
         }
+    }
+
+    async _fetchReadiness(infoEl) {
+        try {
+            const resp = await fetch("/api/multi/readiness");
+            const data = await resp.json();
+            if (!data.ok || !data.running) return;
+
+            // Show per-camera issues
+            const cameras = data.cameras || [];
+            const hasIssues = cameras.some(c => c.issues.length > 0);
+            if (hasIssues || (data.issues && data.issues.length > 0)) {
+                infoEl.appendChild(document.createElement("br"));
+                const setupTitle = document.createElement("strong");
+                setupTitle.style.color = "#ffa502";
+                setupTitle.textContent = "Setup-Status:";
+                infoEl.appendChild(setupTitle);
+
+                cameras.forEach(cam => {
+                    if (cam.issues.length === 0) return;
+                    cam.issues.forEach(issue => {
+                        infoEl.appendChild(document.createElement("br"));
+                        const issueLine = document.createElement("span");
+                        issueLine.style.color = "#ffa502";
+                        issueLine.style.fontSize = "0.85em";
+                        issueLine.textContent = cam.camera_id + ": " + issue;
+                        infoEl.appendChild(issueLine);
+                    });
+                });
+
+                // Overall issues
+                (data.issues || []).forEach(issue => {
+                    infoEl.appendChild(document.createElement("br"));
+                    const line = document.createElement("span");
+                    line.style.color = "#ffa502";
+                    line.style.fontSize = "0.85em";
+                    line.textContent = issue;
+                    infoEl.appendChild(line);
+                });
+            }
+
+            if (data.triangulation_possible) {
+                infoEl.appendChild(document.createElement("br"));
+                const triLine = document.createElement("span");
+                triLine.style.color = "#2ed573";
+                triLine.textContent = "\u2705 Triangulation aktiv";
+                infoEl.appendChild(triLine);
+            }
+        } catch (e) {
+            // Non-fatal
+        }
+    }
+
+    async _refreshSetupGuide() {
+        const guideEl = document.getElementById("multi-setup-guide");
+        const checklist = document.getElementById("setup-checklist");
+        if (!guideEl || !checklist) return;
+
+        try {
+            const resp = await fetch("/api/multi/readiness");
+            const data = await resp.json();
+
+            if (!data.ok || !data.running) {
+                guideEl.style.display = "none";
+                return;
+            }
+
+            guideEl.style.display = "block";
+            while (checklist.firstChild) checklist.removeChild(checklist.firstChild);
+
+            const cameras = data.cameras || [];
+            const stereoPairs = data.stereo_pairs || [];
+
+            // Per-camera steps
+            cameras.forEach(cam => {
+                this._addSetupStep(checklist, cam.lens_calibrated,
+                    cam.camera_id + ": Lens-Kalibrierung (ChArUco)",
+                    cam.lens_calibrated ? null : "Oeffne Kalibrieren > Lens Setup");
+                this._addSetupStep(checklist, cam.board_calibrated,
+                    cam.camera_id + ": Board-Kalibrierung",
+                    cam.board_calibrated ? null : "Oeffne Kalibrieren > Board Manuell/ArUco");
+                this._addSetupStep(checklist, cam.board_pose,
+                    cam.camera_id + ": Board-Pose (3D)",
+                    cam.board_pose ? null : "Benoetigt Lens-Kalibrierung zuerst");
+            });
+
+            // Stereo pair steps
+            stereoPairs.forEach(pair => {
+                this._addSetupStep(checklist, pair.calibrated,
+                    "Stereo: " + pair.camera_a + " \u2194 " + pair.camera_b,
+                    pair.calibrated ? null : "Oeffne Stereo-Kalibrierung unten");
+            });
+
+            // Overall status
+            if (data.triangulation_possible) {
+                this._addSetupStep(checklist, true, "Triangulation aktiv", null);
+            } else if (data.all_ready) {
+                this._addSetupStep(checklist, false,
+                    "Stereo fehlt — Voting-Fallback wird verwendet", null);
+            }
+        } catch (e) {
+            // Non-fatal
+        }
+    }
+
+    _addSetupStep(container, done, text, hint) {
+        const step = document.createElement("div");
+        step.className = "setup-step " + (done ? "setup-step--done" : "setup-step--pending");
+
+        const icon = document.createElement("span");
+        icon.className = "setup-step__icon";
+        icon.textContent = done ? "\u2705" : "\u26A0\uFE0F";
+
+        const label = document.createElement("span");
+        label.className = "setup-step__text";
+        label.textContent = text;
+
+        step.appendChild(icon);
+        step.appendChild(label);
+
+        if (hint && !done) {
+            const hintEl = document.createElement("span");
+            hintEl.className = "setup-step__action";
+            hintEl.style.color = "#aaa";
+            hintEl.textContent = hint;
+            step.appendChild(hintEl);
+        }
+
+        container.appendChild(step);
     }
 
     _updateMultiCamUI() {

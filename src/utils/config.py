@@ -111,6 +111,24 @@ def save_board_transform(cam_id: str, R_cb: list, t_cb: list,
     logger.info("Board transform saved for camera '%s'", cam_id)
 
 
+def save_last_cameras(cameras: list[dict], path: str = MULTI_CAM_CONFIG_PATH) -> None:
+    """Persist the last-used multi-camera configuration for quick re-start."""
+    cfg = load_multi_cam_config(path)
+    # Store only camera_id + src (no runtime state)
+    cfg["last_cameras"] = [
+        {"camera_id": c.get("camera_id", ""), "src": c.get("src", 0)}
+        for c in cameras
+    ]
+    save_multi_cam_config(cfg, path)
+    logger.info("Saved last_cameras config (%d cameras)", len(cameras))
+
+
+def get_last_cameras(path: str = MULTI_CAM_CONFIG_PATH) -> list[dict]:
+    """Load last-used multi-camera configuration. Returns [] if none saved."""
+    cfg = load_multi_cam_config(path)
+    return cfg.get("last_cameras", [])
+
+
 def get_startup_cameras(path: str = MULTI_CAM_CONFIG_PATH) -> list[dict] | None:
     """Return camera list for multi-pipeline startup, or None for single-cam mode.
 
