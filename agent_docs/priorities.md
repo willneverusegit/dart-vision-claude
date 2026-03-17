@@ -333,3 +333,29 @@ Typische Arbeiten:
 - `prefers-color-scheme` Media Query als Default
 - Kontrast-Pruefung: WCAG AA Minimum fuer alle Text-Elemente
 - Focus-Styles fuer Tastaturnavigation auf Buttons und Inputs
+
+## Prioritaet 20: Dart-Tip-Detection via Convex Hull (neu — entdeckt bei P19)
+
+Ziel:
+
+- Dartspitze statt Flug-Centroid als Trefferposition verwenden
+
+Typische Arbeiten:
+
+- Im Diff-Ergebnis (absdiff-Maske): minAreaRect + Extrempunkt entlang Hauptachse
+- Convex-Hull-Ansatz: unterster Punkt der konvexen Huelle als Spitze
+- DartDetection.frame_count-Semantik bereinigen (settle_frames umbenennen)
+- Tests: synthetische Diff-Masken mit bekannter Dart-Orientierung
+
+## Prioritaet 21: Kontur-Robustheit gegen Schatten und Luecken (neu — entdeckt bei P19)
+
+Ziel:
+
+- Konturen in der Diff-Maske auch bei suboptimaler Beleuchtung stabil halten
+
+Typische Arbeiten:
+
+- Morphologisches Closing (cv2.morphologyEx) nach Threshold-Schritt
+- Elongierungs-Filter: Konturen mit Aspect-Ratio < 1.5 verwerfen (kein Dart)
+- Schatten-Robustheit: CLAHE vor Diff oder adaptiver Threshold
+- Tests: synthetische Masken mit Luecken/Schatten

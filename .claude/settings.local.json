@@ -57,7 +57,9 @@
       "Bash(python -m pytest tests/test_checkout.py -v)",
       "Bash(python -m pytest tests/test_telemetry.py -v)",
       "Bash(python -m pytest tests/test_routes_coverage2.py::TestStatsEndpoint::test_get_stats_with_pipeline -v)",
-      "Bash(python -m pytest tests/test_routes_coverage2.py -q)"
+      "Bash(python -m pytest tests/test_routes_coverage2.py -q)",
+      "Bash(cp \"/c/Users/domes/.claude/plugins/marketplaces/local-desktop-app-uploads/self-improving-agent/skills/pattern-extractor/SKILL.md\" \"/c/Users/domes/.claude/plugins/self-improving-agent/skills/pattern-extractor/SKILL.md\")",
+      "Bash(cp \"/c/Users/domes/.claude/plugins/marketplaces/local-desktop-app-uploads/self-improving-agent/skills/session-bootstrap/SKILL.md\" \"/c/Users/domes/.claude/plugins/self-improving-agent/skills/session-bootstrap/SKILL.md\")"
     ]
   },
   "hooks": {
