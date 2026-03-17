@@ -78,7 +78,7 @@ def _run_replay_pipeline(video_path: str, gt_data: dict) -> list[DetectionEvent]
             # Reset detector between throws to simulate dart removal
             frames_after_warmup = frame_counter - BG_WARMUP_FRAMES
             if frames_after_warmup > 0 and frames_after_warmup % FRAMES_PER_THROW == 0:
-                pipeline.dart_detector.reset()
+                pipeline.reset_turn()
     finally:
         pipeline.stop()
 

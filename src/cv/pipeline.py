@@ -17,6 +17,7 @@ from src.cv.camera_calibration import CameraCalibrationManager
 from src.cv.capture import ThreadedCamera
 from src.cv.detector import DartImpactDetector
 from src.cv.geometry import BoardGeometry, BoardHit, RING_BOUNDARIES
+from src.cv.diff_detector import FrameDiffDetector
 from src.cv.motion import MotionDetector
 from src.cv.remapping import CombinedRemapper
 from src.cv.replay import ReplayCamera
@@ -59,6 +60,12 @@ class DartPipeline:
         self.roi_processor = ROIProcessor(roi_size=(400, 400))
         self.motion_detector = MotionDetector(threshold=500)
         self.dart_detector = DartImpactDetector(confirmation_frames=3)
+        self.frame_diff_detector = FrameDiffDetector(
+            settle_frames=5,
+            diff_threshold=50,
+            min_diff_area=50,
+            max_diff_area=8000,
+        )
         self.fps_counter = FPSCounter()
         self.camera_calibration = CameraCalibrationManager()
         self.board_calibration = BoardCalibrationManager(roi_size=self.roi_processor.roi_size)
@@ -169,17 +176,16 @@ class DartPipeline:
         enhanced = self.clahe.apply(gray)
         self._last_roi = enhanced
 
-        # 3) Motion gating
+        # 3) Motion detection
         motion_mask, has_motion = self.motion_detector.detect(enhanced)
         self._last_motion_mask = motion_mask
-        if not has_motion:
-            self._update_annotated_frame(frame, enhanced, None)
-            return None
 
-        # 4) Dart detection
-        detection = self.dart_detector.detect(enhanced, motion_mask)
-        if detection is None:
-            self._update_annotated_frame(frame, enhanced, motion_mask)
+        # 4) Frame-Diff detection — receives every frame (SETTLING needs motion-free frames)
+        detection = self.frame_diff_detector.update(enhanced, has_motion)
+        if detection is not None:
+            self.dart_detector.register_confirmed(detection)
+        else:
+            self._update_annotated_frame(frame, enhanced, motion_mask if has_motion else None)
             return None
 
         # 5) Scoring via BoardGeometry
@@ -221,6 +227,8 @@ class DartPipeline:
     def reset_turn(self) -> None:
         """Reset detector state for new turn (after darts removed)."""
         self.dart_detector.reset()
+        self.frame_diff_detector.reset()
+        self.motion_detector.reset()
         if self.on_dart_removed:
             self.on_dart_removed()
         logger.info("Turn reset - dart detector cleared")
