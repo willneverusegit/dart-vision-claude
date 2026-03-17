@@ -1,6 +1,6 @@
 # Current State
 
-Stand dieser Zusammenfassung: 2026-03-17
+Stand dieser Zusammenfassung: 2026-03-17 (P2 erledigt)
 
 ## Technischer Kern
 
@@ -20,6 +20,9 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 - WebSocket-Eventfluss
 - Hit-Candidate-Review statt sofortiger Auto-Buchung
 - Pipeline-Lifecycle (Start/Stop/Umschalten) mit Stop-Events und Thread-Handles
+- Kamera-Reconnect mit exponentiellem Backoff (1-30s), State-Tracking (connected/reconnecting/disconnected)
+- Kamera-Health-API (`/api/camera/health`) und WebSocket-Event (`camera_state`)
+- Frontend-Warnbanner bei Kamera-Ausfall (Echtzeit via WebSocket + Polling-Fallback)
 - Kamera-Input konfigurierbar (Aufloesung, FPS)
 - Kalibrierungs-UX mit Statusanzeige und gefuehrten Schritten
 - Telemetrie im Header (FPS, Dropped Frames, Queue-Druck, RAM)
@@ -35,7 +38,7 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 
 ## Verifizierte Kennzahlen
 
-- `357` Tests bestanden (Stand 2026-03-17)
+- `370` Tests bestanden (Stand 2026-03-17)
 - Gesamt-Coverage `70%`
 - Wichtige Module: main.py 78%, routes.py 66%, pipeline.py 68%, multi_camera.py 62%, capture.py 72%
 - synthetische Pipeline-Benchmarks fuer `1`, `2` und `3` Kameras innerhalb der definierten KPI-Grenzen

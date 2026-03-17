@@ -1229,6 +1229,34 @@ def setup_routes(app_state: dict) -> APIRouter:
             return {"ok": False, "error": "Board-Geometrie nicht verfuegbar — Board-Kalibrierung zuerst durchfuehren."}
         return {"ok": True, **pipeline.get_geometry_info()}
 
+    # --- Camera Health ---
+
+    def _collect_camera_health(pipeline, multi_pipeline) -> dict:
+        """Collect health info from all active cameras."""
+        from src.cv.capture import ThreadedCamera
+        health = {}
+        if pipeline and hasattr(pipeline, "camera") and pipeline.camera is not None:
+            cam = pipeline.camera
+            if isinstance(cam, ThreadedCamera):
+                health["default"] = cam.get_health()
+        if multi_pipeline is not None:
+            for cam_id, pipe in multi_pipeline.get_pipelines().items():
+                if hasattr(pipe, "camera") and pipe.camera is not None:
+                    cam = pipe.camera
+                    if isinstance(cam, ThreadedCamera):
+                        health[cam_id] = cam.get_health()
+        return health
+
+    @router.get("/api/camera/health")
+    async def get_camera_health() -> dict:
+        """Kamera-Gesundheitsstatus aller aktiven Kameras."""
+        pipeline = app_state.get("pipeline")
+        multi = app_state.get("multi_pipeline")
+        health = _collect_camera_health(pipeline, multi)
+        if not health:
+            return {"ok": False, "error": "Keine aktive Kamera verfuegbar"}
+        return {"ok": True, "cameras": health}
+
     # --- Stats ---
 
     @router.get("/api/stats")
@@ -1291,6 +1319,9 @@ def setup_routes(app_state: dict) -> APIRouter:
             except Exception:
                 pass
 
+        # Camera health
+        camera_health = _collect_camera_health(pipeline, app_state.get("multi_pipeline"))
+
         return {
             "fps": round(fps, 1),
             "connections": em.connection_count if em else 0,
@@ -1302,6 +1333,7 @@ def setup_routes(app_state: dict) -> APIRouter:
             "dropped_frames": dropped_frames,
             "queue_pressure": round(queue_pressure, 2),
             "memory_mb": memory_mb,
+            "camera_health": camera_health,
         }
 
     # --- Video Stream ---

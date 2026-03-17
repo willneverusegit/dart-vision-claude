@@ -6,8 +6,16 @@ import threading
 import queue
 import time
 import logging
+from enum import Enum
 
 logger = logging.getLogger(__name__)
+
+
+class CameraState(Enum):
+    """Camera connection state."""
+    CONNECTED = "connected"
+    RECONNECTING = "reconnecting"
+    DISCONNECTED = "disconnected"
 
 
 class ThreadedCamera:
@@ -68,6 +76,13 @@ class ThreadedCamera:
         self._thread: threading.Thread | None = None
         self._lock = threading.Lock()
 
+        # Health tracking
+        self._state = CameraState.CONNECTED
+        self._reconnect_attempts = 0
+        self._last_frame_time: float = time.monotonic()
+        self._total_reconnects = 0
+        self._on_state_change: list[callable] = []
+
     def start(self) -> None:
         """Start the capture thread."""
         self._running = True
@@ -82,6 +97,19 @@ class ThreadedCamera:
         self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, self._req_height)
         self.capture.set(cv2.CAP_PROP_FPS, self._req_fps)
 
+    def _set_state(self, new_state: CameraState) -> None:
+        """Update camera state and notify listeners."""
+        if new_state == self._state:
+            return
+        old_state = self._state
+        self._state = new_state
+        logger.info("Camera %s: %s -> %s", self.src, old_state.value, new_state.value)
+        for cb in self._on_state_change:
+            try:
+                cb(self.src, old_state, new_state)
+            except Exception:
+                logger.debug("State change callback error", exc_info=True)
+
     def _capture_loop(self) -> None:
         reconnect_delay = 1.0
         max_reconnect_delay = 30.0
@@ -89,16 +117,33 @@ class ThreadedCamera:
         while self._running:
             ret, frame = self.capture.read()
             if not ret:
-                # Auto-reconnect with exponential backoff
-                logger.warning("Frame read failed, reconnecting in %.1fs...", reconnect_delay)
+                self._reconnect_attempts += 1
+                self._set_state(CameraState.RECONNECTING)
+                logger.warning(
+                    "Camera %s: Frame-Lesefehler, Reconnect-Versuch %d in %.1fs...",
+                    self.src, self._reconnect_attempts, reconnect_delay,
+                )
                 time.sleep(reconnect_delay)
                 reconnect_delay = min(reconnect_delay * 2, max_reconnect_delay)
                 self.capture.release()
                 self.capture = cv2.VideoCapture(self.src)
-                self._apply_capture_props()
+                if self.capture.isOpened():
+                    self._apply_capture_props()
+                else:
+                    self._set_state(CameraState.DISCONNECTED)
                 continue
 
-            reconnect_delay = 1.0  # Reset on success
+            # Successful read — reset reconnect state
+            if self._state != CameraState.CONNECTED:
+                self._total_reconnects += 1
+                logger.info(
+                    "Camera %s: Reconnect erfolgreich nach %d Versuchen",
+                    self.src, self._reconnect_attempts,
+                )
+                self._reconnect_attempts = 0
+                self._set_state(CameraState.CONNECTED)
+            reconnect_delay = 1.0
+            self._last_frame_time = time.monotonic()
 
             # Graceful frame dropping: drop oldest if queue full
             if self.frame_queue.full():
@@ -132,6 +177,31 @@ class ThreadedCamera:
     def is_running(self) -> bool:
         """Check if capture thread is active."""
         return self._running
+
+    @property
+    def state(self) -> CameraState:
+        """Current camera connection state."""
+        return self._state
+
+    @property
+    def seconds_since_last_frame(self) -> float:
+        """Seconds elapsed since the last successful frame read."""
+        return time.monotonic() - self._last_frame_time
+
+    def get_health(self) -> dict:
+        """Return camera health status dict for API consumers."""
+        return {
+            "state": self._state.value,
+            "reconnect_attempts": self._reconnect_attempts,
+            "total_reconnects": self._total_reconnects,
+            "seconds_since_last_frame": round(self.seconds_since_last_frame, 1),
+            "is_running": self._running,
+            "src": self.src,
+        }
+
+    def on_state_change(self, callback: callable) -> None:
+        """Register a callback for state changes: callback(src, old_state, new_state)."""
+        self._on_state_change.append(callback)
 
     @property
     def queue_pressure(self) -> float:

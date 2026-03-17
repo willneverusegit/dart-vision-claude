@@ -139,6 +139,9 @@ class DartApp {
         // Legacy score event (for manual scoring)
         this.ws.on("score", (data) => this._onScoreEvent(data));
 
+        // Camera health
+        this.ws.on("camera_state", (data) => this._onCameraStateChange(data));
+
         // Darts removed
         this.ws.on("darts_removed", () => {
             this.dartboard.clearHits();
@@ -1096,6 +1099,8 @@ class DartApp {
                 this.multiCamRunning = data.multi_pipeline_running || false;
                 this.activeCameraIds = data.active_cameras || [];
                 this._updateMultiCamUI();
+                // Camera health from stats polling
+                this._updateCameraHealthFromStats(data.camera_health);
                 // A2: Update calibration validity and "New Game" button state
                 this.calibrationValid = data.board_calibrated || false;
                 this._updateNewGameButton();
@@ -1103,6 +1108,49 @@ class DartApp {
                 // Silent fail
             }
         }, 2000);
+    }
+
+    _onCameraStateChange(data) {
+        const banner = document.getElementById("camera-warning-banner");
+        const text = document.getElementById("camera-warning-text");
+        if (!banner || !text) return;
+
+        if (data.state === "connected") {
+            banner.style.display = "none";
+            banner.className = "camera-warning";
+        } else if (data.state === "reconnecting") {
+            text.textContent = `Kamera ${data.camera_id}: Verbindung unterbrochen — Reconnect läuft...`;
+            banner.className = "camera-warning camera-warning--reconnecting";
+            banner.style.display = "block";
+        } else if (data.state === "disconnected") {
+            text.textContent = `Kamera ${data.camera_id}: Nicht erreichbar — bitte USB-Verbindung prüfen`;
+            banner.className = "camera-warning camera-warning--disconnected";
+            banner.style.display = "block";
+        }
+    }
+
+    _updateCameraHealthFromStats(cameraHealth) {
+        if (!cameraHealth) return;
+        const banner = document.getElementById("camera-warning-banner");
+        const text = document.getElementById("camera-warning-text");
+        if (!banner || !text) return;
+
+        // Check if any camera is not connected
+        const entries = Object.entries(cameraHealth);
+        const degraded = entries.filter(([, h]) => h.state !== "connected");
+        if (degraded.length === 0) {
+            banner.style.display = "none";
+            return;
+        }
+        const [camId, health] = degraded[0];
+        if (health.state === "reconnecting") {
+            text.textContent = `Kamera ${camId}: Reconnect-Versuch ${health.reconnect_attempts}...`;
+            banner.className = "camera-warning camera-warning--reconnecting";
+        } else {
+            text.textContent = `Kamera ${camId}: Nicht erreichbar (${health.seconds_since_last_frame}s ohne Frame)`;
+            banner.className = "camera-warning camera-warning--disconnected";
+        }
+        banner.style.display = "block";
     }
 
     _updateNewGameButton() {
