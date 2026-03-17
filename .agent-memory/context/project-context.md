@@ -1,6 +1,6 @@
 # Project Context — DartVision
 
-*Last updated: 2026-03-18 (P29-P32 Multi-Cam implementiert, Diagnostik-Analyse, Tuning-Guide erweitert)*
+*Last updated: 2026-03-18 (P38 Tier-1 Detection-Optimierungen, konsolidierter Optimierungsplan in priorities.md)*
 
 ## Projektziel
 Lokales Dart-Scoring-System mit Computer Vision zur automatischen Treffererkennung auf einer Dartscheibe. CPU-only, Windows-Laptop, kein Cloud-Zwang.
@@ -13,7 +13,7 @@ Lokales Dart-Scoring-System mit Computer Vision zur automatischen Treffererkennu
 | Backend | FastAPI | — | REST + WebSocket |
 | CV | OpenCV + NumPy | — | CPU-only, keine GPU |
 | Frontend | Vanilla JS / HTML / CSS | — | Web Audio API |
-| Tests | pytest | — | 620 Tests, ~73% Coverage |
+| Tests | pytest | — | 625 Tests, ~73% Coverage |
 | Config | YAML | — | calibration_config.yaml |
 
 ## Architektur
@@ -52,7 +52,8 @@ ThreadedCamera
 | Multi-Camera | experimentell | P29-P32 implementiert: Intrinsics-Validation, Triangulation-Telemetry, Camera-Health, Stereo-Progress |
 | Tip-Detection | stabil | P20 erledigt — minAreaRect + Kontur-Halbierung, 18/18 validiert |
 | Tip vs Centroid Scoring | validiert | P25 — 22 Tests beweisen Tip > Centroid bei Segmentgrenzen |
-| Kontur-Robustheit | stabil | P21 — Elongation-Filter (min_elongation=1.5) + Closing |
+| Kontur-Robustheit | stabil | P21+P38 — Elongation-Filter + 3-Stufen-Morphologie (Opening→Closing→Elongated) |
+| Sub-Pixel Tip | stabil | P38 — cornerSubPix auf 20x20 ROI, min_diff_area 30 fuer Outer Bull |
 | Diff-Diagnostics | neu | Speichert Diff-Masken/Konturen bei jedem Treffer (DARTVISION_DIAGNOSTICS_DIR) |
 | Live Tuning | stabil | CV-Parameter-API, Frontend-Slider, Diagnostics-Toggle, Tuning-Guide mit Latenz-Kapitel |
 | Light Theme | stabil | P23 — Toggle im Header, localStorage, prefers-color-scheme |
@@ -63,6 +64,9 @@ ThreadedCamera
 - **2026-03-17**: Before/After-Frame-Diff als primaerer Detektor statt MOG2-Centroid — Centroid zeigt immer auf Flight, Diff nutzt stabilen Post-Wurf-Frame (→ decisions.json#2026-03-17-frame-diff-over-mog2-centroid)
 - **2026-03-17**: MOG2 bei reset_turn() zuruecksetzen — MOG2 adaptiert Dart in Hintergrund, naechster Wurf erzeugt kein Signal mehr (→ decisions.json#2026-03-17-mog2-reset-between-turns)
 - **2026-03-17**: Tip-Detection via Kontur-Halbierung statt Centroid — Centroid liegt ~28px daneben, minAreaRect + Breitenvergleich findet Spitze zuverlaessig (→ decisions.json#2026-03-17-tip-detection-narrowing)
+- **2026-03-18**: 3-Stufen-Morphologie (Opening→Closing→Elongated) — Board-Draehte filtern + groessere Shaft-Luecken schliessen (→ decisions.json#2026-03-18-three-stage-morphology)
+- **2026-03-18**: Sub-Pixel Tip Refinement via cornerSubPix — 0.1-0.5px Genauigkeit an Ring/Sektor-Grenzen (→ decisions.json#2026-03-18-subpixel-tip-refinement)
+- **2026-03-18**: Konsolidierter Detection-Optimierungsplan mit 33 Ideen in 5 Tiers in priorities.md
 
 ## Known Limitations / Tech Debt
 

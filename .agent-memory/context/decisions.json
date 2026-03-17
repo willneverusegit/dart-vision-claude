@@ -75,5 +75,51 @@
     },
     "tags": ["python", "opencv", "contour-analysis", "geometry", "tip-detection"],
     "status": "active"
+  },
+  {
+    "id": "2026-03-18-three-stage-morphology",
+    "timestamp": "2026-03-18T12:00:00+01:00",
+    "type": "architecture-decision",
+    "title": "Drei-Stufen-Morphologie: Opening + Closing + Elongated Closing",
+    "decision": "Diff-Maske durchlaeuft drei Morphologie-Stufen: (1) 2x2 Rect Opening entfernt Board-Draht-Artefakte, (2) 5x5 Ellipse Closing schliesst kleine Luecken, (3) 3x11 Rect Closing verbindet Dart-Shaft-Fragmente ueber groessere Luecken.",
+    "rationale": "Scharfe Kameras zeigen Board-Draehte im Diff als 1px-Linien — erzeugen False Positives. Standard 5x5 Closing schliesst nur ~5px Luecken, Dart-Shafts haben aber oft 6-8px Unterbrechungen. Drei Stufen loesen beide Probleme ohne sich gegenseitig zu stoeren.",
+    "alternatives_considered": [
+      {
+        "option": "Einzelner groesserer Closing-Kernel (9x9 oder 11x11)",
+        "rejected_because": "Vergroessert auch Noise-Blobs und schliesst Board-Draehte statt sie zu entfernen."
+      },
+      {
+        "option": "Adaptiver Kernel basierend auf Contour-Orientierung",
+        "rejected_because": "Erfordert Orientierung vor Morphologie — Henne-Ei-Problem. Als Tier-3-Optimierung (Multi-Angle Kernels) spaeter moeglich."
+      }
+    ],
+    "impact": {
+      "files_affected": ["src/cv/diff_detector.py"],
+      "reversibility": "easy",
+      "dependencies": []
+    },
+    "tags": ["python", "opencv", "morphology", "detection", "board-wire-filtering"],
+    "status": "active"
+  },
+  {
+    "id": "2026-03-18-subpixel-tip-refinement",
+    "timestamp": "2026-03-18T12:00:00+01:00",
+    "type": "architecture-decision",
+    "title": "Sub-Pixel Tip Refinement via cornerSubPix",
+    "decision": "Nach Contour-basierter Tip-Detection: cv2.goodFeaturesToTrack + cv2.cornerSubPix auf 20x20 ROI um den erkannten Tip. Naechster Corner zum Original-Tip wird als verfeinerte Position verwendet.",
+    "rationale": "Triple- und Double-Ringe sind nur 8mm breit. Bei 2px/mm Aufloesung sind das 16px — ein einzelner Pixel Fehler kann das Scoring aendern. cornerSubPix erreicht ~0.1-0.5px Genauigkeit. Tech Guide: 'Sub-pixel accuracy is essential for this precision.'",
+    "alternatives_considered": [
+      {
+        "option": "Gaussian Fitting auf Intensitaetsprofil",
+        "rejected_because": "Aufwaendiger zu implementieren, aehnliche Genauigkeit. Als Tier-3-Upgrade moeglich."
+      }
+    ],
+    "impact": {
+      "files_affected": ["src/cv/tip_detection.py", "src/cv/diff_detector.py"],
+      "reversibility": "easy",
+      "dependencies": []
+    },
+    "tags": ["python", "opencv", "tip-detection", "subpixel", "accuracy"],
+    "status": "active"
   }
 ]
