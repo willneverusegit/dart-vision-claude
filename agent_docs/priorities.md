@@ -53,7 +53,9 @@ Typische Arbeiten:
 - Schwellwerte fuer `max_reproj_error` und Z-Plausibilitaet empirisch validieren
 - Doku: welche Kamera-Geometrie (Abstand, Winkel) brauchbare Ergebnisse liefert
 
-## Prioritaet 4: Logging betriebstauglicher machen (HOCH)
+## Prioritaet 4: Logging betriebstauglicher machen (✅ ERLEDIGT 2026-03-17)
+
+**Umsetzung:** Idempotentes Logging-Setup (kein doppeltes Handler-Registrieren). Optionales Rotating-File-Logging via `DARTVISION_LOG_FILE` Env-Variable (5MB, 3 Backups). Konsistente Session-ID (8-Zeichen UUID-Prefix) in allen Log-Zeilen. JSON-Format-Support mit Session-ID. 8 neue Tests. Geaenderte Dateien: `src/utils/logger.py`, `src/main.py`, `tests/test_logger.py`.
 
 Ziel:
 
