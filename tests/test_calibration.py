@@ -102,7 +102,7 @@ class TestManualCalibrationValidation:
         assert result["ok"], f"Expected ok, got error: {result.get('error')}"
 
     def test_mm_per_px_too_high(self, calib_manager):
-        """A3: Board width ~100px → mm/px = 480/100 = 4.8 > MM_PER_PX_MAX → fails."""
+        """A3: Board width ~100px → mm/px = 500/100 = 5.0 > MM_PER_PX_MAX → fails."""
         # width = 100px, height = 100px (above 50px distance threshold)
         points = [[200, 200], [300, 200], [300, 300], [200, 300]]
         result = calib_manager.manual_calibration(points)
@@ -115,7 +115,7 @@ class TestManualCalibrationValidation:
             assert "ok" in result
 
     def test_mm_per_px_too_low(self, calib_manager):
-        """A3: Board width ~2000px → mm/px = 480/2000 = 0.24 < MM_PER_PX_MIN → fails."""
+        """A3: Board width ~2000px → mm/px = 500/2000 = 0.25 < MM_PER_PX_MIN → fails."""
         points = [[0, 0], [2000, 0], [2000, 2000], [0, 2000]]
         result = calib_manager.manual_calibration(points)
         expected_ratio = FRAME_INNER_MM / 2000.0  # ~0.24
@@ -127,7 +127,7 @@ class TestManualCalibrationValidation:
 
     def test_mm_per_px_in_valid_range(self, calib_manager):
         """A3: Standard points → mm/px within [MM_PER_PX_MIN, MM_PER_PX_MAX] → succeeds."""
-        # width ~200px → mm/px = 480/200 = 2.4 (within 0.3–3.0)
+        # width ~200px → mm/px = 500/200 = 2.5 (within 0.3–3.0)
         points = [[100, 100], [300, 100], [300, 300], [100, 300]]
         result = calib_manager.manual_calibration(points)
         assert result["ok"]

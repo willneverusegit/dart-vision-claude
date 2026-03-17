@@ -23,11 +23,11 @@ BOARD_RADIUS_MM = 170   # Double-outer ring radius
 
 # Known surround frame dimensions (black frame around board)
 FRAME_OUTER_MM = 517  # Outer edge of black frame
-FRAME_INNER_MM = 480  # Inner edge of black frame (not used for calibration)
+FRAME_INNER_MM = 500  # Corner-to-corner distance of marker square
 
 # CRITICAL: Physical center-to-center distance between adjacent ArUco markers.
 # This is the actual measured distance, NOT the frame inner edge.
-MARKER_SPACING_MM = 410  # Measured ArUco marker center-to-center distance
+MARKER_SPACING_MM = 430  # Measured ArUco marker center-to-center distance
 
 # ROI crop: board diameter + margin so the double ring is fully visible
 BOARD_CROP_MM = 380   # 340mm board + 20mm margin each side
@@ -144,7 +144,7 @@ class CalibrationManager:
             board_width_px = float(np.linalg.norm(src[1] - src[0]))
             if board_width_px < 1:
                 return {"ok": False, "error": "Board width too small (< 1px)"}
-            # Clicked points span the frame inner edge (480mm)
+            # Clicked points span the frame inner edge (500mm)
             mm_per_px = FRAME_INNER_MM / board_width_px
 
             # A3: Plausibility check on mm/px ratio
@@ -159,7 +159,7 @@ class CalibrationManager:
                 }
             center_x = float((src[0][0] + src[2][0]) / 2)
             center_y = float((src[0][1] + src[2][1]) / 2)
-            # ROI (400px) maps the clicked area which spans FRAME_INNER_MM (480mm)
+            # ROI (400px) maps the clicked area which spans FRAME_INNER_MM (500mm)
             roi_w = roi_size[0]
             roi_mm_per_px_local = FRAME_INNER_MM / roi_w
             radii_px = []
@@ -192,7 +192,7 @@ class CalibrationManager:
         Detect ArUco markers (4x4_50 dict) and derive calibration.
 
         Markers are placed at the inner corners of the black surround frame.
-        The known marker center-to-center distance (410mm) gives precise mm/px scaling.
+        The known marker center-to-center distance (430mm) gives precise mm/px scaling.
 
         Args:
             frame: Single camera frame.
@@ -296,8 +296,8 @@ class CalibrationManager:
             roi_w, roi_h = roi_size
 
             # Step 1: Compute homography from marker corners to a
-            # "frame space" (410mm mapped to 410px for 1:1 mm-to-px)
-            frame_px = marker_spacing_mm  # 410 (marker center-to-center)
+            # "frame space" (430mm mapped to 430px for 1:1 mm-to-px)
+            frame_px = marker_spacing_mm  # 430 (marker center-to-center)
             frame_dst = np.float32([
                 [0, 0], [frame_px, 0],
                 [frame_px, frame_px], [0, frame_px],
@@ -307,7 +307,7 @@ class CalibrationManager:
             # Step 2: Define a tighter crop centered on the board
             # BOARD_CROP_MM (380mm) = board diameter + small margin
             crop_mm = BOARD_CROP_MM
-            margin = (frame_px - crop_mm) / 2  # (410-380)/2 = 15
+            margin = (frame_px - crop_mm) / 2  # (430-380)/2 = 25
             crop_in_frame = np.float32([
                 [margin, margin],
                 [frame_px - margin, margin],

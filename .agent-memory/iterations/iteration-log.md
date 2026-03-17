@@ -49,3 +49,35 @@
 **Takeaway:** MOG2 muss nach jedem semantischen Turn-Reset neu initialisiert werden, sonst sind neue Darts "unsichtbar".
 
 ---
+
+## [2026-03-17 19:00] Centroid ≠ Dartspitze — Tip-Detection noetig
+
+**Category:** architecture | **Severity:** minor | **Attempts:** 1
+
+**Problem:** Centroid liegt ~28px von der Spitze entfernt (Richtung Flights). Bei Segmentgrenzen fuehrt das zu falschem Scoring.
+
+**Root Cause:** Flaechenschwerpunkt einer Dart-Silhouette liegt naturgemaess zur Mitte, weil Flights viel mehr Flaeche haben als die Spitze.
+
+**Solution:** minAreaRect → Achse bestimmen → Kontur halbieren → schmalere Haelfte = Tip-Seite → aeusserster Punkt = Tip. Validiert auf 18 echten Aufnahmen.
+
+**Failed Approaches:** keine (datengetriebener Ansatz — erst Aufnahmen, dann Algorithmus)
+
+**Takeaway:** Daten-zuerst-Ansatz spart Iterationen. Erst echte Aufnahmen sammeln, dann Algorithmus auf realen Daten designen statt blind synthetisch zu entwickeln.
+
+---
+
+## [2026-03-17 19:10] Kamera-Qualitaet variiert stark
+
+**Category:** environment | **Severity:** minor | **Attempts:** 1
+
+**Problem:** cam_left deutlich schaerfer als cam_right. Board-Draehte als Diff-Artefakte bei scharfer Kamera.
+
+**Root Cause:** Unterschiedliche Kameramodelle/Fokus.
+
+**Solution:** Dokumentiert als P26. Algorithmus funktioniert auf beiden Qualitaetsstufen (18/18).
+
+**Failed Approaches:** keine
+
+**Takeaway:** Bei Multi-Cam-Setups: frueh Diagnostics einbauen um Kamera-Unterschiede zu erkennen. Algorithmen muessen auf verschiedenen Qualitaetsstufen robust sein.
+
+---

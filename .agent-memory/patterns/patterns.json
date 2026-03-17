@@ -1,1 +1,106 @@
-[]
+[
+  {
+    "id": "state-machine-before-early-return",
+    "type": "architecture-rule",
+    "title": "State-Machines VOR Early-Return aufrufen",
+    "description": "State-Machines die auf bewegungsfreie Frames angewiesen sind (z.B. Countdown-Timer, Settling-States), muessen vor jedem Motion-Gate-Early-Return in der Pipeline aufgerufen werden. Sonst erhalten sie bei has_motion=False nie einen Frame und bleiben haengen.",
+    "trigger_conditions": [
+      "Neuen Detektor oder State-Machine in Pipeline einbauen",
+      "Early-Return-Logik in process_frame() aendern",
+      "Neuen State mit Countdown- oder Timeout-Logik hinzufuegen"
+    ],
+    "recommended_action": "Stelle sicher dass update()-Aufrufe fuer State-Machines VOR dem Early-Return bei has_motion=False stehen. Pruefe die Reihenfolge in process_frame() nach jeder Pipeline-Aenderung.",
+    "avoid": [
+      "State-Machine-Updates nach dem Motion-Gate platzieren",
+      "Annehmen dass Frames ohne Motion irrelevant fuer Detektoren sind"
+    ],
+    "evidence": {
+      "occurrences": 1,
+      "error_ids": ["2026-03-17-1400-motion-gate-blocks-settling"],
+      "first_seen": "2026-03-17",
+      "last_seen": "2026-03-17",
+      "clustering_rule": "explicit-seed"
+    },
+    "tags": ["python", "state-machine", "pipeline", "architecture", "opencv"],
+    "confidence": "low",
+    "skill_candidate": false
+  },
+  {
+    "id": "baseline-freeze-on-motion",
+    "type": "best-practice",
+    "title": "Frame-Diff-Baseline nur auf ruhigen Frames setzen",
+    "description": "Bei Frame-Diff-Detektoren darf die Baseline nur aktualisiert werden wenn keine Bewegung vorliegt. Wird die Baseline auf einen Motion-Frame gesetzt, hebt sich der anschliessende Diff selbst auf — der Dart ist bereits Teil der Baseline.",
+    "trigger_conditions": [
+      "FrameDiffDetector oder aehnlichen Diff-Ansatz implementieren",
+      "Baseline-Logik aendern oder erweitern",
+      "Neuen Trigger fuer Baseline-Update einfuehren"
+    ],
+    "recommended_action": "Baseline nur bei has_motion=False aktualisieren. Bei has_motion=True: Baseline einfrieren und State wechseln. Niemals bedingungslos self._baseline = frame setzen.",
+    "avoid": [
+      "Baseline vor der Motion-Pruefung setzen",
+      "Baseline bedingungslos auf jeden Frame aktualisieren"
+    ],
+    "evidence": {
+      "occurrences": 1,
+      "error_ids": ["2026-03-17-1430-baseline-set-on-motion-frame"],
+      "first_seen": "2026-03-17",
+      "last_seen": "2026-03-17",
+      "clustering_rule": "explicit-seed"
+    },
+    "tags": ["python", "logic", "state-machine", "opencv", "background-subtraction"],
+    "confidence": "low",
+    "skill_candidate": false
+  },
+  {
+    "id": "mog2-reset-on-semantic-boundary",
+    "type": "best-practice",
+    "title": "MOG2 nach semantischem Reset neu initialisieren",
+    "description": "MOG2 (createBackgroundSubtractorMOG2) lernt fortlaufend und integriert statische Objekte in das Hintergrundmodell. Nach jedem semantischen Reset (Dart entfernt, neuer Turn) muss MOG2 zurueckgesetzt werden, sonst bleiben vorherige Zustandsaenderungen unsichtbar.",
+    "trigger_conditions": [
+      "reset_turn() oder aehnliche Reset-Methode implementieren",
+      "MOG2 in Kombination mit anderen Detektoren verwenden",
+      "Neuen Spielmodus oder Turn-Logik einfuehren"
+    ],
+    "recommended_action": "motion_detector.reset() in jede reset-Methode aufnehmen die einen semantischen Neustart signalisiert. Alle Detektoren (motion, diff, impact) gemeinsam zuruecksetzen.",
+    "avoid": [
+      "MOG2 Sensitivity erhoehen statt Reset — erzeugt False Positives bei Beleuchtungswechseln",
+      "Nur einzelne Detektoren resetten und andere vergessen"
+    ],
+    "evidence": {
+      "occurrences": 1,
+      "error_ids": ["2026-03-17-1500-mog2-no-reset-between-turns"],
+      "first_seen": "2026-03-17",
+      "last_seen": "2026-03-17",
+      "clustering_rule": "explicit-seed"
+    },
+    "tags": ["python", "opencv", "background-subtraction", "pipeline", "state-machine"],
+    "confidence": "low",
+    "skill_candidate": false
+  },
+  {
+    "id": "pipeline-process-frame-fragile",
+    "type": "architecture-rule",
+    "title": "pipeline.py ist Hotspot — Reihenfolge-sensitiv",
+    "description": "src/cv/pipeline.py taucht in mehreren Fehlern auf. Die Reihenfolge der Aufrufe in process_frame() ist kritisch: Early-Returns, Detektor-Updates und Reset-Logik muessen exakt aufeinander abgestimmt sein. Aenderungen an der Aufruf-Reihenfolge koennen subtile Regressionen ausloesen.",
+    "trigger_conditions": [
+      "Aenderungen an src/cv/pipeline.py",
+      "Neuen Detektor in die Pipeline integrieren",
+      "Early-Return-Logik oder Reset-Methoden aendern"
+    ],
+    "recommended_action": "Vor jeder Pipeline-Aenderung die aktuelle Aufrufreihenfolge in process_frame() lesen und verstehen. Aenderungen mit Integration-Tests absichern (test_pipeline_diff_integration.py). Bei neuen Detektoren: Position relativ zum Motion-Gate explizit begruenden.",
+    "avoid": [
+      "Blinde Ergaenzung von Aufrufen ans Ende von process_frame()",
+      "Reset-Methoden aendern ohne alle beteiligten Detektoren zu pruefen"
+    ],
+    "evidence": {
+      "occurrences": 2,
+      "error_ids": ["2026-03-17-1400-motion-gate-blocks-settling", "2026-03-17-1500-mog2-no-reset-between-turns"],
+      "first_seen": "2026-03-17",
+      "last_seen": "2026-03-17",
+      "clustering_rule": "file-hotspot"
+    },
+    "tags": ["python", "state-machine", "pipeline", "architecture", "opencv", "background-subtraction"],
+    "confidence": "medium",
+    "skill_candidate": false
+  }
+]

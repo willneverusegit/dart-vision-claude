@@ -1,6 +1,6 @@
 # Project Context — DartVision
 
-*Last updated: 2026-03-17*
+*Last updated: 2026-03-17 (P20 erledigt)*
 
 ## Projektziel
 Lokales Dart-Scoring-System mit Computer Vision zur automatischen Treffererkennung auf einer Dartscheibe. CPU-only, Windows-Laptop, kein Cloud-Zwang.
@@ -13,7 +13,7 @@ Lokales Dart-Scoring-System mit Computer Vision zur automatischen Treffererkennu
 | Backend | FastAPI | — | REST + WebSocket |
 | CV | OpenCV + NumPy | — | CPU-only, keine GPU |
 | Frontend | Vanilla JS / HTML / CSS | — | Web Audio API |
-| Tests | pytest | — | 512 Tests, ~73% Coverage |
+| Tests | pytest | — | 540 Tests, ~73% Coverage |
 | Config | YAML | — | calibration_config.yaml |
 
 ## Architektur
@@ -50,19 +50,21 @@ ThreadedCamera
 | Kamera-Reconnect | stabil | Exp. Backoff, Health-API |
 | Telemetrie | stabil | FPS, Drops, Queue, RAM, Chart, Alerting |
 | Multi-Camera | experimentell | funktional, nicht produktionsreif |
-| Tip-Detection | offen | P20 — Convex Hull auf Diff-Ergebnis |
+| Tip-Detection | stabil | P20 erledigt — minAreaRect + Kontur-Halbierung, 18/18 validiert |
+| Diff-Diagnostics | neu | Speichert Diff-Masken/Konturen bei jedem Treffer (DARTVISION_DIAGNOSTICS_DIR) |
 | E2E echte Clips | offen | P11 — synthetisch OK, echte Clips fehlen |
 
 ## Key Decisions (quick reference)
 
 - **2026-03-17**: Before/After-Frame-Diff als primaerer Detektor statt MOG2-Centroid — Centroid zeigt immer auf Flight, Diff nutzt stabilen Post-Wurf-Frame (→ decisions.json#2026-03-17-frame-diff-over-mog2-centroid)
 - **2026-03-17**: MOG2 bei reset_turn() zuruecksetzen — MOG2 adaptiert Dart in Hintergrund, naechster Wurf erzeugt kein Signal mehr (→ decisions.json#2026-03-17-mog2-reset-between-turns)
+- **2026-03-17**: Tip-Detection via Kontur-Halbierung statt Centroid — Centroid liegt ~28px daneben, minAreaRect + Breitenvergleich findet Spitze zuverlaessig (→ decisions.json#2026-03-17-tip-detection-narrowing)
 
 ## Known Limitations / Tech Debt
 
 - `DartDetection.frame_count` wird im FrameDiffDetector als "settle_frames" (Konfiguration) verwendet, nicht als echte Frame-Zaehlung — wird bei P20 bereinigt
 - `DartImpactDetector.detect()` ist im Single-Cam-Pfad seit P19 nicht mehr aktiv (nur noch Multi-Cam und Tests)
-- Centroid statt Dartspitze als Position — P20 (Tip-Detection via Convex Hull) behebt das
+- Tip-Detection noch nicht gegen Board-Scoring validiert (P25) — unklar ob Tip tatsaechlich besseres Scoring liefert als Centroid
 
 ## Open Questions
 

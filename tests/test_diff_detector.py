@@ -1,3 +1,6 @@
+import json
+import os
+
 import numpy as np
 import pytest
 from src.cv.diff_detector import FrameDiffDetector
@@ -163,3 +166,70 @@ def test_color_frame_raises():
     d.update(np.full((100, 100), 100, dtype=np.uint8), has_motion=False)  # grayscale baseline
     with pytest.raises(ValueError, match="grayscale"):
         d._compute_diff(color)
+
+
+# ------------------------------------------------------------------
+# Diagnostics tests (P20)
+# ------------------------------------------------------------------
+
+
+def test_diagnostics_saves_files_on_detection(tmp_path):
+    """When diagnostics_dir is set, detection saves PNG + JSON files."""
+    diag_dir = str(tmp_path / "diag")
+    d = FrameDiffDetector(
+        settle_frames=2, diff_threshold=10, min_diff_area=10,
+        diagnostics_dir=diag_dir,
+    )
+    baseline = _gray(50)
+    post = _gray(50)
+    post[40:60, 40:60] = 200
+
+    d.update(baseline, has_motion=False)
+    d.update(post, has_motion=True)
+    d.update(post, has_motion=False)
+    result = d.update(post, has_motion=False)
+
+    assert result is not None
+    files = os.listdir(diag_dir)
+    suffixes = {f.rsplit("_", 1)[-1] for f in files}
+    assert "diff.png" in suffixes
+    assert "thresh.png" in suffixes
+    assert "contour.png" in suffixes
+    assert "baseline.png" in suffixes
+    assert "meta.json" in suffixes
+
+    # Verify metadata content
+    meta_file = [f for f in files if f.endswith("meta.json")][0]
+    with open(os.path.join(diag_dir, meta_file)) as f:
+        meta = json.load(f)
+    assert "centroid" in meta
+    assert "area" in meta
+    assert "min_area_rect" in meta
+    assert meta["settings"]["settle_frames"] == 2
+
+
+def test_diagnostics_disabled_by_default():
+    """Without diagnostics_dir, no files are written."""
+    d = FrameDiffDetector(settle_frames=2, diff_threshold=10, min_diff_area=10)
+    assert d._diagnostics_dir is None
+
+
+def test_diagnostics_does_not_block_detection(tmp_path):
+    """Even with diagnostics, detection result is still returned correctly."""
+    diag_dir = str(tmp_path / "diag")
+    d = FrameDiffDetector(
+        settle_frames=2, diff_threshold=30, min_diff_area=50,
+        diagnostics_dir=diag_dir,
+    )
+    baseline = _gray(100)
+    post = _gray(100)
+    post[45:65, 45:65] = 200
+
+    d.update(baseline, has_motion=False)
+    d.update(post, has_motion=True)
+    d.update(post, has_motion=False)
+    result = d.update(post, has_motion=False)
+
+    assert result is not None
+    assert abs(result.center[0] - 55) < 5
+    assert abs(result.center[1] - 55) < 5

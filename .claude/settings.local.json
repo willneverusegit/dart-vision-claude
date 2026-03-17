@@ -59,7 +59,14 @@
       "Bash(python -m pytest tests/test_routes_coverage2.py::TestStatsEndpoint::test_get_stats_with_pipeline -v)",
       "Bash(python -m pytest tests/test_routes_coverage2.py -q)",
       "Bash(cp \"/c/Users/domes/.claude/plugins/marketplaces/local-desktop-app-uploads/self-improving-agent/skills/pattern-extractor/SKILL.md\" \"/c/Users/domes/.claude/plugins/self-improving-agent/skills/pattern-extractor/SKILL.md\")",
-      "Bash(cp \"/c/Users/domes/.claude/plugins/marketplaces/local-desktop-app-uploads/self-improving-agent/skills/session-bootstrap/SKILL.md\" \"/c/Users/domes/.claude/plugins/self-improving-agent/skills/session-bootstrap/SKILL.md\")"
+      "Bash(cp \"/c/Users/domes/.claude/plugins/marketplaces/local-desktop-app-uploads/self-improving-agent/skills/session-bootstrap/SKILL.md\" \"/c/Users/domes/.claude/plugins/self-improving-agent/skills/session-bootstrap/SKILL.md\")",
+      "Bash(python -m pytest tests/test_diff_detector.py -v)",
+      "Bash(python -m pytest tests/test_calibration.py tests/test_board_detection_p6.py -v)",
+      "Bash(dir \"C:\\\\Users\\\\domes\\\\OneDrive\\\\Desktop\\\\dart-vision-claude\\\\diagnostics\\\\cam_right\" /b)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_tip_detection.py -v)",
+      "Bash(.venv/Scripts/python.exe scripts/validate_tip_detection.py)",
+      "Bash(.venv/Scripts/python.exe -m pytest -q)",
+      "Bash(ls \"C:\\\\Users\\\\domes\\\\OneDrive\\\\Desktop\\\\dart-vision-claude\\\\.agent-memory\\\\iterations\"\" 2>/dev/null && echo \"EXISTS\" || echo \"NOT_FOUND \")"
     ]
   },
   "hooks": {

@@ -1,0 +1,33 @@
+{
+  "timestamp": "20260317_183718",
+  "centroid": [
+    188,
+    105
+  ],
+  "area": 494.0,
+  "confidence": 0.988,
+  "bounding_rect": {
+    "x": 164,
+    "y": 93,
+    "w": 45,
+    "h": 23
+  },
+  "min_area_rect": {
+    "center": [
+      186.0,
+      104.0
+    ],
+    "size": [
+      22.0,
+      44.0
+    ],
+    "angle": -90.0
+  },
+  "contour_points": 92,
+  "settings": {
+    "settle_frames": 5,
+    "diff_threshold": 50,
+    "min_diff_area": 50,
+    "max_diff_area": 8000
+  }
+}

@@ -16,6 +16,7 @@ class DartDetection:
     area: float                 # Contour area in pixels
     confidence: float           # 0.0-1.0
     frame_count: int            # Number of confirmation frames
+    tip: tuple[int, int] | None = None  # Dart tip position (x, y), None if detection failed
 
 
 class DartImpactDetector:

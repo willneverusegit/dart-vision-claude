@@ -10,13 +10,18 @@ der SETTLING-State braucht bewegungsfreie Frames zum Herunterzählen.
 
 from __future__ import annotations
 
+import json
 import logging
+import os
+import time
 from enum import Enum
+from pathlib import Path
 
 import cv2
 import numpy as np
 
 from src.cv.detector import DartDetection
+from src.cv.tip_detection import find_dart_tip
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +55,7 @@ class FrameDiffDetector:
         diff_threshold: int = 50,
         min_diff_area: int = 50,
         max_diff_area: int = 8000,
+        diagnostics_dir: str | None = None,
     ) -> None:
         if settle_frames < 1:
             raise ValueError("settle_frames must be >= 1")
@@ -67,6 +73,13 @@ class FrameDiffDetector:
         self._baseline: np.ndarray | None = None
         self._settle_count: int = 0
         self._closing_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+
+        # Diagnostics: save diff masks + contour images on each detection
+        self._diagnostics_dir: Path | None = None
+        if diagnostics_dir is not None:
+            self._diagnostics_dir = Path(diagnostics_dir)
+            self._diagnostics_dir.mkdir(parents=True, exist_ok=True)
+            logger.info("FrameDiff diagnostics enabled → %s", self._diagnostics_dir)
 
     # ------------------------------------------------------------------
     # Public API
@@ -172,15 +185,115 @@ class FrameDiffDetector:
             logger.debug("FrameDiff: Diff-Blob zu groß (%.0f px²) — Beleuchtungsaenderung?", area)
             return None
 
-        # Centroid als vorläufige Position (P20 ersetzt dies durch Tip-Detection)
+        # Centroid as fallback position
         M = cv2.moments(largest)
         if M["m00"] <= 0:
             return None
         cx = int(M["m10"] / M["m00"])
         cy = int(M["m01"] / M["m00"])
 
+        # Tip detection: find the narrow end of the dart contour
+        tip = find_dart_tip(largest)
+        if tip is not None:
+            # Use tip as primary position — this is where the dart touches the board
+            dart_x, dart_y = tip
+            logger.info("FrameDiff: Dart tip bei (%d, %d), centroid (%d, %d) area=%.0f", dart_x, dart_y, cx, cy, area)
+        else:
+            # Fallback to centroid if tip detection fails
+            dart_x, dart_y = cx, cy
+            logger.info("FrameDiff: Tip-Detection fehlgeschlagen, Fallback auf Centroid (%d, %d) area=%.0f", cx, cy, area)
+
         confidence = min(area / 500.0, 1.0)
-        logger.info("FrameDiff: Dart bei (%d, %d) area=%.0f conf=%.2f", cx, cy, area, confidence)
-        # frame_count repurposed here as "settle duration" (== settle_frames at this callsite).
-        # P20 will replace this with tip-detection and can clean up the field semantics then.
-        return DartDetection(center=(cx, cy), area=area, confidence=confidence, frame_count=self.settle_frames)
+
+        # Diagnostics: save diff mask, contour overlay, and metadata
+        if self._diagnostics_dir is not None:
+            self._save_diagnostics(
+                diff=diff, thresh=thresh, contour=largest,
+                baseline=self._baseline, post_frame=post_frame,
+                centroid=(cx, cy), area=area, confidence=confidence,
+                tip=tip,
+            )
+
+        return DartDetection(
+            center=(dart_x, dart_y), area=area, confidence=confidence,
+            frame_count=self.settle_frames, tip=tip,
+        )
+
+    # ------------------------------------------------------------------
+    # Diagnostics (P20 data collection)
+    # ------------------------------------------------------------------
+
+    def _save_diagnostics(
+        self,
+        diff: np.ndarray,
+        thresh: np.ndarray,
+        contour: np.ndarray,
+        baseline: np.ndarray,
+        post_frame: np.ndarray,
+        centroid: tuple[int, int],
+        area: float,
+        confidence: float,
+        tip: tuple[int, int] | None = None,
+    ) -> None:
+        """Save diff mask, contour overlay, and metadata for analysis."""
+        assert self._diagnostics_dir is not None
+        ts = time.strftime("%Y%m%d_%H%M%S")
+        prefix = self._diagnostics_dir / ts
+
+        try:
+            # 1) Raw diff (grayscale intensity differences)
+            cv2.imwrite(str(prefix) + "_diff.png", diff)
+
+            # 2) Thresholded binary mask
+            cv2.imwrite(str(prefix) + "_thresh.png", thresh)
+
+            # 3) Contour overlay on post-frame (visual reference)
+            overlay = cv2.cvtColor(post_frame, cv2.COLOR_GRAY2BGR)
+            cv2.drawContours(overlay, [contour], -1, (0, 255, 0), 2)
+            cv2.circle(overlay, centroid, 5, (0, 0, 255), -1)  # Red = centroid
+            # Draw tip if detected (cyan circle, larger)
+            if tip is not None:
+                cv2.circle(overlay, tip, 7, (255, 255, 0), 2)  # Cyan ring = tip
+                # Line from centroid to tip to visualize the axis
+                cv2.line(overlay, centroid, tip, (0, 255, 255), 1)  # Yellow line
+            # Draw bounding rect and min area rect
+            x, y, w, h = cv2.boundingRect(contour)
+            cv2.rectangle(overlay, (x, y), (x + w, y + h), (255, 255, 0), 1)
+            rect = cv2.minAreaRect(contour)
+            box = cv2.boxPoints(rect)
+            box = np.intp(box)
+            cv2.drawContours(overlay, [box], 0, (255, 0, 255), 1)
+            cv2.imwrite(str(prefix) + "_contour.png", overlay)
+
+            # 4) Baseline frame for comparison
+            cv2.imwrite(str(prefix) + "_baseline.png", baseline)
+
+            # 5) Metadata JSON
+            rect_center, rect_size, rect_angle = rect
+            meta = {
+                "timestamp": ts,
+                "centroid": list(centroid),
+                "tip": list(tip) if tip is not None else None,
+                "tip_detected": tip is not None,
+                "area": round(area, 1),
+                "confidence": round(confidence, 3),
+                "bounding_rect": {"x": x, "y": y, "w": w, "h": h},
+                "min_area_rect": {
+                    "center": [round(rect_center[0], 1), round(rect_center[1], 1)],
+                    "size": [round(rect_size[0], 1), round(rect_size[1], 1)],
+                    "angle": round(rect_angle, 1),
+                },
+                "contour_points": len(contour),
+                "settings": {
+                    "settle_frames": self.settle_frames,
+                    "diff_threshold": self.diff_threshold,
+                    "min_diff_area": self.min_diff_area,
+                    "max_diff_area": self.max_diff_area,
+                },
+            }
+            with open(str(prefix) + "_meta.json", "w") as f:
+                json.dump(meta, f, indent=2)
+
+            logger.info("Diagnostics saved: %s_*.png/json", prefix)
+        except Exception as e:
+            logger.warning("Failed to save diagnostics: %s", e)

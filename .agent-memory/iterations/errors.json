@@ -46,5 +46,37 @@
     "tags": ["python", "opencv", "background-subtraction", "pipeline", "state-machine"],
     "reusable_pattern": "MOG2 (createBackgroundSubtractorMOG2) muss nach jedem semantischen Reset (Dart entfernt, neuer Turn) neu initialisiert werden. Sonst wird der vorherige Zustand Teil des Hintergrundmodells und neue Aenderungen bleiben unsichtbar.",
     "recurrence": []
+  },
+  {
+    "id": "2026-03-17-1900-tip-detection-data-first",
+    "timestamp": "2026-03-17T19:00:00+01:00",
+    "category": "architecture",
+    "severity": "minor",
+    "trigger": "P20: Tip-Detection-Algorithmus auf echten Dart-Aufnahmen designen",
+    "problem": "Centroid der Diff-Kontur liegt ca. 28px von der tatsaechlichen Dartspitze entfernt — in Richtung Flights/Barrel. Scoring-Genauigkeit leidet bei Segmentgrenzen.",
+    "root_cause": "Der Flaechenschwerpunkt (Centroid) einer Dart-Silhouette liegt naturbedingt Richtung Mitte des Dart-Koerpers, nicht an der Spitze, weil die Flights viel mehr Flaeche haben als die Spitze.",
+    "solution": "Neuer Algorithmus: minAreaRect fuer Achse, Kontur entlang Achse halbieren, schmalere Haelfte = Tip-Seite, aeusserster Punkt = Tip. Integration in diff_detector.py mit Centroid-Fallback.",
+    "attempts": 1,
+    "failed_approaches": [],
+    "files_changed": ["src/cv/tip_detection.py", "src/cv/diff_detector.py", "src/cv/detector.py"],
+    "tags": ["python", "opencv", "contour-analysis", "geometry", "tip-detection", "dart-shape"],
+    "reusable_pattern": "Bei laenglichen Objekten mit asymmetrischer Breite (breit→schmal): minAreaRect fuer Achse, senkrechte Breitenverteilung beider Haelften vergleichen, schmalere Haelfte enthaelt das spitze Ende.",
+    "recurrence": []
+  },
+  {
+    "id": "2026-03-17-1910-camera-quality-diff",
+    "timestamp": "2026-03-17T19:10:00+01:00",
+    "category": "environment",
+    "severity": "minor",
+    "trigger": "Vergleich von Diagnostics-Aufnahmen cam_left vs cam_right",
+    "problem": "cam_left produziert deutlich schaerfere Diff-Bilder als cam_right. Board-Draehte sichtbar im Diff bei cam_left, cam_right eher diffus.",
+    "root_cause": "Unterschiedliche Kameramodelle oder Fokus-Einstellungen. Scharfe Kamera zeigt mehr Detail, aber auch mehr Artefakte (Board-Draehte als Diff-Rauschen).",
+    "solution": "Aktuell: keine Kompensation noetig — Tip-Detection funktioniert auf beiden Kameras (18/18). Dokumentiert als P26 fuer spaetere Optimierung.",
+    "attempts": 1,
+    "failed_approaches": [],
+    "files_changed": [],
+    "tags": ["hardware", "camera", "image-quality", "diff-threshold", "diagnostics"],
+    "reusable_pattern": "Bei Multi-Kamera-Setups: Bildqualitaet variiert zwischen Kameras. Diagnostics-Modus frueh einbauen um Unterschiede zu erkennen. Algorithmen muessen auf beiden Qualitaetsstufen funktionieren.",
+    "recurrence": []
   }
 ]

@@ -65,6 +65,7 @@ class DartPipeline:
             diff_threshold=50,
             min_diff_area=50,
             max_diff_area=8000,
+            diagnostics_dir=os.environ.get("DARTVISION_DIAGNOSTICS_DIR"),
         )
         self.fps_counter = FPSCounter()
         self.camera_calibration = CameraCalibrationManager()

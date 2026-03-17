@@ -334,18 +334,27 @@ Typische Arbeiten:
 - Kontrast-Pruefung: WCAG AA Minimum fuer alle Text-Elemente
 - Focus-Styles fuer Tastaturnavigation auf Buttons und Inputs
 
-## Prioritaet 20: Dart-Tip-Detection via Convex Hull (neu — entdeckt bei P19)
+## Prioritaet 20: Dart-Tip-Detection (✅ ERLEDIGT 2026-03-17)
+
+**Umsetzung:** Tip-Detection-Algorithmus in `src/cv/tip_detection.py`: minAreaRect fuer Achsenbestimmung, Kontur-Halbierung entlang der Achse, schmalere Haelfte = Tip-Seite, aeusserster Punkt = Tip-Position. Integration in `src/cv/diff_detector.py` — Tip wird als primaere Position in DartDetection.center verwendet, Fallback auf Centroid. `DartDetection.tip` Feld ergaenzt. Diagnostics erweitert: Cyan-Ring fuer Tip, gelbe Achsen-Linie Centroid→Tip. Validierung gegen 18 echte Aufnahmen (cam_left + cam_right): 18/18 OK, durchschnittlich ~28px Abweichung Centroid→Tip. Geaenderte Dateien: `src/cv/tip_detection.py`, `src/cv/diff_detector.py`, `src/cv/detector.py`, `tests/test_tip_detection.py`, `scripts/validate_tip_detection.py`.
+
+Verknuepfte Weaknesses: keine
+Verknuepfte Entscheidungen: keine
 
 Ziel:
 
 - Dartspitze statt Flug-Centroid als Trefferposition verwenden
 
+Ansatz: Daten-zuerst — erst echte Diff-Konturen sammeln, dann Algorithmus designen.
+Erkenntnis: Die Spitze ist dort wo die Kontur am schmalsten wird (Barrel → Shaft → Tip).
+
 Typische Arbeiten:
 
-- Im Diff-Ergebnis (absdiff-Maske): minAreaRect + Extrempunkt entlang Hauptachse
-- Convex-Hull-Ansatz: unterster Punkt der konvexen Huelle als Spitze
-- DartDetection.frame_count-Semantik bereinigen (settle_frames umbenennen)
-- Tests: synthetische Diff-Masken mit bekannter Dart-Orientierung
+- Phase 1: Diagnose-Modus in FrameDiffDetector — bei jedem erkannten Dart Diff-Maske + Kontur als PNG speichern ✅
+- Phase 1: Probewuerfe am Board (links/rechts, verschiedene Kameras) und Aufnahmen auswerten ✅
+- Phase 2: Tip-Detection-Algorithmus auf echten Konturdaten designen (schmalste Stelle der Kontur) ✅
+- Phase 2: DartDetection.frame_count-Semantik bereinigen (settle_frames umbenennen)
+- Tests: auf echten Kontur-Snapshots, nicht nur synthetisch ✅
 
 ## Prioritaet 21: Kontur-Robustheit gegen Schatten und Luecken (neu — entdeckt bei P19)
 
@@ -359,3 +368,55 @@ Typische Arbeiten:
 - Elongierungs-Filter: Konturen mit Aspect-Ratio < 1.5 verwerfen (kein Dart)
 - Schatten-Robustheit: CLAHE vor Diff oder adaptiver Threshold
 - Tests: synthetische Masken mit Luecken/Schatten
+
+## Prioritaet 24: Kamera-Vergleich und Kontur-Referenzdaten (neu — entdeckt bei P20)
+
+Ziel:
+
+- Verstehen wie sich Diff-Konturen zwischen verschiedenen Kameras und Wurfpositionen unterscheiden
+
+Typische Arbeiten:
+
+- Probewuerfe mit verschiedenen Kameras aufnehmen (links/rechts positioniert)
+- Diff-Masken vergleichen: Konturform, Groesse, Schatten-Einfluss pro Kamera
+- Referenz-Datensatz fuer zukuenftige Algorithmus-Entwicklung (P20, P21) aufbauen
+- Beleuchtungs-Einfluss dokumentieren (welche Kamera-Position produziert sauberste Konturen)
+
+## Prioritaet 25: Tip-Detection Genauigkeit gegen Board-Scoring validieren (neu — entdeckt bei P20)
+
+Ziel:
+
+- Pruefen ob die Tip-Position nach Board-Transformation das korrekte Segment trifft
+
+Typische Arbeiten:
+
+- Probewuerfe auf bekannte Felder (T20, D16, Bull etc.) und Tip-Position durch Kalibrierung→Scoring-Pipeline fuehren
+- Vergleich: Tip-basiertes Scoring vs. Centroid-basiertes Scoring — welches trifft das richtige Feld haeufiger?
+- Schwellwert bestimmen: ab welcher Konturgroesse ist Tip-Detection zuverlaessiger als Centroid?
+- Kamera-spezifische Korrekturfaktoren evaluieren (cam_left schaerfer als cam_right)
+
+## Prioritaet 26: Kamera-Qualitaet angleichen oder kompensieren (neu — entdeckt bei P20)
+
+Ziel:
+
+- Unterschiedliche Bildqualitaet zwischen Kameras erkennen und kompensieren
+
+Typische Arbeiten:
+
+- Automatische Schaerfe-Metrik pro Kamera (Laplacian-Varianz oder aehnlich)
+- Kamera-spezifische Threshold-Anpassung (schaerfere Kamera kann niedrigeren diff_threshold nutzen)
+- Board-Draht-Artefakte in Diff bei scharfen Kameras filtern (cam_left zeigt Board-Draehte im Diff)
+- Qualitaets-Report in Diagnostics-Metadaten aufnehmen
+
+## Prioritaet 27: Marker-Kalibrierung auf neue Masse aktualisieren (neu — Session-Start)
+
+Ziel:
+
+- Kalibrierungskonfiguration an geaenderte physische Marker-Masse anpassen
+
+Typische Arbeiten:
+
+- ArUco Dict 7x5 50, Marker 0-3, 75mm Kantenlaenge — unveraendert
+- Mitte-zu-Mitte Abstand: 430mm (verifizieren)
+- Corner-zu-Corner: 505mm (vorher 480mm) — in calibration_config.yaml aktualisieren
+- Kalibrierung neu durchfuehren und Qualitaetsmetrik vergleichen

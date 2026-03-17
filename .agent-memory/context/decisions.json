@@ -50,5 +50,30 @@
     },
     "tags": ["python", "opencv", "background-subtraction", "pipeline", "state-machine"],
     "status": "active"
+  },
+  {
+    "id": "2026-03-17-tip-detection-narrowing",
+    "timestamp": "2026-03-17T19:00:00+01:00",
+    "type": "architecture-decision",
+    "title": "Tip-Detection via Kontur-Halbierung statt Centroid",
+    "decision": "minAreaRect fuer Achsenbestimmung, Kontur entlang Achse halbieren, schmalere Haelfte = Tip-Seite, aeusserster Punkt = Tip-Position. Tip wird als primaere Position in DartDetection.center verwendet.",
+    "rationale": "Centroid liegt ~28px von der Spitze entfernt (Richtung Flights). Bei Segmentgrenzen fuehrt das zu falschem Scoring. Echte Aufnahmen zeigen klar: Dart-Silhouette ist breit (Flights) → schmal (Tip). minAreaRect + Breitenvergleich ist geometrisch robust und kamerawinkel-unabhaengig.",
+    "alternatives_considered": [
+      {
+        "option": "Convex Hull + nächster Punkt zum Board-Zentrum",
+        "rejected_because": "Setzt voraus dass Board-Zentrum bekannt und nah ist. Funktioniert nicht bei seitlichen Kameraperspektiven."
+      },
+      {
+        "option": "Skeleton/Thinning der Kontur",
+        "rejected_because": "Rechenintensiv, fragil bei unscharfen Konturen (cam_right). CPU-Constraint."
+      }
+    ],
+    "impact": {
+      "files_affected": ["src/cv/tip_detection.py", "src/cv/diff_detector.py", "src/cv/detector.py"],
+      "reversibility": "easy",
+      "dependencies": []
+    },
+    "tags": ["python", "opencv", "contour-analysis", "geometry", "tip-detection"],
+    "status": "active"
   }
 ]
