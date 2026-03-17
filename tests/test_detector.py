@@ -81,3 +81,22 @@ class TestDartImpactDetector:
         for _ in range(5):
             result = detector.detect(roi, mask)
         assert result is None
+
+
+def test_register_confirmed_adds_detection():
+    from src.cv.detector import DartImpactDetector, DartDetection
+    d = DartImpactDetector()
+    det = DartDetection(center=(10, 10), area=200, confidence=0.8, frame_count=3)
+    result = d.register_confirmed(det)
+    assert result is True
+    assert len(d.get_all_confirmed()) == 1
+
+
+def test_register_confirmed_deduplicates():
+    from src.cv.detector import DartImpactDetector, DartDetection
+    d = DartImpactDetector()
+    det = DartDetection(center=(10, 10), area=200, confidence=0.8, frame_count=3)
+    d.register_confirmed(det)
+    result = d.register_confirmed(det)  # same position again
+    assert result is False
+    assert len(d.get_all_confirmed()) == 1

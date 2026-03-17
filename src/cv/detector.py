@@ -154,3 +154,13 @@ class DartImpactDetector:
     def get_all_confirmed(self) -> list[DartDetection]:
         """Return all currently confirmed dart positions (up to 3 per turn)."""
         return list(self._confirmed)
+
+    def register_confirmed(self, detection: "DartDetection") -> bool:
+        """Add an externally confirmed detection.
+
+        Returns True if added, False if position already known (deduplication).
+        """
+        if self._is_already_confirmed(detection):
+            return False
+        self._confirmed.append(detection)
+        return True
