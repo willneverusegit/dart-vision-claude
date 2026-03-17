@@ -99,6 +99,8 @@ Nenne am Ende immer:
 - welche Dateien du geaendert hast
 - welche Tests du ausgefuehrt hast
 - welche Risiken oder offenen Punkte bleiben
+- Fuer jede als erledigt markierte Prioritaet MUSS mindestens eine neue Prioritaet am Ende von `priorities.md` ergaenzt werden. Die neue Prioritaet kann sich aus der erledigten Arbeit ergeben (Folgethema, entdeckte Schwachstelle) oder aus einer anderen Analyse des Projekts stammen. Ziel: Die Prioritaetenliste waechst und bleibt als lebendige Roadmap aktuell — sie schrumpft nie auf null offene Eintraege.
+Dieser Schritt ist nicht optional — er haelt die Prioritaetenliste als leben
 
 ## Session-Ende: Protokoll und Selbstverbesserung
 
