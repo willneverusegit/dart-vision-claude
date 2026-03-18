@@ -892,19 +892,19 @@ Typische Arbeiten:
 - UI-Button "Kamera neu verbinden" im Multi-Cam-Panel
 - Dateien: src/cv/multi_camera.py, src/web/routes.py, static/js/app.js
 
-## Prioritaet 57: Diff-Cache-Bug in FrameDiffDetector Settling-Phase fixen (neu — entdeckt bei P53)
+## Prioritaet 57: Diff-Cache-Bug in FrameDiffDetector Settling-Phase fixen (✅ ERLEDIGT 2026-03-18)
+
+**Umsetzung:** Root-Cause: `_handle_in_motion` rief beim IN_MOTION→SETTLING-Uebergang kein `_quick_centroid` auf, daher wurde `_cached_diff` fuer den ersten Settling-Frame nie populiert. Fix: `_quick_centroid(frame)` wird jetzt beim Uebergang aufgerufen und das Ergebnis in `_stability_centroids` gespeichert. Alle 45 diff_detector Tests gruen. Geaenderte Dateien: `src/cv/diff_detector.py`.
 
 Kritikalitaet: NIEDRIG
 
-Ziel: `test_diff_cache_reused_in_settling` in `tests/test_diff_detector.py:599` schlaegt fehl — `_cached_diff` ist `None` obwohl es nach Settling gesetzt sein sollte. Der Cache wird vermutlich durch den State-Reset oder die Stability-Centroid-Logik vorzeitig invalidiert.
+Ziel: `test_diff_cache_reused_in_settling` in `tests/test_diff_detector.py:599` schlaegt fehl — `_cached_diff` ist `None` obwohl es nach Settling gesetzt sein sollte.
 
-Typische Arbeiten:
-- Root-Cause in `_handle_settling` / `_get_diff` / `_quick_centroid` identifizieren
-- Cache-Invalidierung korrigieren ohne Performance-Regression
-- Bestehenden Test gruenfaerben
 - Dateien: src/cv/diff_detector.py, tests/test_diff_detector.py
 
-## Prioritaet 58: Pipeline Health Dashboard im Frontend (neu — Auto-Agent 2026-03-18)
+## Prioritaet 58: Pipeline Health Dashboard im Frontend (✅ ERLEDIGT 2026-03-18)
+
+**Umsetzung:** Collapsible "Health"-Panel im Frontend mit 4-Card-Grid: Pipeline-State (aktiv/idle/degraded), Kamera-Status, Detection-Rate (hits/min ueber 60s), Kalibrierungs-Qualitaet (0-100 mit Balken). Letzte-Treffer-Sektion mit Badges. Backend: recent_detections Ring-Buffer (50 Eintraege) und detection_timestamps (5min Window) in app_state. /api/stats erweitert um pipeline_health-Objekt. Responsive ab 640px, alle Theme-Variablen genutzt. Geaenderte Dateien: `src/main.py`, `src/web/routes.py`, `templates/index.html`, `static/js/app.js`, `static/css/style.css`.
 
 Kritikalitaet: MITTEL
 
@@ -920,7 +920,9 @@ Typische Arbeiten:
 - Visueller Indikator ob Pipeline aktiv/idle/degraded
 - Dateien: static/js/app.js, static/css/style.css, templates/index.html, src/web/routes.py
 
-## Prioritaet 59: MOG2 Motion-Sensitivity fuer kurze Videos tunen (neu — entdeckt bei P55)
+## Prioritaet 59: MOG2 Motion-Sensitivity fuer kurze Videos tunen (✅ ERLEDIGT 2026-03-18)
+
+**Umsetzung:** Zwei Aenderungen: (1) Morphologie-Kernel in MotionDetector von 3x3 auf 2x2 bei downscale_factor>=4 — 3x3 auf 100x100 Bild entfernte zu viele subtile Motion-Pixel. (2) Motion-Threshold von 200 auf 80 gesenkt (~5 Motion-Pixel auf downscaled Mask genuegen). Frontend-Slider angepasst (min=20, step=10, default=80). xfail in test_ground_truth_validation.py aktualisiert — Validierung mit echten Videos steht noch aus. Geaenderte Dateien: `src/cv/motion.py`, `src/cv/pipeline.py`, `templates/index.html`.
 
 Kritikalitaet: NIEDRIG
 
@@ -931,3 +933,25 @@ Typische Arbeiten:
 - Alternative: FrameDiffDetector eigene Frame-zu-Frame-Diff-basierte Motion-Erkennung geben (unabhaengig von MOG2)
 - Per-Video xfail in test_ground_truth_validation.py entfernen nach Fix
 - Dateien: src/cv/motion.py, src/cv/diff_detector.py, tests/e2e/test_ground_truth_validation.py
+
+## Prioritaet 60: Homography-Fallback bei Marker-Occlusion (neu — Auto-Agent 2026-03-18)
+
+Kritikalitaet: HOCH
+
+Quelle: Tier 3 #17 aus Dart Detection Optimierungsplan
+
+Ziel:
+
+- Wenn ArUco-Marker durch Hand oder Dart verdeckt werden, letzte gueltige Homography weiternutzen statt Kalibrierung zu verlieren
+
+Typische Arbeiten:
+
+- `homography_age` Counter in `BoardCalibrationManager` einfuehren (zaehlt Frames seit letzter erfolgreicher Marker-Detektion)
+- Wenn Marker nicht gefunden: letzte gueltige Homography weiternutzen, `homography_age` inkrementieren
+- Warnung nach N Frames (z.B. 30) ohne Marker-Re-Detektion (Kamera verrutscht?)
+- Maximales Alter konfigurierbar (z.B. `max_homography_age_frames: 150`)
+- Quality-Metrik: Homography-Alter in `/api/stats` und Telemetrie aufnehmen
+- Tests: Occlusion-Szenarien (1 Marker verdeckt, 2 verdeckt, alle verdeckt)
+- Dateien: src/cv/board_calibration.py, src/cv/calibration.py, src/web/routes.py, tests/test_calibration.py
+
+Warum kritisch: Beim realen Spiel verdeckt die werfende Hand regelmaessig 1-2 Marker. Ohne Fallback geht die Kalibrierung verloren und das Scoring pausiert bis alle Marker wieder sichtbar sind. Direkte Verbesserung der Spielbarkeit.

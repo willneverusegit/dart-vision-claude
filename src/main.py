@@ -50,6 +50,9 @@ app_state: dict = {
     "multi_pipeline_thread": None,     # threading.Thread handle
     # Video recorder
     "recorder": None,                  # VideoRecorder instance
+    # Pipeline health: recent detections (ring buffer, max 50)
+    "recent_detections": [],           # list of {score, ring, timestamp}
+    "detection_timestamps": [],        # timestamps for rate calculation
 }
 
 
@@ -150,6 +153,19 @@ def _run_pipeline(state: dict, stop_event: threading.Event | None = None,
             if lock:
                 with lock:
                     state["pending_hits"][candidate_id] = candidate
+
+            # Track detection for pipeline health dashboard
+            now = time.time()
+            det_entry = {"score": score_result["score"], "ring": score_result["ring"], "timestamp": now}
+            recent = state.get("recent_detections", [])
+            recent.append(det_entry)
+            if len(recent) > 50:
+                state["recent_detections"] = recent[-50:]
+            ts_list = state.get("detection_timestamps", [])
+            ts_list.append(now)
+            # Keep only last 5 minutes of timestamps
+            cutoff = now - 300
+            state["detection_timestamps"] = [t for t in ts_list if t >= cutoff]
 
             # Send candidate to all clients via WebSocket
             em.broadcast_sync("hit_candidate", candidate)

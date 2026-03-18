@@ -16,6 +16,7 @@
             <span id="memory-display" class="header__metric" title="Speicherverbrauch (RAM)">RAM: --</span>
             <span id="pending-count" class="pending-badge" style="display:none;">0 Kandidaten</span>
             <button id="btn-telemetry" class="btn btn--secondary btn--tiny" title="Performance Monitor">Perf</button>
+            <button id="btn-pipeline-health" class="btn btn--secondary btn--tiny" title="Pipeline Health Dashboard">Health</button>
             <button id="btn-cv-tuning" class="btn btn--secondary btn--tiny" title="CV Parameter Tuning">Tune</button>
             <span id="ws-status" class="ws-status ws-status--disconnected">Offline</span>
         </div>
@@ -73,13 +74,43 @@
             </label>
             <label class="cv-tuning__row">
                 <span>motion_threshold</span>
-                <input type="range" id="cv-motion-threshold" min="50" max="2000" step="50" value="200">
-                <span class="cv-tuning__value" id="cv-motion-threshold-val">200</span>
+                <input type="range" id="cv-motion-threshold" min="20" max="2000" step="10" value="80">
+                <span class="cv-tuning__value" id="cv-motion-threshold-val">80</span>
             </label>
             <label class="cv-tuning__row">
                 <input type="checkbox" id="cv-diagnostics-toggle">
                 <span>Save diagnostics</span>
             </label>
+        </div>
+    </div>
+
+    <div id="pipeline-health-panel" class="telemetry-panel" style="display:none;">
+        <div class="telemetry-panel__header">
+            <span>Pipeline Health</span>
+            <button id="btn-close-pipeline-health" class="btn btn--secondary btn--tiny" aria-label="Pipeline Health schliessen">X</button>
+        </div>
+        <div class="ph-grid">
+            <div class="ph-card">
+                <div class="ph-card__label">Pipeline</div>
+                <div class="ph-card__value" id="ph-state">--</div>
+            </div>
+            <div class="ph-card">
+                <div class="ph-card__label">Kamera</div>
+                <div class="ph-card__value" id="ph-camera">--</div>
+            </div>
+            <div class="ph-card">
+                <div class="ph-card__label">Erkennung</div>
+                <div class="ph-card__value" id="ph-detection-rate">-- hits/min</div>
+            </div>
+            <div class="ph-card">
+                <div class="ph-card__label">Kalibrierung</div>
+                <div class="ph-card__value" id="ph-calibration">--</div>
+                <div class="quality-bar ph-quality-bar"><div class="quality-fill" id="ph-cal-bar" style="width:0%"></div></div>
+            </div>
+        </div>
+        <div class="ph-hits">
+            <div class="ph-hits__label">Letzte Treffer</div>
+            <div class="ph-hits__list" id="ph-last-hits">--</div>
         </div>
     </div>
 

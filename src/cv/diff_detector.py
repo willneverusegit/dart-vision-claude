@@ -317,9 +317,12 @@ class FrameDiffDetector:
         self._state = _State.SETTLING
         self._settle_count = 1
         logger.debug("FrameDiff: IN_MOTION → SETTLING (settle_count=1)")
-        # Fall through to settling handler so the first calm frame
-        # already populates the diff cache and stability centroids.
-        return self._handle_settling(frame, has_motion)
+        # Pre-populate diff cache and stability centroids for this frame
+        # so that _quick_centroid's diff is available immediately.
+        _centroid = self._quick_centroid(frame)
+        if _centroid is not None:
+            self._stability_centroids.append(_centroid)
+        return None
 
     def _handle_settling(self, frame: np.ndarray, has_motion: bool) -> DartDetection | None:
         if has_motion:

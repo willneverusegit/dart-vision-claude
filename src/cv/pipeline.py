@@ -67,7 +67,7 @@ class DartPipeline:
         # Modules
         self.camera: ThreadedCamera | ReplayCamera | None = None
         self.roi_processor = ROIProcessor(roi_size=(400, 400))
-        self.motion_detector = MotionDetector(threshold=200, downscale_factor=4)
+        self.motion_detector = MotionDetector(threshold=80, downscale_factor=4)
         self.dart_detector = DartImpactDetector(confirmation_frames=3)
         self.frame_diff_detector = FrameDiffDetector(
             diff_threshold=diff_threshold if diff_threshold is not None else 30,

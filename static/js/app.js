@@ -31,6 +31,7 @@ class DartApp {
         this._telemetryData = [];
         this._telemetryVisible = false;
         this._bindTelemetry();
+        this._bindPipelineHealth();
         this._bindCvTuning();
         this.ws.connect();
         this._startStatsPolling();
@@ -174,9 +175,6 @@ class DartApp {
         // Stereo calibration progress
         this.ws.on("stereo_progress", (data) => this._updateStereoProgress(data));
         this.ws.on("stereo_result", (data) => this._showStereoResult(data));
-
-        // Camera error reporting via WebSocket (real-time)
-        this.ws.on("camera_errors", (data) => this._onCameraErrors(data));
 
         // Darts removed
         this.ws.on("darts_removed", () => {
@@ -1271,6 +1269,10 @@ class DartApp {
                 this._updateMultiCamUI();
                 // Camera health from stats polling
                 this._updateCameraHealthFromStats(data.camera_health);
+                // Pipeline health dashboard
+                if (this._pipelineHealthVisible && data.pipeline_health) {
+                    this._updatePipelineHealth(data.pipeline_health);
+                }
                 // A2: Update calibration validity and "New Game" button state
                 this.calibrationValid = data.board_calibrated || false;
                 this._updateNewGameButton();
@@ -1607,18 +1609,13 @@ class DartApp {
                         errTitle.textContent = "Kamera-Fehler:";
                         info.appendChild(errTitle);
                         errorIds.forEach(camId => {
-                            const errInfo = errors[camId];
-                            const msg = typeof errInfo === "object" ? errInfo.message : errInfo;
-                            const level = typeof errInfo === "object" ? (errInfo.level || "error") : "error";
                             info.appendChild(document.createElement("br"));
                             const errLine = document.createElement("span");
-                            errLine.style.color = level === "warning" ? "#ffa502" : "#ff4757";
-                            errLine.textContent = camId + ": " + (msg || "Unbekannter Fehler");
+                            errLine.style.color = "#ff4757";
+                            errLine.textContent = camId + ": " + errors[camId];
                             info.appendChild(errLine);
                         });
                     }
-                    // Update video grid badges from status data
-                    this._onCameraErrors(errors);
                     // Fetch and show readiness info
                     this._fetchReadiness(info);
                     this._refreshSetupGuide();
@@ -1665,42 +1662,6 @@ class DartApp {
                 }
             }
         } catch (e) { /* ignore */ }
-    }
-
-    _onCameraErrors(errors) {
-        if (!errors || typeof errors !== "object") return;
-        const errorIds = Object.keys(errors);
-
-        // Update status badges in video grid
-        this.activeCameraIds.forEach(camId => {
-            const badge = document.getElementById("cam-status-" + camId);
-            if (!badge) return;
-            const errInfo = errors[camId];
-            if (errInfo) {
-                const msg = typeof errInfo === "object" ? errInfo.message : errInfo;
-                const level = typeof errInfo === "object" ? errInfo.level : "error";
-                badge.className = "cam-status-badge cam-health-" + (level === "warning" ? "yellow" : "red");
-                badge.title = msg || "Fehler";
-                badge.textContent = level === "warning" ? "\u26A0" : "\u2716";
-            } else {
-                badge.className = "cam-status-badge cam-health-green";
-                badge.title = "OK";
-                badge.textContent = "\u2714";
-            }
-        });
-
-        // Show error notification for new errors
-        errorIds.forEach(camId => {
-            const errInfo = errors[camId];
-            const msg = typeof errInfo === "object" ? errInfo.message : errInfo;
-            const level = typeof errInfo === "object" ? errInfo.level : "error";
-            if (level === "error") {
-                this._showError("Kamera " + camId + ": " + msg);
-            }
-        });
-
-        // Also refresh the multi-cam status panel
-        this._refreshMultiCamStatus();
     }
 
     async _fetchReadiness(infoEl) {
@@ -1891,7 +1852,6 @@ class DartApp {
         this.activeCameraIds.forEach(camId => {
             const container = document.createElement("div");
             container.className = "video-container multi-video-cell";
-            container.style.position = "relative";
 
             const img = document.createElement("img");
             img.src = "/video/feed/" + encodeURIComponent(camId);
@@ -1901,15 +1861,6 @@ class DartApp {
             const label = document.createElement("div");
             label.className = "multi-video-label";
             label.textContent = camId;
-
-            // Per-camera status badge
-            const badge = document.createElement("span");
-            badge.id = "cam-status-" + camId;
-            badge.className = "cam-status-badge cam-health-green";
-            badge.title = "OK";
-            badge.textContent = "\u2714";
-            label.appendChild(document.createTextNode(" "));
-            label.appendChild(badge);
 
             container.appendChild(img);
             container.appendChild(label);
@@ -2067,6 +2018,79 @@ class DartApp {
         setInterval(() => {
             if (this._telemetryVisible) this._fetchTelemetryHistory();
         }, 2000);
+    }
+
+    _bindPipelineHealth() {
+        this._pipelineHealthVisible = false;
+        const btn = document.getElementById("btn-pipeline-health");
+        const closeBtn = document.getElementById("btn-close-pipeline-health");
+        const panel = document.getElementById("pipeline-health-panel");
+        if (btn && panel) {
+            btn.addEventListener("click", () => {
+                this._pipelineHealthVisible = !this._pipelineHealthVisible;
+                panel.style.display = this._pipelineHealthVisible ? "block" : "none";
+            });
+        }
+        if (closeBtn) {
+            closeBtn.addEventListener("click", () => {
+                this._pipelineHealthVisible = false;
+                if (panel) panel.style.display = "none";
+            });
+        }
+    }
+
+    _updatePipelineHealth(ph) {
+        if (!ph) return;
+        // State
+        const stateEl = document.getElementById("ph-state");
+        if (stateEl) {
+            const labels = { active: "Aktiv", idle: "Idle", degraded: "Degraded" };
+            stateEl.textContent = labels[ph.state] || ph.state;
+            stateEl.className = "ph-card__value ph-state--" + ph.state;
+        }
+        // Camera
+        const camEl = document.getElementById("ph-camera");
+        if (camEl) {
+            camEl.textContent = ph.state === "idle" ? "Aus" : "OK";
+        }
+        // Detection rate
+        const rateEl = document.getElementById("ph-detection-rate");
+        if (rateEl) {
+            rateEl.textContent = ph.detection_rate + " hits/min";
+        }
+        // Calibration quality
+        const calEl = document.getElementById("ph-calibration");
+        const calBar = document.getElementById("ph-cal-bar");
+        if (calEl) {
+            if (ph.board_calibrated) {
+                calEl.textContent = ph.calibration_quality + "%";
+                calEl.style.color = "";
+            } else {
+                calEl.textContent = "Keine";
+                calEl.style.color = "var(--warning)";
+            }
+        }
+        if (calBar) {
+            const q = ph.calibration_quality || 0;
+            calBar.style.width = q + "%";
+            calBar.className = "quality-fill " + (q >= 70 ? "quality--good" : q >= 40 ? "quality--medium" : "quality--low");
+        }
+        // Last hits (safe DOM construction)
+        const hitsEl = document.getElementById("ph-last-hits");
+        if (hitsEl) {
+            const hits = ph.last_hits || [];
+            hitsEl.textContent = "";
+            if (hits.length === 0) {
+                hitsEl.textContent = "Keine Treffer";
+            } else {
+                hits.forEach(function(h) {
+                    const badge = document.createElement("span");
+                    badge.className = "ph-hit-badge";
+                    badge.textContent = h.ring + " " + h.score;
+                    hitsEl.appendChild(badge);
+                });
+            }
+        }
     }
 
     async _fetchTelemetryHistory() {

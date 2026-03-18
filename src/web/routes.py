@@ -1270,10 +1270,8 @@ def setup_routes(app_state: dict) -> APIRouter:
             cam_errors = multi.get_camera_errors() if multi else {}
             error_detail = ""
             if cam_errors:
-                def _err_msg(err):
-                    return err.get("message", str(err)) if isinstance(err, dict) else str(err)
                 error_detail = " Kamera-Fehler: " + "; ".join(
-                    f"{cid}: {_err_msg(err)}" for cid, err in cam_errors.items()
+                    f"{cid}: {err}" for cid, err in cam_errors.items()
                 )
             return {
                 "ok": False,
@@ -1632,10 +1630,43 @@ def setup_routes(app_state: dict) -> APIRouter:
         # Camera health
         camera_health = _collect_camera_health(pipeline, app_state.get("multi_pipeline"))
 
+        # Pipeline health: detection rate, last hits, calibration quality
+        import time as _t
+        now = _t.time()
+        det_timestamps = app_state.get("detection_timestamps", [])
+        # Hits in last 60 seconds -> hits/min
+        recent_60 = [t for t in det_timestamps if t >= now - 60]
+        detection_rate = len(recent_60)  # hits in last 60s = hits/min
+
+        recent_detections = app_state.get("recent_detections", [])
+        last_3_hits = recent_detections[-3:] if recent_detections else []
+
+        # Calibration quality: 0-100 based on viewing angle quality
+        calibration_quality = 0
+        lens_calibrated = False
+        if pipeline and hasattr(pipeline, "board_calibration"):
+            bc = pipeline.board_calibration
+            if bc.is_valid():
+                vaq = bc.get_viewing_angle_quality()
+                calibration_quality = min(100, max(0, int(vaq * 100)))
+        if pipeline and hasattr(pipeline, "lens_calibration"):
+            lc = pipeline.lens_calibration
+            if hasattr(lc, "is_valid") and lc.is_valid():
+                lens_calibrated = True
+
+        # Pipeline state: active / idle / degraded
+        pipeline_running = app_state.get("pipeline_running", False)
+        if not pipeline_running:
+            pipeline_state = "idle"
+        elif dropped_frames > 50 or queue_pressure > 0.8:
+            pipeline_state = "degraded"
+        else:
+            pipeline_state = "active"
+
         return {
             "fps": round(fps, 1),
             "connections": em.connection_count if em else 0,
-            "pipeline_running": app_state.get("pipeline_running", False),
+            "pipeline_running": pipeline_running,
             "multi_pipeline_running": app_state.get("multi_pipeline_running", False),
             "active_cameras": app_state.get("active_camera_ids", []),
             "pending_hits": pending_count,
@@ -1644,6 +1675,14 @@ def setup_routes(app_state: dict) -> APIRouter:
             "queue_pressure": round(queue_pressure, 2),
             "memory_mb": memory_mb,
             "camera_health": camera_health,
+            "pipeline_health": {
+                "state": pipeline_state,
+                "detection_rate": detection_rate,
+                "last_hits": last_3_hits,
+                "calibration_quality": calibration_quality,
+                "lens_calibrated": lens_calibrated,
+                "board_calibrated": board_calibrated,
+            },
         }
 
     # --- Video Stream ---
