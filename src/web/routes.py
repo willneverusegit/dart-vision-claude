@@ -1417,6 +1417,23 @@ def setup_routes(app_state: dict) -> APIRouter:
         health = monitor.check_health(multi)
         return {"ok": True, "cameras": health}
 
+    @router.post("/api/multi/camera/{camera_id}/reconnect")
+    async def multi_camera_reconnect(camera_id: str) -> dict:
+        """Manuellen Reconnect fuer eine bestimmte Kamera ausloesen."""
+        multi = app_state.get("multi_pipeline")
+        if multi is None:
+            return {"ok": False, "error": "Multi-Kamera-Pipeline laeuft nicht"}
+        result = multi.reconnect_camera(camera_id)
+        return result
+
+    @router.get("/api/multi/degraded")
+    async def multi_degraded_cameras() -> dict:
+        """Liste der dauerhaft ausgefallenen Kameras."""
+        multi = app_state.get("multi_pipeline")
+        if multi is None:
+            return {"ok": True, "degraded": []}
+        return {"ok": True, "degraded": multi.get_degraded_cameras()}
+
     # --- Per-Camera Video Feeds (Multi-Camera) ---
 
     @router.get("/video/feed/{camera_id}")

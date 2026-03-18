@@ -206,6 +206,12 @@ class MultiCameraPipeline:
         self._tri_telemetry = TriangulationTelemetry()
         self._viewing_angle_qualities: dict[str, float] = {}
 
+        # Auto-reconnect settings
+        self._max_reconnect_attempts = 5  # max attempts before giving up
+        self._reconnect_base_delay_s = 2.0  # initial delay between reconnect attempts
+        self._reconnect_max_delay_s = 30.0  # max backoff delay
+        self._camera_degraded: set[str] = set()  # cameras that permanently failed
+
         # Loaded from config at start() / reload_stereo_params()
         self._stereo_params: dict[str, CameraParams] = {}   # camera_id -> CameraParams
         self._board_transforms: dict[str, dict] = {}          # camera_id -> {R_cb, t_cb}
@@ -297,26 +303,17 @@ class MultiCameraPipeline:
             self._fusion_thread.join(timeout=5.0)
 
     def _run_pipeline_loop(self, cam_id: str, pipeline: DartPipeline) -> None:
-        """Frame processing loop for a single camera, rate-limited per-camera FPS."""
-        try:
-            pipeline.start()
-        except Exception as e:
-            logger.warning("Camera '%s' failed to start: %s", cam_id, e)
-            self._set_camera_error(cam_id, str(e), level="error")
-            return
+        """Frame processing loop for a single camera, rate-limited per-camera FPS.
 
-        # Apply exposure/gain after camera is opened
-        for cfg in self.camera_configs:
-            if cfg["camera_id"] == cam_id:
-                cam = getattr(pipeline, "camera", None)
-                if cam is not None and hasattr(cam, "set_exposure"):
-                    exposure = cfg.get("exposure")
-                    if exposure is not None:
-                        cam.set_exposure(exposure)
-                    gain = cfg.get("gain")
-                    if gain is not None:
-                        cam.set_gain(gain)
-                break
+        Includes auto-reconnect: if the pipeline fails to start or hits
+        persistent frame errors, it attempts to restart the pipeline with
+        exponential backoff.  After max attempts, the camera is marked as
+        degraded and the loop exits gracefully.
+        """
+        if not self._start_pipeline_with_retry(cam_id, pipeline):
+            return  # permanently failed, degraded
+
+        self._apply_exposure_gain(cam_id, pipeline)
 
         governor = self._governors.get(cam_id)
 
@@ -343,8 +340,17 @@ class MultiCameraPipeline:
                 logger.debug("Frame error on '%s': %s (consecutive=%d)", cam_id, e, count)
                 if count == 10:
                     self._set_camera_error(cam_id, f"Wiederholte Frame-Fehler: {e}", level="warning")
-                elif count == 50:
+                elif count >= 50:
                     self._set_camera_error(cam_id, f"Kamera antwortet nicht: {e}", level="error")
+                    # Attempt auto-reconnect
+                    logger.warning("Camera '%s': 50 consecutive errors, attempting auto-reconnect...", cam_id)
+                    self._consecutive_frame_errors[cam_id] = 0
+                    if self._attempt_reconnect(cam_id, pipeline):
+                        self._apply_exposure_gain(cam_id, pipeline)
+                        continue
+                    else:
+                        # Reconnect failed permanently
+                        return
             elapsed = time.monotonic() - t0
             if governor:
                 governor.record_frame_time(elapsed)
@@ -353,6 +359,153 @@ class MultiCameraPipeline:
                 sleep_s = max(0.0, _FRAME_INTERVAL_S - elapsed)
             if sleep_s > 0:
                 time.sleep(sleep_s)
+
+    def _start_pipeline_with_retry(self, cam_id: str, pipeline: DartPipeline) -> bool:
+        """Try to start a pipeline with exponential backoff retries.
+
+        Returns True if started successfully, False if permanently failed.
+        """
+        delay = self._reconnect_base_delay_s
+        for attempt in range(1, self._max_reconnect_attempts + 1):
+            try:
+                pipeline.start()
+                logger.info("Camera '%s' started (attempt %d)", cam_id, attempt)
+                return True
+            except Exception as e:
+                logger.warning(
+                    "Camera '%s' failed to start (attempt %d/%d): %s",
+                    cam_id, attempt, self._max_reconnect_attempts, e,
+                )
+                self._set_camera_error(
+                    cam_id,
+                    f"Start fehlgeschlagen (Versuch {attempt}/{self._max_reconnect_attempts}): {e}",
+                    level="warning" if attempt < self._max_reconnect_attempts else "error",
+                )
+                if attempt < self._max_reconnect_attempts and self._running:
+                    time.sleep(delay)
+                    delay = min(delay * 2, self._reconnect_max_delay_s)
+
+        # All attempts exhausted
+        self._degrade_camera(cam_id)
+        return False
+
+    def _attempt_reconnect(self, cam_id: str, pipeline: DartPipeline) -> bool:
+        """Attempt to reconnect a camera by stopping and restarting its pipeline.
+
+        Returns True on success, False if permanently failed (camera degraded).
+        """
+        self._set_camera_error(cam_id, "Auto-Reconnect laeuft...", level="warning")
+        logger.info("Camera '%s': stopping pipeline for reconnect...", cam_id)
+
+        try:
+            pipeline.stop()
+        except Exception as e:
+            logger.debug("Camera '%s': error during stop: %s", cam_id, e)
+
+        delay = self._reconnect_base_delay_s
+        for attempt in range(1, self._max_reconnect_attempts + 1):
+            if not self._running:
+                return False
+            time.sleep(delay)
+
+            try:
+                # Rebuild camera source and restart
+                pipeline.camera = pipeline._build_camera_source()
+                pipeline.camera.start()
+                # Re-init detector state
+                if hasattr(pipeline, 'detector') and pipeline.detector is not None:
+                    pipeline.detector.reset()
+
+                logger.info("Camera '%s': reconnect successful (attempt %d)", cam_id, attempt)
+                self._clear_camera_error(cam_id)
+                return True
+            except Exception as e:
+                logger.warning(
+                    "Camera '%s': reconnect attempt %d/%d failed: %s",
+                    cam_id, attempt, self._max_reconnect_attempts, e,
+                )
+                self._set_camera_error(
+                    cam_id,
+                    f"Reconnect fehlgeschlagen (Versuch {attempt}/{self._max_reconnect_attempts}): {e}",
+                    level="warning" if attempt < self._max_reconnect_attempts else "error",
+                )
+                delay = min(delay * 2, self._reconnect_max_delay_s)
+
+        # All reconnect attempts failed
+        self._degrade_camera(cam_id)
+        return False
+
+    def _degrade_camera(self, cam_id: str) -> None:
+        """Mark a camera as permanently degraded."""
+        self._camera_degraded.add(cam_id)
+        remaining = [c for c in self._pipelines if c not in self._camera_degraded]
+        self._set_camera_error(
+            cam_id,
+            f"Kamera dauerhaft ausgefallen — degradiert. Verbleibende Kameras: {remaining}",
+            level="error",
+        )
+        logger.error(
+            "Camera '%s' permanently degraded. Remaining cameras: %s",
+            cam_id, remaining,
+        )
+
+    def _apply_exposure_gain(self, cam_id: str, pipeline: DartPipeline) -> None:
+        """Apply exposure/gain settings from config to a pipeline's camera."""
+        for cfg in self.camera_configs:
+            if cfg["camera_id"] == cam_id:
+                cam = getattr(pipeline, "camera", None)
+                if cam is not None and hasattr(cam, "set_exposure"):
+                    exposure = cfg.get("exposure")
+                    if exposure is not None:
+                        cam.set_exposure(exposure)
+                    gain = cfg.get("gain")
+                    if gain is not None:
+                        cam.set_gain(gain)
+                break
+
+    def reconnect_camera(self, cam_id: str) -> dict:
+        """Manually trigger a reconnect for a specific camera.
+
+        Returns a status dict with success/failure info.
+        """
+        if cam_id not in self._pipelines:
+            return {"ok": False, "error": f"Kamera '{cam_id}' nicht gefunden"}
+
+        pipeline = self._pipelines[cam_id]
+
+        # Remove from degraded set so it can be retried
+        self._camera_degraded.discard(cam_id)
+        self._consecutive_frame_errors[cam_id] = 0
+
+        logger.info("Manual reconnect requested for camera '%s'", cam_id)
+
+        # Stop and restart in a background thread to not block the API
+        def _do_reconnect():
+            success = self._attempt_reconnect(cam_id, pipeline)
+            if success:
+                self._apply_exposure_gain(cam_id, pipeline)
+                # Restart the processing loop in a new thread
+                thread = threading.Thread(
+                    target=self._run_pipeline_loop,
+                    args=(cam_id, pipeline),
+                    daemon=True,
+                    name=f"cv-pipeline-{cam_id}",
+                )
+                self._threads[cam_id] = thread
+                thread.start()
+
+        reconnect_thread = threading.Thread(
+            target=_do_reconnect,
+            daemon=True,
+            name=f"reconnect-{cam_id}",
+        )
+        reconnect_thread.start()
+
+        return {"ok": True, "message": f"Reconnect fuer '{cam_id}' gestartet"}
+
+    def get_degraded_cameras(self) -> list[str]:
+        """Return list of permanently degraded camera IDs."""
+        return list(self._camera_degraded)
 
     def _apply_camera_profile(self, cam_id: str, cfg: dict) -> None:
         """Log per-camera profile settings (exposure/gain applied after start)."""
