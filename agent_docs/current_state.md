@@ -1,6 +1,6 @@
 # Current State
 
-Stand dieser Zusammenfassung: 2026-03-18 (Welle 1-4 + Auto-Agents: P22, P26, P27, P28, P30-P31, P33, P39-P43, P46-P49, P50-P56, P60-P63, Tier-2 #5-#7, #10-#14, P32, P35 erledigt)
+Stand dieser Zusammenfassung: 2026-03-18 (Welle 1-4 + Auto-Agents: P22, P26, P27, P28, P30-P31, P33, P39-P43, P46-P49, P50-P56, P60-P65, Tier-2 #5-#7, #10-#14, P32, P35 erledigt)
 
 ## Technischer Kern
 
@@ -92,6 +92,10 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 - Frontend Homography-Age Warnung bei >30 Frames ohne Marker + Telemetrie-Status-Widget mit Rotate-Button (P62)
 - cv2.setNumThreads(0) fuer volle CPU-Nutzung, Flight-Tipp im Kalibrierungs-Modal (P63)
 - 48 neue Route-Tests, routes.py Coverage 66%→74% (P64-Vorarbeit)
+- Camera Preview Locking: asyncio.Lock pro Source, TTL-Cache 2.5s, Timeout 5s (P65)
+- 54 weitere Route-Tests fuer Pipeline-Start/Stop, Multi-Cam, WebSocket, Telemetrie (P64)
+- Ground-Truth-Validierungsskript und 32 Tests (P11)
+- Video-Replay-Testinfrastruktur: add_ground_truth.py Helper, verbessertes Fehler-Reporting, 29 Tests (P39)
 
 ## Was heute als fortgeschritten, aber noch sensibel gilt
 
@@ -103,7 +107,7 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 
 ## Verifizierte Kennzahlen
 
-- `1171` Tests bestanden (Stand 2026-03-18, +526 neue Tests)
+- `1203` Tests bestanden (Stand 2026-03-18, +558 neue Tests)
 - Gesamt-Coverage ~77%
 - Wichtige Module: main.py 78%, routes.py 74%, pipeline.py 68%, multi_camera.py 62%, capture.py 72%
 - synthetische Pipeline-Benchmarks fuer `1`, `2` und `3` Kameras innerhalb der definierten KPI-Grenzen

@@ -32,6 +32,8 @@ type: domain
 9. **E2E-Tests**: Pipeline lädt automatisch echte Kalibrierung — für synthetische Tests Remapper und Geometry explizit auf Identity überschreiben nach `pipeline.start()`.
 10. **ROI-Zielgröße beibehalten**: Bounded-Queue-Strategie erhalten, keine unkontrollierte Mehrarbeit pro Frame.
 11. **Homography-Fallback aktiv (P61)**: Pipeline nutzt `aruco_calibration_with_fallback()` — gecachte Homography bei Marker-Occlusion mit Age-Counter. `homography_age` in Telemetrie-Stats verfügbar.
+12. **Ring-Naming inkonsistent (P69)**: `ground_truth.yaml` nutzt `bull_inner`/`bull_outer`, `routes.py` nutzt `inner_bull`/`outer_bull`. Bei E2E-Vergleichen Mapping beachten bis P69 gelöst ist.
+13. **Ground-Truth-Validierung**: `scripts/validate_ground_truth.py` prüft YAML-Einträge auf Konsistenz. Vor neuen GT-Annotationen ausführen.
 
 ## Architektur-Überblick
 
@@ -55,14 +57,14 @@ Key Components:
 | P-Nr | Titel | Status |
 |------|-------|--------|
 | P37 | Live-Realtest am Board — Parameter tunen | OFFEN — ohne echte Board-Validierung sind Algo-Änderungen blind |
-| P11 | E2E Tests mit echten Videoclips | OFFEN (Ground-Truth-Annotation fehlt) |
+| P11 | E2E Tests mit echten Videoclips | TEILWEISE — GT-Validierung + 32 Tests, Ring-Naming inkonsistent (P69) |
 | P24 | Kamera-Vergleich und Kontur-Referenzdaten | OFFEN |
 | P27 | Marker-Kalibrierung auf neue Masse | OFFEN |
-| P24 | Kamera-Vergleich und Kontur-Referenzdaten | OFFEN |
-| P27 | Marker-Kalibrierung auf neue Masse | OFFEN |
+| P68 | Timestamp-basiertes Detection Matching | OFFEN — GT-Timestamps mit Pipeline-Frames korrelieren |
+| P69 | Ring-Naming-Konsistenz (bull_inner vs inner_bull) | OFFEN — GT und Backend nutzen verschiedene Namen |
 
 **Erledigte CV-Items (Kurzreferenz):**
-P12 (Area-Range), P19 (Frame-Diff), P20 (Tip-Detection), P21 (Kontur-Robustheit), P25 (Tip vs Centroid), P26 (Schärfemetrik), P38 (3-Stufen-Morphologie), P40-P43 (Adaptive/Cache/Cooldown/Modular), P47 (Kernel Cache), P49 (Component Tests), P50 (Auto-Exposure), P53 (FrameDiff Integration), P55 (Baseline-Warmup), P57 (Diff-Cache-Bug), P59 (MOG2 Sensitivity), P60 (Homography-Fallback), P61 (Pipeline-Integration), P62 (Homography-Warning UI), P63 (Quick-Wins)
+P12 (Area-Range), P19 (Frame-Diff), P20 (Tip-Detection), P21 (Kontur-Robustheit), P25 (Tip vs Centroid), P26 (Schärfemetrik), P38 (3-Stufen-Morphologie), P39 (Video-Replay-Infra verbessert), P40-P43 (Adaptive/Cache/Cooldown/Modular), P47 (Kernel Cache), P49 (Component Tests), P50 (Auto-Exposure), P53 (FrameDiff Integration), P55 (Baseline-Warmup), P57 (Diff-Cache-Bug), P59 (MOG2 Sensitivity), P60 (Homography-Fallback), P61 (Pipeline-Integration), P62 (Homography-Warning UI), P63 (Quick-Wins)
 
 ## Risiko-Einschätzung
 
