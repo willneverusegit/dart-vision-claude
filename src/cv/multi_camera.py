@@ -18,7 +18,7 @@ from src.cv.stereo_utils import (
     transform_to_board_frame,
 )
 from src.cv.geometry import BoardGeometry, BOARD_RADIUS_MM
-from src.utils.config import get_stereo_pair, get_board_transform
+from src.utils.config import get_stereo_pair, get_board_transform, get_sync_depth_config, get_governor_config
 from src.utils.triangulation_telemetry import TriangulationTelemetry
 
 logger = logging.getLogger(__name__)
@@ -45,7 +45,13 @@ class FPSGovernor:
     target FPS when the pipeline can't keep up.
     """
 
-    def __init__(self, target_fps: int = 30, min_fps: int = 10, is_primary: bool = True) -> None:
+    def __init__(
+        self,
+        target_fps: int = 30,
+        min_fps: int = 10,
+        is_primary: bool = True,
+        buffer_max_depth: int = 5,
+    ) -> None:
         self._target_fps = target_fps
         self._min_fps = min_fps
         self._is_primary = is_primary
@@ -54,9 +60,24 @@ class FPSGovernor:
         self._max_samples = 30
         self._overload_count = 0
         self._overload_threshold = 10  # consecutive overloaded frames before reducing
+        self._buffer_max_depth = buffer_max_depth
+        self._frames_dropped = 0
+        self._frames_total = 0
+
+    def should_skip_frame(self, buffer_depth: int) -> bool:
+        """Return True if the frame should be skipped due to backpressure.
+
+        Args:
+            buffer_depth: Current number of entries in the detection buffer.
+        """
+        if buffer_depth >= self._buffer_max_depth:
+            self._frames_dropped += 1
+            return True
+        return False
 
     def record_frame_time(self, elapsed_s: float) -> None:
         """Record processing time for one frame."""
+        self._frames_total += 1
         self._processing_times.append(elapsed_s)
         if len(self._processing_times) > self._max_samples:
             self._processing_times.pop(0)
@@ -103,6 +124,9 @@ class FPSGovernor:
             "is_primary": self._is_primary,
             "avg_processing_ms": round(avg_time * 1000, 1),
             "overload_count": self._overload_count,
+            "buffer_max_depth": self._buffer_max_depth,
+            "frames_dropped": self._frames_dropped,
+            "frames_total": self._frames_total,
         }
 
 
@@ -113,11 +137,13 @@ class MultiCameraPipeline:
         self,
         camera_configs: list[dict],
         on_multi_dart_detected: Callable[[dict], None] | None = None,
+        on_camera_errors_changed: Callable[[dict[str, str]], None] | None = None,
         debug: bool = False,
         sync_wait_s: float = 0.3,
-        max_time_diff_s: float = MAX_DETECTION_TIME_DIFF_S,
-        depth_tolerance_m: float = BOARD_DEPTH_TOLERANCE_M,
+        max_time_diff_s: float | None = None,
+        depth_tolerance_m: float | None = None,
         depth_auto_adapt: bool = True,
+        load_config_from_yaml: bool = True,
     ) -> None:
         """
         Args:
@@ -128,17 +154,44 @@ class MultiCameraPipeline:
             debug: Enable debug visualization.
             sync_wait_s: Max wait time for 2nd camera after 1st detection.
             max_time_diff_s: Max allowed time diff between detections for sync.
+                If None, loaded from config/multi_cam.yaml (or standard preset).
             depth_tolerance_m: Z-plausibility tolerance for board depth.
+                If None, loaded from config/multi_cam.yaml (or standard preset).
             depth_auto_adapt: Auto-widen depth tolerance on high rejection rate.
+            load_config_from_yaml: Load sync/depth/governor settings from YAML.
         """
         self.camera_configs = camera_configs
         self.on_multi_dart_detected = on_multi_dart_detected
+        self.on_camera_errors_changed = on_camera_errors_changed
         self.debug = debug
         self._sync_wait_s = sync_wait_s
-        self._max_time_diff_s = max_time_diff_s
-        self._depth_tolerance_m = depth_tolerance_m
         self._depth_auto_adapt = depth_auto_adapt
-        self._effective_depth_tolerance_m = depth_tolerance_m
+
+        # Load sync/depth from config, with explicit args as overrides
+        if load_config_from_yaml:
+            try:
+                sd_cfg = get_sync_depth_config()
+            except Exception:
+                sd_cfg = {"max_time_diff_s": MAX_DETECTION_TIME_DIFF_S, "depth_tolerance_m": BOARD_DEPTH_TOLERANCE_M}
+            try:
+                self._governor_config = get_governor_config()
+            except Exception:
+                self._governor_config = {"secondary_target_fps": 15, "min_fps": 10, "buffer_max_depth": 5}
+        else:
+            sd_cfg = {"max_time_diff_s": MAX_DETECTION_TIME_DIFF_S, "depth_tolerance_m": BOARD_DEPTH_TOLERANCE_M}
+            self._governor_config = {"secondary_target_fps": 15, "min_fps": 10, "buffer_max_depth": 5}
+
+        self._max_time_diff_s = max_time_diff_s if max_time_diff_s is not None else sd_cfg["max_time_diff_s"]
+        self._depth_tolerance_m = depth_tolerance_m if depth_tolerance_m is not None else sd_cfg["depth_tolerance_m"]
+        self._effective_depth_tolerance_m = self._depth_tolerance_m
+        self._buffer_max_depth = self._governor_config["buffer_max_depth"]
+
+        logger.info(
+            "MultiCam config: max_time_diff=%.0fms depth_tol=%.1fmm buffer_max=%d",
+            self._max_time_diff_s * 1000,
+            self._depth_tolerance_m * 1000,
+            self._buffer_max_depth,
+        )
 
         self._pipelines: dict[str, DartPipeline] = {}
         self._threads: dict[str, threading.Thread] = {}
@@ -168,10 +221,13 @@ class MultiCameraPipeline:
             self._per_camera_fps[cam_id] = per_fps
 
             is_primary = cfg.get("priority", "primary") == "primary"
+            gov_cfg = self._governor_config
+            target = per_fps if is_primary else min(per_fps, gov_cfg["secondary_target_fps"])
             self._governors[cam_id] = FPSGovernor(
-                target_fps=per_fps,
-                min_fps=10,
+                target_fps=target,
+                min_fps=gov_cfg["min_fps"],
                 is_primary=is_primary,
+                buffer_max_depth=gov_cfg["buffer_max_depth"],
             )
 
             pipeline = DartPipeline(
@@ -246,6 +302,7 @@ class MultiCameraPipeline:
         except Exception as e:
             logger.warning("Camera '%s' failed to start: %s", cam_id, e)
             self._camera_errors[cam_id] = str(e)
+            self._notify_camera_errors()
             return
 
         # Apply exposure/gain after camera is opened
@@ -264,6 +321,14 @@ class MultiCameraPipeline:
         governor = self._governors.get(cam_id)
 
         while self._running:
+            # Backpressure: skip frame if detection buffer is full
+            if governor:
+                with self._buffer_lock:
+                    buf_depth = len(self._detection_buffer)
+                if governor.should_skip_frame(buf_depth):
+                    time.sleep(governor.frame_interval_s)
+                    continue
+
             t0 = time.monotonic()
             try:
                 pipeline.process_frame()
@@ -448,7 +513,11 @@ class MultiCameraPipeline:
                         "Triangulation: pairs=%d reproj=%.2f",
                         tri_result["pairs_used"], tri_result["reprojection_error"],
                     )
-                    self._tri_telemetry.record_attempt("triangulation", tri_result["reprojection_error"])
+                    self._tri_telemetry.record_attempt(
+                        "triangulation",
+                        tri_result["reprojection_error"],
+                        tri_result.get("z_depth"),
+                    )
                     self._emit(result)
                     triangulated = True
 
@@ -586,11 +655,20 @@ class MultiCameraPipeline:
             "depth_tolerance_m": self._depth_tolerance_m,
             "effective_depth_tolerance_m": self._effective_depth_tolerance_m,
             "depth_auto_adapt": self._depth_auto_adapt,
+            "buffer_max_depth": self._buffer_max_depth,
         }
 
     def get_governor_stats(self) -> dict[str, dict]:
         """Return per-camera FPS governor statistics."""
         return {cam_id: gov.get_stats() for cam_id, gov in self._governors.items()}
+
+    def _notify_camera_errors(self) -> None:
+        """Notify callback when camera errors change."""
+        if self.on_camera_errors_changed:
+            try:
+                self.on_camera_errors_changed(dict(self._camera_errors))
+            except Exception as e:
+                logger.debug("on_camera_errors_changed callback failed: %s", e)
 
     def get_camera_errors(self) -> dict[str, str]:
         """Return dict of camera_id -> error message for cameras that failed to start."""

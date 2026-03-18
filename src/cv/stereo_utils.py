@@ -202,6 +202,7 @@ def triangulate_multi_pair(
             "board_x_mm": r["board_x_mm"],
             "board_y_mm": r["board_y_mm"],
             "reprojection_error": r["reprojection_error"],
+            "z_depth": r["z_depth"],
             "pairs_used": 1,
             "source": "triangulation",
         }
@@ -221,11 +222,13 @@ def triangulate_multi_pair(
         total_weight += w
 
     avg_reproj = sum(r["reprojection_error"] for r in results) / len(results)
+    avg_z = sum(r["z_depth"] for r in results) / len(results)
 
     return {
         "board_x_mm": wx / total_weight,
         "board_y_mm": wy / total_weight,
         "reprojection_error": avg_reproj,
+        "z_depth": avg_z,
         "pairs_used": len(results),
         "source": "triangulation",
     }

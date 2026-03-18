@@ -91,6 +91,7 @@ class TestGetFusionConfig:
             "depth_tolerance_m": 0.015,
             "effective_depth_tolerance_m": 0.015,
             "depth_auto_adapt": True,
+            "buffer_max_depth": 5,
         }
 
     def test_custom_config(self):

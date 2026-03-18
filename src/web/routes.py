@@ -779,14 +779,15 @@ def setup_routes(app_state: dict) -> APIRouter:
         if pipe_a is None or pipe_b is None:
             return {"ok": False, "error": f"Camera '{cam_a}' or '{cam_b}' not found in active pipelines"}
 
-        # Pre-flight: Intrinsics-Validierung
-        from src.cv.board_calibration import BoardCalibrationManager
-        bcm_a = BoardCalibrationManager(camera_id=cam_a)
-        bcm_b = BoardCalibrationManager(camera_id=cam_b)
-        if not bcm_a.has_valid_intrinsics():
-            return {"ok": False, "error": f"Kamera '{cam_a}' hat keine gueltige Lens-Kalibrierung. Bitte zuerst 'Lens Setup (ChArUco)' durchfuehren."}
-        if not bcm_b.has_valid_intrinsics():
-            return {"ok": False, "error": f"Kamera '{cam_b}' hat keine gueltige Lens-Kalibrierung. Bitte zuerst 'Lens Setup (ChArUco)' durchfuehren."}
+        # Pre-flight: Intrinsics-Validierung via validate_stereo_prerequisites
+        from src.cv.stereo_calibration import validate_stereo_prerequisites
+        preflight = validate_stereo_prerequisites(cam_a, cam_b)
+        if not preflight["ready"]:
+            error_msg = (
+                "Bitte Linsen-Kalibrierung zuerst durchfuehren. "
+                + " ".join(preflight["errors"])
+            )
+            return {"ok": False, "error": error_msg, "preflight": preflight}
         intr_a = pipe_a.camera_calibration.get_intrinsics()
         intr_b = pipe_b.camera_calibration.get_intrinsics()
 
@@ -1364,6 +1365,14 @@ def setup_routes(app_state: dict) -> APIRouter:
             "cameras": camera_stats,
             "camera_errors": camera_errors,
         }
+
+    @router.get("/api/multi/errors")
+    async def multi_errors() -> dict:
+        """Polling-Fallback: Kamera-Fehler im Multi-Cam-Betrieb abrufen."""
+        multi = app_state.get("multi_pipeline")
+        if multi is None:
+            return {"ok": True, "errors": {}, "message": "Multi-Pipeline nicht aktiv"}
+        return {"ok": True, "errors": multi.get_camera_errors()}
 
     @router.get("/api/multi/intrinsics-status")
     async def multi_intrinsics_status() -> dict:

@@ -135,6 +135,50 @@ def load_multi_cam_config(path: str = MULTI_CAM_CONFIG_PATH) -> dict:
     return load_config(path)
 
 
+# ── Sync/Depth presets ──────────────────────────────────────────────
+SYNC_DEPTH_PRESETS: dict[str, dict[str, float]] = {
+    "tight":    {"max_time_diff_s": 0.100, "depth_tolerance_m": 0.010},
+    "standard": {"max_time_diff_s": 0.150, "depth_tolerance_m": 0.015},
+    "loose":    {"max_time_diff_s": 0.200, "depth_tolerance_m": 0.020},
+}
+
+
+def get_sync_depth_config(path: str = MULTI_CAM_CONFIG_PATH) -> dict[str, float]:
+    """Load sync/depth fusion parameters from multi_cam.yaml.
+
+    Resolves preset first, then applies any explicit overrides.
+    Returns dict with keys: max_time_diff_s, depth_tolerance_m.
+    Falls back to 'standard' preset if nothing is configured.
+    """
+    cfg = load_multi_cam_config(path)
+    sd = cfg.get("sync_depth", {}) or {}
+
+    preset_name = sd.get("preset", "standard")
+    base = dict(SYNC_DEPTH_PRESETS.get(preset_name, SYNC_DEPTH_PRESETS["standard"]))
+
+    # Explicit overrides beat preset
+    for key in ("max_time_diff_s", "depth_tolerance_m"):
+        if key in sd and sd[key] is not None:
+            base[key] = float(sd[key])
+
+    return base
+
+
+def get_governor_config(path: str = MULTI_CAM_CONFIG_PATH) -> dict:
+    """Load FPS governor settings from multi_cam.yaml.
+
+    Returns dict with keys: secondary_target_fps, min_fps, buffer_max_depth.
+    Falls back to sensible defaults.
+    """
+    cfg = load_multi_cam_config(path)
+    gov = cfg.get("governor", {}) or {}
+    return {
+        "secondary_target_fps": int(gov.get("secondary_target_fps", 15)),
+        "min_fps": int(gov.get("min_fps", 10)),
+        "buffer_max_depth": int(gov.get("buffer_max_depth", 5)),
+    }
+
+
 def save_multi_cam_config(data: dict, path: str = MULTI_CAM_CONFIG_PATH) -> None:
     """Atomically save multi-camera extrinsic parameters."""
     save_config(data, path)

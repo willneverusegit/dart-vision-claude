@@ -6,6 +6,26 @@ last_cameras:
   src: 2
 pairs: {}
 schema_version: 2
+
+# Sync & depth fusion settings
+# preset: "tight", "standard", or "loose" (overrides individual values)
+# Individual values override preset when explicitly set.
+sync_depth:
+  preset: standard
+  # max_time_diff_s: 0.15
+  # depth_tolerance_m: 0.015
+
+# Preset definitions (read-only reference):
+# tight:    max_time_diff_s=0.100, depth_tolerance_m=0.010
+# standard: max_time_diff_s=0.150, depth_tolerance_m=0.015
+# loose:    max_time_diff_s=0.200, depth_tolerance_m=0.020
+
+# FPS Governor settings
+governor:
+  secondary_target_fps: 15
+  min_fps: 10
+  buffer_max_depth: 5
+
 startup:
   cameras: []
   mode: single

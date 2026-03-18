@@ -157,6 +157,10 @@ class TestRoutesCoverage:
         monkeypatch.setattr("src.utils.config.save_stereo_pair", lambda *args, **kwargs: None)
         monkeypatch.setattr("src.web.routes._time.sleep", lambda _seconds: None)
         monkeypatch.setattr("src.cv.board_calibration.BoardCalibrationManager.has_valid_intrinsics", lambda self: True)
+        monkeypatch.setattr(
+            "src.cv.stereo_calibration.validate_stereo_prerequisites",
+            lambda *args, **kwargs: {"ready": True, "errors": [], "warnings": []},
+        )
 
         saved = app_state.get("multi_pipeline")
         app_state["multi_pipeline"] = DummyMultiPipeline()

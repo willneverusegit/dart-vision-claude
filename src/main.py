@@ -283,9 +283,15 @@ def _run_multi_pipeline(state: dict, camera_configs: list[dict],
                         candidate_id, quality, score_result.get("source", "?"),
                         score_result.get("ring", "?"), score_result.get("score", 0))
 
+        def on_camera_errors_changed(errors: dict) -> None:
+            em = state.get("event_manager")
+            if em:
+                em.broadcast_sync("camera_errors", errors)
+
         multi = MultiCameraPipeline(
             camera_configs=camera_configs,
             on_multi_dart_detected=on_multi_dart_detected,
+            on_camera_errors_changed=on_camera_errors_changed,
         )
 
         state["multi_pipeline"] = multi
