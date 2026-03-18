@@ -162,6 +162,55 @@ class TestDetectionToScoring:
             assert hit.sector in range(1, 21)
 
 
+class TestCameraFocusCheck:
+    """Tests for Laplacian-based camera focus quality check."""
+
+    def test_focus_check_warns_on_blurry_frame(self, caplog):
+        """Focus check should warn when Laplacian variance is below threshold."""
+        from unittest.mock import MagicMock
+        from src.cv.pipeline import DartPipeline
+
+        pipeline = DartPipeline(camera_src=0)
+        # Create a blurry (uniform) frame — very low Laplacian variance
+        blurry_frame = np.ones((480, 640, 3), dtype=np.uint8) * 128
+        mock_camera = MagicMock()
+        mock_camera.read.return_value = (True, blurry_frame)
+        pipeline.camera = mock_camera
+
+        import logging
+        with caplog.at_level(logging.WARNING, logger="src.cv.pipeline"):
+            pipeline._check_camera_focus()
+        assert any("focus quality LOW" in r.message for r in caplog.records)
+
+    def test_focus_check_ok_on_sharp_frame(self, caplog):
+        """Focus check should log OK when frame is sharp."""
+        from unittest.mock import MagicMock
+        from src.cv.pipeline import DartPipeline
+
+        pipeline = DartPipeline(camera_src=0)
+        # Create a frame with high-frequency edges (high Laplacian variance)
+        sharp_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        sharp_frame[::2, :] = 255  # alternating black/white rows
+        mock_camera = MagicMock()
+        mock_camera.read.return_value = (True, sharp_frame)
+        pipeline.camera = mock_camera
+
+        import logging
+        with caplog.at_level(logging.INFO, logger="src.cv.pipeline"):
+            pipeline._check_camera_focus()
+        assert any("focus quality OK" in r.message for r in caplog.records)
+
+    def test_focus_check_no_camera(self, caplog):
+        """Focus check should do nothing when camera is None."""
+        from src.cv.pipeline import DartPipeline
+
+        pipeline = DartPipeline(camera_src=0)
+        pipeline.camera = None
+        pipeline._check_camera_focus()
+        # No errors, no warnings about focus
+        assert not any("focus" in r.message.lower() for r in caplog.records)
+
+
 class TestPipelineInit:
     def test_opencv_threads_enabled(self):
         """Pipeline init should set cv2.setNumThreads(0) for full parallelism."""
