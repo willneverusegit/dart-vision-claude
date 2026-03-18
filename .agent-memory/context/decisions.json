@@ -167,5 +167,26 @@
     },
     "tags": ["python", "opencv", "multi-camera", "triangulation", "stereo", "fusion", "architecture"],
     "status": "active"
+  },
+  {
+    "id": "2026-03-18-mode-switch-state-reset",
+    "timestamp": "2026-03-18T22:00:00+01:00",
+    "type": "architecture-decision",
+    "title": "Vollstaendiger State-Reset bei jedem Moduswechsel (Single/Multi)",
+    "decision": "_full_state_reset() als zentrale Funktion fuer transiente State-Bereinigung bei jedem Moduswechsel. multi_pipeline_running Flag erst nach erfolgreichem start(). MultiCameraPipeline.start() atomar mit Rollback. _wait_for_camera_release() statt blindem sleep. Force-Release bei Thread-Timeout.",
+    "rationale": "Multi-Cam-Start schlug fehl wenn zuvor auf Single-Cam gewechselt oder ein Kalibrierungsfehler aufgetreten war. 5 Root Causes: (1) pending_hits nicht bereinigt, (2) Running-Flag vor start() gesetzt, (3) Kamera-Handle noch belegt nach blindem 0.5s sleep, (4) Thread-Leak bei partiellem Start-Fehler, (5) Stale Frames/Detection-Buffer.",
+    "alternatives_considered": [
+      {
+        "option": "State-Reset nur im Multi-Cam-Pfad",
+        "rejected_because": "Single→Single Wechsel hat dasselbe Problem mit stale pending_hits. Zentraler Reset deckt alle Pfade ab."
+      }
+    ],
+    "impact": {
+      "files_affected": ["src/main.py", "src/web/routes.py", "src/cv/multi_camera.py", "agent_docs/pitfalls.md"],
+      "reversibility": "easy",
+      "dependencies": []
+    },
+    "tags": ["python", "multi-camera", "state-management", "threading", "robustness"],
+    "status": "active"
   }
 ]

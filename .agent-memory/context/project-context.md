@@ -1,6 +1,6 @@
 # Project Context — DartVision
 
-*Last updated: 2026-03-18 (Scheduled 4-Agent Run: P64, P65 erledigt, P39/P11 verbessert, P67-P70 neu)*
+*Last updated: 2026-03-18 (Multi-Cam Mode-Switch Robustness Fix: _full_state_reset, atomic start, camera-release check)*
 
 ## Projektziel
 Lokales Dart-Scoring-System mit Computer Vision zur automatischen Treffererkennung auf einer Dartscheibe. CPU-only, Windows-Laptop, kein Cloud-Zwang.
@@ -13,7 +13,7 @@ Lokales Dart-Scoring-System mit Computer Vision zur automatischen Treffererkennu
 | Backend | FastAPI | — | REST + WebSocket |
 | CV | OpenCV + NumPy | — | CPU-only, keine GPU |
 | Frontend | Vanilla JS / HTML / CSS | — | Web Audio API |
-| Tests | pytest | — | 1203 Tests, ~77% Coverage |
+| Tests | pytest | — | 1355 Tests, ~77% Coverage |
 | Config | YAML | — | calibration_config.yaml |
 
 ## Architektur
@@ -49,7 +49,7 @@ ThreadedCamera
 | Board-Geometrie | stabil | ArUco 4-stufig, Qualitaetsmetrik |
 | Kamera-Reconnect | stabil | Exp. Backoff, Health-API |
 | Telemetrie | stabil | FPS, Drops, Queue, RAM, Chart, Alerting |
-| Multi-Camera | experimentell | P44-P45, P56 Error Recovery (Auto-Reconnect, Degradation), P30 Error Reporting |
+| Multi-Camera | experimentell | P44-P45, P56 Error Recovery, P30 Error Reporting, Mode-Switch Robustness Fix (atomic start, state reset) |
 | Homography-Fallback | stabil | P60+P61 — gecachte Homography bei Marker-Occlusion, in Pipeline integriert, homography_age in Stats |
 | CSS Theming | stabil | P46+P52 — alle Farben via CSS-Variablen, 3-Way Toggle (dark/light/high-contrast) |
 | Telemetrie-Cleanup | stabil | P48+P51 — Rotation, Age-Cleanup, Background-Scheduler, Status/Rotate API |
@@ -87,6 +87,7 @@ ThreadedCamera
 - **2026-03-18**: Multi-Cam Error Recovery — Auto-Reconnect mit exp. Backoff + graceful Degradation statt dauerhafter Kamera-Markierung (P56)
 - **2026-03-18**: Homography-Fallback in Pipeline integriert — aruco_calibration_with_fallback() aktiv, homography_age in Telemetrie (P61)
 - **2026-03-18**: Telemetrie-Cleanup-Scheduler — asyncio Background-Task + Status/Rotate API statt manueller Cleanup-Aufrufe (P51)
+- **2026-03-18**: Mode-Switch State Reset — _full_state_reset() bei jedem Moduswechsel, atomic start(), _wait_for_camera_release(), Force-Release bei Timeout (→ decisions.json#2026-03-18-mode-switch-state-reset)
 
 ## Known Limitations / Tech Debt
 
