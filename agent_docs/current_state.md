@@ -1,6 +1,6 @@
 # Current State
 
-Stand dieser Zusammenfassung: 2026-03-18 (Welle 1-4 Session: P22, P27, P28, P40-P42, P46-P48, Tier-2 #5-#7, #10-#14, P30-P33, P35 erledigt)
+Stand dieser Zusammenfassung: 2026-03-18 (Welle 1-4 + Auto-Agents: P22, P26, P27, P28, P40-P43, P46-P48, Tier-2 #5-#7, #10-#14, P30-P33, P35, P41 erledigt)
 
 ## Technischer Kern
 
@@ -64,6 +64,10 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 - Contour Shape Confidence Score (gewichtet: Aspect-Ratio, Solidity, Area)
 - Light Stability Monitor (automatische Threshold-Erhoehung bei instabilem Licht)
 - Kalibrierung: dynamischer BOARD_CROP_MM, center_px als ROI-Mitte, cornerSubPix-Fix
+- Kamera-Schaerfemetrik (Laplacian-Varianz) mit adaptiver Threshold-Anpassung pro Kamera (P26)
+- Wire-Artefakt-Filter fuer scharfe Kameras (morphologisches Opening, groessenbasiert)
+- Telemetrie-Export: Session-ID in Export, JSON+CSV Download-Buttons im Performance-Monitor (P22)
+- Edge Cache fuer Canny-Reuse pro Frame (P41, war bereits implementiert — verifiziert)
 
 ## Was heute als fortgeschritten, aber noch sensibel gilt
 
@@ -75,7 +79,7 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 
 ## Verifizierte Kennzahlen
 
-- `831` Tests bestanden (Stand 2026-03-18, +186 neue Tests)
+- `975` Tests bestanden (Stand 2026-03-18, +330 neue Tests)
 - Gesamt-Coverage ~77%
 - Wichtige Module: main.py 78%, routes.py 66%, pipeline.py 68%, multi_camera.py 62%, capture.py 72%
 - synthetische Pipeline-Benchmarks fuer `1`, `2` und `3` Kameras innerhalb der definierten KPI-Grenzen
