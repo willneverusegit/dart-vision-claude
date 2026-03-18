@@ -186,7 +186,7 @@ class CalibrationManager:
 
     def aruco_calibration(self, frame: np.ndarray,
                           expected_ids: list[int] | None = None,
-                          marker_spacing_mm: float = MARKER_SPACING_MM,
+                          marker_spacing_mm: float | None = None,
                           roi_size: tuple[int, int] = (400, 400),
                           marker_size_mm: float | None = None) -> dict:
         """
@@ -199,12 +199,18 @@ class CalibrationManager:
             frame: Single camera frame.
             expected_ids: Marker IDs to look for (default: [0,1,2,3]).
             marker_spacing_mm: Physical distance between marker centers (mm).
+                Resolved as: explicit arg > config > module default (430mm).
             roi_size: Target ROI size for warped output.
             marker_size_mm: ArUco marker edge length in mm (default: config or 75).
 
         Returns:
             {"ok": True, "homography": list, "mm_per_px": float, "corners_px": list}
         """
+        # Resolve marker spacing: explicit arg > config > module default
+        if marker_spacing_mm is None:
+            marker_spacing_mm = float(self._config.get(
+                "marker_spacing_mm", MARKER_SPACING_MM))
+
         # Resolve marker size: explicit arg > config > module default
         if marker_size_mm is None:
             marker_size_mm = float(self._config.get(
