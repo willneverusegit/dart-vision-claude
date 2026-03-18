@@ -1,9 +1,11 @@
 """Telemetry history: ring-buffer for FPS, queue pressure, dropped frames, CPU."""
 
+import glob
 import json
 import logging
 import os
 import threading
+import time as _time
 from collections import deque
 from dataclasses import dataclass
 
@@ -162,12 +164,24 @@ class TelemetryJSONLWriter:
 
     Activated via DARTVISION_TELEMETRY_FILE environment variable.
     Each line is a JSON object with session_id and sample data.
+
+    Supports automatic rotation (size-based) and retention cleanup (age-based)
+    via DARTVISION_TELEMETRY_MAX_MB and DARTVISION_TELEMETRY_RETAIN_DAYS.
     """
 
-    def __init__(self, filepath: str, session_id: str) -> None:
+    def __init__(
+        self,
+        filepath: str,
+        session_id: str,
+        max_mb: float = 50.0,
+        retain_days: int = 7,
+    ) -> None:
         self._filepath = filepath
         self._session_id = session_id
+        self._max_bytes = int(max_mb * 1024 * 1024)
+        self._retain_days = retain_days
         self._lock = threading.Lock()
+        self._write_count = 0
         # Ensure directory exists
         dirpath = os.path.dirname(filepath)
         if dirpath:
@@ -183,7 +197,7 @@ class TelemetryJSONLWriter:
         return self._session_id
 
     def write(self, sample: TelemetrySample) -> None:
-        """Append a single sample as a JSON line."""
+        """Append a single sample as a JSON line, rotating if needed."""
         record = {
             "session": self._session_id,
             "t": round(sample.timestamp, 3),
@@ -196,10 +210,69 @@ class TelemetryJSONLWriter:
         line = json.dumps(record, separators=(",", ":")) + "\n"
         with self._lock:
             try:
+                # Check rotation every 100 writes
+                self._write_count += 1
+                if self._write_count % 100 == 0:
+                    self._maybe_rotate()
                 with open(self._filepath, "a", encoding="utf-8") as f:
                     f.write(line)
             except OSError:
                 logger.warning("Failed to write telemetry JSONL", exc_info=True)
+
+    def _maybe_rotate(self) -> None:
+        """Rotate file if it exceeds max size. Must be called under lock."""
+        try:
+            if not os.path.exists(self._filepath):
+                return
+            size = os.path.getsize(self._filepath)
+            if size >= self._max_bytes:
+                ts = _time.strftime("%Y%m%d_%H%M%S")
+                base, ext = os.path.splitext(self._filepath)
+                rotated = f"{base}_{ts}{ext}"
+                os.rename(self._filepath, rotated)
+                logger.info("Rotated telemetry file -> %s (%d bytes)", rotated, size)
+        except OSError:
+            logger.warning("Failed to rotate telemetry file", exc_info=True)
+
+    def cleanup_old_files(self) -> int:
+        """Delete rotated JSONL files older than retain_days. Returns count deleted."""
+        if self._retain_days <= 0:
+            return 0
+        dirpath = os.path.dirname(self._filepath) or "."
+        base_name = os.path.basename(self._filepath)
+        stem, ext = os.path.splitext(base_name)
+        pattern = os.path.join(dirpath, f"{stem}_*{ext}")
+        cutoff = _time.time() - self._retain_days * 86400
+        deleted = 0
+        for path in glob.glob(pattern):
+            try:
+                if os.path.getmtime(path) < cutoff:
+                    os.remove(path)
+                    logger.info("Deleted old telemetry file: %s", path)
+                    deleted += 1
+            except OSError:
+                logger.warning("Failed to delete old telemetry file: %s", path)
+        return deleted
+
+    def check_file_size(self) -> dict:
+        """Return file size info and warning if file is large."""
+        try:
+            if not os.path.exists(self._filepath):
+                return {"size_mb": 0.0, "warning": None}
+            size = os.path.getsize(self._filepath)
+            size_mb = round(size / (1024 * 1024), 2)
+            max_mb = round(self._max_bytes / (1024 * 1024), 1)
+            warning = None
+            if size >= self._max_bytes * 0.8:
+                warning = f"Telemetry file is {size_mb} MB (limit: {max_mb} MB)"
+            return {"size_mb": size_mb, "max_mb": max_mb, "warning": warning}
+        except OSError:
+            return {"size_mb": 0.0, "warning": None}
+
+    def force_rotate(self) -> None:
+        """Force a rotation regardless of size (for testing / manual use)."""
+        with self._lock:
+            self._maybe_rotate()
 
     @staticmethod
     def from_env(session_id: str) -> "TelemetryJSONLWriter | None":
@@ -207,4 +280,6 @@ class TelemetryJSONLWriter:
         path = os.environ.get("DARTVISION_TELEMETRY_FILE")
         if not path:
             return None
-        return TelemetryJSONLWriter(path, session_id)
+        max_mb = float(os.environ.get("DARTVISION_TELEMETRY_MAX_MB", "50"))
+        retain_days = int(os.environ.get("DARTVISION_TELEMETRY_RETAIN_DAYS", "7"))
+        return TelemetryJSONLWriter(path, session_id, max_mb=max_mb, retain_days=retain_days)

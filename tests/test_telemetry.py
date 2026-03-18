@@ -196,3 +196,105 @@ class TestTelemetryJSONLWriter:
         writer = TelemetryJSONLWriter(filepath, session_id="s1")
         writer.write(_sample(ts=1.0))
         assert os.path.exists(filepath)
+
+
+class TestTelemetryRotation:
+    def test_rotation_renames_file_when_exceeds_max(self, tmp_path):
+        filepath = str(tmp_path / "telemetry.jsonl")
+        # 1 byte max to force rotation
+        writer = TelemetryJSONLWriter(filepath, session_id="s1", max_mb=0.000001)
+        # Write enough to exceed limit
+        for i in range(5):
+            writer.write(_sample(ts=float(i)))
+        # Force rotation check
+        writer.force_rotate()
+        # Original file should have been rotated (renamed)
+        rotated = [f for f in os.listdir(tmp_path) if "telemetry_" in f]
+        assert len(rotated) >= 1
+
+    def test_rotation_happens_every_100_writes(self, tmp_path):
+        filepath = str(tmp_path / "telemetry.jsonl")
+        writer = TelemetryJSONLWriter(filepath, session_id="s1", max_mb=0.000001)
+        for i in range(101):
+            writer.write(_sample(ts=float(i)))
+        rotated = [f for f in os.listdir(tmp_path) if "telemetry_" in f]
+        assert len(rotated) >= 1
+
+    def test_no_rotation_when_under_limit(self, tmp_path):
+        filepath = str(tmp_path / "telemetry.jsonl")
+        writer = TelemetryJSONLWriter(filepath, session_id="s1", max_mb=50)
+        writer.write(_sample(ts=1.0))
+        writer.force_rotate()
+        rotated = [f for f in os.listdir(tmp_path) if "telemetry_" in f]
+        assert len(rotated) == 0
+
+
+class TestTelemetryCleanup:
+    def test_cleanup_deletes_old_files(self, tmp_path):
+        filepath = str(tmp_path / "telemetry.jsonl")
+        writer = TelemetryJSONLWriter(filepath, session_id="s1", retain_days=1)
+        # Create a fake rotated file with old mtime
+        old_file = tmp_path / "telemetry_20200101_000000.jsonl"
+        old_file.write_text("old data\n")
+        old_mtime = time.time() - 86400 * 10  # 10 days ago
+        os.utime(str(old_file), (old_mtime, old_mtime))
+        deleted = writer.cleanup_old_files()
+        assert deleted == 1
+        assert not old_file.exists()
+
+    def test_cleanup_keeps_recent_files(self, tmp_path):
+        filepath = str(tmp_path / "telemetry.jsonl")
+        writer = TelemetryJSONLWriter(filepath, session_id="s1", retain_days=7)
+        recent = tmp_path / "telemetry_20260318_120000.jsonl"
+        recent.write_text("recent data\n")
+        deleted = writer.cleanup_old_files()
+        assert deleted == 0
+        assert recent.exists()
+
+    def test_cleanup_zero_retain_days_noop(self, tmp_path):
+        filepath = str(tmp_path / "telemetry.jsonl")
+        writer = TelemetryJSONLWriter(filepath, session_id="s1", retain_days=0)
+        old_file = tmp_path / "telemetry_20200101_000000.jsonl"
+        old_file.write_text("old\n")
+        old_mtime = time.time() - 86400 * 100
+        os.utime(str(old_file), (old_mtime, old_mtime))
+        deleted = writer.cleanup_old_files()
+        assert deleted == 0
+
+
+class TestTelemetryCheckFileSize:
+    def test_check_size_no_file(self, tmp_path):
+        filepath = str(tmp_path / "nonexistent.jsonl")
+        writer = TelemetryJSONLWriter(filepath, session_id="s1", max_mb=10)
+        info = writer.check_file_size()
+        assert info["size_mb"] == 0.0
+        assert info["warning"] is None
+
+    def test_check_size_small_file(self, tmp_path):
+        filepath = str(tmp_path / "telemetry.jsonl")
+        writer = TelemetryJSONLWriter(filepath, session_id="s1", max_mb=10)
+        writer.write(_sample(ts=1.0))
+        info = writer.check_file_size()
+        assert info["size_mb"] < 1.0
+        assert info["warning"] is None
+        assert info["max_mb"] == 10.0
+
+    def test_check_size_warning_at_80_pct(self, tmp_path):
+        filepath = str(tmp_path / "telemetry.jsonl")
+        # Write data first, then create writer with tiny max
+        with open(filepath, "w") as f:
+            f.write("x" * 200)
+        writer = TelemetryJSONLWriter(filepath, session_id="s1", max_mb=0.0001)
+        info = writer.check_file_size()
+        assert info["warning"] is not None
+        assert "MB" in info["warning"]
+
+    def test_from_env_with_config(self, tmp_path, monkeypatch):
+        filepath = str(tmp_path / "t.jsonl")
+        monkeypatch.setenv("DARTVISION_TELEMETRY_FILE", filepath)
+        monkeypatch.setenv("DARTVISION_TELEMETRY_MAX_MB", "25")
+        monkeypatch.setenv("DARTVISION_TELEMETRY_RETAIN_DAYS", "3")
+        writer = TelemetryJSONLWriter.from_env("sess1")
+        assert writer is not None
+        assert writer._max_bytes == 25 * 1024 * 1024
+        assert writer._retain_days == 3

@@ -1514,10 +1514,12 @@ def setup_routes(app_state: dict) -> APIRouter:
 
         import json as _json
         session_id = app_state.get("session_id", "unknown")
-        payload = _json.dumps(
-            {"session_id": session_id, "history": history, "summary": summary},
-            separators=(",", ":"),
-        )
+        export_data: dict = {"session_id": session_id, "history": history, "summary": summary}
+        # Add file size warning if JSONL writer is active
+        jsonl_writer = app_state.get("telemetry_jsonl_writer")
+        if jsonl_writer is not None:
+            export_data["file_info"] = jsonl_writer.check_file_size()
+        payload = _json.dumps(export_data, separators=(",", ":"))
         return StreamingResponse(
             iter([payload.encode("utf-8")]),
             media_type="application/json",

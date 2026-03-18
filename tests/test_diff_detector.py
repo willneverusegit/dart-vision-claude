@@ -540,3 +540,64 @@ def test_frame_id_increments_on_update():
     assert d._frame_id == initial + 1
     d.update(_gray(128), has_motion=False)
     assert d._frame_id == initial + 2
+
+
+# ------------------------------------------------------------------
+# P47: Diff cache tests
+# ------------------------------------------------------------------
+
+
+def test_diff_cache_hit_same_frame():
+    """_get_diff returns cached result for the same frame_id."""
+    d = FrameDiffDetector()
+    d._baseline = _gray(50)
+    d._frame_id = 10
+    frame = _gray(200)
+    diff1 = d._get_diff(frame)
+    diff2 = d._get_diff(frame)
+    assert diff1 is diff2  # same object reference = cache hit
+
+
+def test_diff_cache_miss_new_frame():
+    """_get_diff recomputes on new frame_id."""
+    d = FrameDiffDetector()
+    d._baseline = _gray(50)
+    d._frame_id = 1
+    diff1 = d._get_diff(_gray(200))
+    d._frame_id = 2
+    diff2 = d._get_diff(_gray(200))
+    assert diff1 is not diff2
+
+
+def test_diff_cache_cleared_on_reset():
+    """reset() clears the diff cache."""
+    d = FrameDiffDetector()
+    d._baseline = _gray(50)
+    d._frame_id = 5
+    d._get_diff(_gray(200))
+    assert d._cached_diff is not None
+    d.reset()
+    assert d._cached_diff is None
+    assert d._cached_diff_frame_id == -1
+
+
+def test_diff_cache_reused_in_settling():
+    """During settling, _quick_centroid and _compute_diff share the same diff."""
+    d = FrameDiffDetector(settle_frames=2, diff_threshold=10, min_diff_area=10, min_elongation=1.0)
+    baseline = _gray(50)
+    post = _gray(50)
+    post[40:60, 40:60] = 200
+
+    # Set up baseline
+    d.update(baseline, has_motion=False)
+    # Trigger motion
+    d.update(post, has_motion=True)
+    # First settling frame — _quick_centroid calls _get_diff
+    d.update(post, has_motion=False)
+    # The diff should now be cached
+    cached_fid_after_qc = d._cached_diff_frame_id
+    assert d._cached_diff is not None
+    # Second settling frame — both _quick_centroid and _compute_diff run
+    d.update(post, has_motion=False)
+    # Cache was used (frame_id changed, so new cache entry)
+    assert d._cached_diff_frame_id > cached_fid_after_qc

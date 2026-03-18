@@ -696,16 +696,13 @@ Warum wichtig: Aktuelle feste Thresholds funktionieren nur bei stabiler Beleucht
 
 **Umsetzung:** Edge-Cache-Infrastruktur in `FrameDiffDetector` implementiert: `get_cached_edges()` berechnet Canny-Edges einmal pro `frame_id` und cached das Ergebnis. Invalidierung bei neuem Frame, Cache-Clear bei `reset()`. 6 Tests vorhanden (cache hit, miss, invalidierung, disabled-mode, reset-clear, frame_id-increment). Die Contour-Analyse in `_compute_diff` arbeitet auf Threshold-Masken (nicht Canny), daher kein direkter Canny-Reuse moeglich. Der Cache steht fuer kuenftige HoughLinesP- oder Edge-basierte Analysen bereit. Geaenderte Dateien: keine (bereits implementiert in `src/cv/diff_detector.py`, Tests in `tests/test_diff_detector.py`).
 
-## Prioritaet 42: Cooldown Management (raeumlich + zeitlich)
+## Prioritaet 42: Cooldown Management (raeumlich + zeitlich) (✅ ERLEDIGT 2026-03-18)
 
 Quelle: `pipeline_patterns.md` Pattern #7
 
 Ziel: Anti-Duplikat-Erkennung nach bestatigtem Treffer.
 
-Typische Arbeiten:
-- 50px Exclusion Zone um bestaetigte Treffer
-- 30-Frame zeitlicher Lockout nach Treffer-Bestaetigung
-- Unterschied zu Tier-2 #14 (Temporal Lock): #14 ignoriert Hand-Motion nach Scoring, P42 verhindert Re-Detektion desselben Darts
+**Umsetzung:** `CooldownManager` in `src/cv/detection_components.py` um raeumliche Exclusion Zones erweitert. Jede `activate(position=...)` registriert eine 50px-Zone die nach 30 Frames verfaellt. `pipeline.process_frame()` prueft neue FrameDiff-Detections gegen aktive Zones und verwirft Duplikate. `reset()` leert alle Zones (Turn-Reset). 8 neue Tests fuer raeumliche/zeitliche Logik. Geaenderte Dateien: `src/cv/detection_components.py`, `src/cv/detector.py`, `src/cv/pipeline.py`, `tests/test_detection_components.py`.
 
 ## Prioritaet 43: Modulare Detection Components (✅ ERLEDIGT 2026-03-18)
 
@@ -780,7 +777,7 @@ Erwarteter Gewinn: 10-20% CPU-Einsparung im Settling-Phase (wo `_quick_centroid`
 
 Warum sinnvoll: Komplementaer zu P41 (Edge Cache) und P33 (Frame-Skip). Keine Verhaltensaenderung, rein interne Optimierung.
 
-## Prioritaet 48: Telemetrie-Retention-Policy und automatische Rotation (neu — entdeckt bei P22)
+## Prioritaet 48: Telemetrie-Retention-Policy und automatische Rotation (✅ ERLEDIGT 2026-03-18)
 
 Kritikalitaet: NIEDRIG
 
@@ -825,3 +822,34 @@ Typische Arbeiten:
 - API-Endpunkt fuer Kamera-Qualitaetsvergleich (alle Kameras nebeneinander)
 
 Warum sinnvoll: P26 kompensiert Schaerfe-Unterschiede, aber Helligkeits-Unterschiede zwischen Kameras koennen ebenso zu unterschiedlichen Diff-Ergebnissen fuehren. Auto-Exposure-Harmonisierung wuerde die Multi-Cam-Triangulation robuster machen.
+
+## Prioritaet 51: Telemetrie-Cleanup-Scheduler und Dashboard-Anzeige (neu — entdeckt bei P48)
+
+Kritikalitaet: NIEDRIG
+
+Ziel:
+
+- P48 hat Rotation und Cleanup als Methoden implementiert, aber kein automatischer Hintergrund-Scheduler ruft cleanup_old_files() periodisch auf. Ausserdem fehlt eine Dashboard-Anzeige fuer den Telemetrie-Dateistatus.
+
+Typische Arbeiten:
+
+- Background-Thread oder asyncio-Task der cleanup_old_files() taeglich ausfuehrt
+- Dashboard-Widget das check_file_size() Warnungen anzeigt (z.B. in Telemetrie-Panel)
+- API-Endpunkt GET /api/telemetry/status der Dateigroesse und Rotation-Historie zurueckgibt
+- Manuelle Rotation via POST /api/telemetry/rotate Endpunkt
+
+Warum sinnvoll: P48 liefert die Mechanik, aber ohne Scheduler und UI-Integration muss der Cleanup manuell angestossen werden.
+
+## Prioritaet 51: Deduplizierung _is_already_confirmed vs CooldownManager (neu — entdeckt bei P42)
+
+Quelle: Code-Review bei P42-Implementierung
+
+Ziel: Die raeumliche Duplikat-Pruefung in `DartImpactDetector._is_already_confirmed()` und `CooldownManager.is_in_exclusion_zone()` ueberlappen sich. Beide pruefen Distanz zu bestaetigten Positionen, nutzen aber unterschiedliche Datenstrukturen (`_confirmed` Liste vs `_zones` Liste).
+
+Typische Arbeiten:
+- `_is_already_confirmed` auf `CooldownManager.is_in_exclusion_zone` delegieren
+- `_confirmed` Liste nur noch fuer Turn-State (get_all_confirmed) nutzen, nicht fuer Exclusion
+- Sicherstellen dass `register_confirmed` weiterhin korrekt dedupliziert
+- Tests anpassen
+
+Prioritaet: Niedrig (Architektur-Bereinigung, kein Verhaltens-Unterschied). Sinnvoll wenn Detector-Logik weiter refactored wird.

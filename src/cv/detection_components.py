@@ -78,18 +78,30 @@ class ShapeAnalyzer:
 class CooldownManager:
     """Manages post-detection cooldown to prevent duplicate detections.
 
-    Extracted from DartImpactDetector cooldown logic.
+    Provides both temporal cooldown (frame counter after any confirmation)
+    and spatial exclusion zones (reject new detections near confirmed hits).
+
+    P42: Anti-duplicate detection after a confirmed hit.
+    - 50px exclusion zone around confirmed hit positions
+    - 30-frame temporal lockout after hit confirmation
+    - Zones cleared on turn reset
     """
 
-    def __init__(self, cooldown_frames: int = 30) -> None:
+    def __init__(self, cooldown_frames: int = 30,
+                 exclusion_zone_px: int = 50) -> None:
         if cooldown_frames < 0:
             raise ValueError("cooldown_frames must be >= 0")
+        if exclusion_zone_px < 0:
+            raise ValueError("exclusion_zone_px must be >= 0")
         self.cooldown_frames = cooldown_frames
+        self.exclusion_zone_px = exclusion_zone_px
         self._counter: int = 0
+        # Spatial exclusion zones: list of (x, y, frames_remaining)
+        self._zones: list[list] = []
 
     @property
     def active(self) -> bool:
-        """True if currently in cooldown period."""
+        """True if currently in temporal cooldown period."""
         return self._counter > 0
 
     @property
@@ -97,18 +109,39 @@ class CooldownManager:
         """Number of cooldown frames remaining."""
         return self._counter
 
-    def activate(self) -> None:
-        """Start a new cooldown period."""
+    @property
+    def zone_count(self) -> int:
+        """Number of active spatial exclusion zones."""
+        return len(self._zones)
+
+    def activate(self, position: tuple[int, int] | None = None) -> None:
+        """Start a new cooldown period, optionally with a spatial exclusion zone."""
         self._counter = self.cooldown_frames
+        if position is not None and self.exclusion_zone_px > 0:
+            self._zones.append([position[0], position[1], self.cooldown_frames])
+
+    def is_in_exclusion_zone(self, x: int, y: int) -> bool:
+        """Check if (x, y) falls within any active exclusion zone."""
+        for zone in self._zones:
+            dx = x - zone[0]
+            dy = y - zone[1]
+            if math.hypot(dx, dy) < self.exclusion_zone_px:
+                return True
+        return False
 
     def tick(self) -> None:
-        """Advance cooldown by one frame."""
+        """Advance cooldown by one frame. Expires old zones."""
         if self._counter > 0:
             self._counter -= 1
+        # Tick zone timers and remove expired
+        for zone in self._zones:
+            zone[2] -= 1
+        self._zones = [z for z in self._zones if z[2] > 0]
 
     def reset(self) -> None:
-        """Reset cooldown to inactive."""
+        """Reset cooldown to inactive and clear all zones."""
         self._counter = 0
+        self._zones.clear()
 
 
 class MotionFilter:

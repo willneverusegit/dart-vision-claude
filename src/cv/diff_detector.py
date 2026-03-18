@@ -132,6 +132,13 @@ class FrameDiffDetector:
         self._cached_edges_frame_id: int = -1
         self._frame_id: int = 0
 
+        # P47: Diff + morphology cache — avoid redundant cv2.absdiff
+        # between _quick_centroid and _compute_diff on the same frame.
+        self._cached_diff: np.ndarray | None = None
+        self._cached_diff_frame_id: int = -1
+        self._cached_morph: np.ndarray | None = None
+        self._cached_morph_frame_id: int = -1
+
         # Diagnostics: save diff masks + contour images on each detection
         self._diagnostics_dir: Path | None = None
         if diagnostics_dir is not None:
@@ -202,6 +209,10 @@ class FrameDiffDetector:
         self._had_motion_event = False
         self._stability_centroids = []
         self._cached_edges = None
+        self._cached_diff = None
+        self._cached_diff_frame_id = -1
+        self._cached_morph = None
+        self._cached_morph_frame_id = -1
         self._light_monitor.reset()
         self.diff_threshold = self._base_diff_threshold
         self._no_detect_count = 0
@@ -385,7 +396,7 @@ class FrameDiffDetector:
         """Compute a quick diff centroid against baseline for stability tracking."""
         if self._baseline is None:
             return None
-        diff = cv2.absdiff(self._baseline, frame)
+        diff = self._get_diff(frame)
         _, thresh = cv2.threshold(diff, self.diff_threshold, 255, cv2.THRESH_BINARY)
         contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if not contours:
@@ -414,6 +425,19 @@ class FrameDiffDetector:
         return True
 
     # ------------------------------------------------------------------
+    # P47: Cached diff helpers
+    # ------------------------------------------------------------------
+
+    def _get_diff(self, frame: np.ndarray) -> np.ndarray:
+        """Return cv2.absdiff(baseline, frame), cached per frame_id."""
+        if self._cached_diff is not None and self._cached_diff_frame_id == self._frame_id:
+            return self._cached_diff
+        diff = cv2.absdiff(self._baseline, frame)
+        self._cached_diff = diff
+        self._cached_diff_frame_id = self._frame_id
+        return diff
+
+    # ------------------------------------------------------------------
     # Diff-Berechnung (CPU-konservativ: absdiff + threshold + closing)
     # ------------------------------------------------------------------
 
@@ -425,7 +449,7 @@ class FrameDiffDetector:
         if post_frame.ndim != 2 or self._baseline.ndim != 2:
             raise ValueError("FrameDiffDetector requires single-channel (grayscale) frames")
 
-        diff = cv2.absdiff(self._baseline, post_frame)
+        diff = self._get_diff(post_frame)
 
         # Adaptive threshold: Otsu-Bias with search mode
         effective_threshold = self.diff_threshold  # fallback

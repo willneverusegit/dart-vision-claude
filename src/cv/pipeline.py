@@ -277,6 +277,13 @@ class DartPipeline:
             self._update_annotated_frame(frame, enhanced, motion_mask if has_motion else None)
             return None
         if detection is not None:
+            # P42: Reject detections in spatial exclusion zones of confirmed hits
+            if self.dart_detector._cooldown.is_in_exclusion_zone(
+                detection.center[0], detection.center[1]
+            ):
+                logger.debug("Detection at %s rejected: in exclusion zone", detection.center)
+                detection = None
+        if detection is not None:
             self.dart_detector.register_confirmed(detection)
             # Activate temporal lock to suppress false positives during dart removal
             self._motion_filter.activate_lock()

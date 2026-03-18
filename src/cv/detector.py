@@ -114,7 +114,8 @@ class DartImpactDetector:
             area_min=area_min, area_max=area_max,
             aspect_ratio_range=aspect_ratio_range,
         )
-        self._cooldown = CooldownManager(cooldown_frames=cooldown_frames)
+        self._cooldown = CooldownManager(cooldown_frames=cooldown_frames,
+                                         exclusion_zone_px=exclusion_zone_px)
 
         # Temporal state
         self._candidates: list[dict] = []
@@ -245,6 +246,6 @@ class DartImpactDetector:
         if self._is_already_confirmed(detection):
             return False
         self._confirmed.append(detection)
-        self._cooldown.activate()
-        logger.debug("Cooldown activated for %d frames", self.cooldown_frames)
+        self._cooldown.activate(position=detection.center)
+        logger.debug("Cooldown activated for %d frames at %s", self.cooldown_frames, detection.center)
         return True

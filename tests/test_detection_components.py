@@ -111,6 +111,57 @@ class TestCooldownManager:
         cm.activate()
         assert not cm.active  # 0 frames = immediately inactive
 
+    # --- P42: Spatial exclusion zone tests ---
+
+    def test_exclusion_zone_rejects_nearby(self):
+        cm = CooldownManager(cooldown_frames=30, exclusion_zone_px=50)
+        cm.activate(position=(100, 100))
+        assert cm.is_in_exclusion_zone(110, 110)  # within 50px
+        assert cm.is_in_exclusion_zone(100, 100)  # exact same point
+
+    def test_exclusion_zone_allows_far(self):
+        cm = CooldownManager(cooldown_frames=30, exclusion_zone_px=50)
+        cm.activate(position=(100, 100))
+        assert not cm.is_in_exclusion_zone(200, 200)  # ~141px away
+
+    def test_exclusion_zone_expires_after_ticks(self):
+        cm = CooldownManager(cooldown_frames=3, exclusion_zone_px=50)
+        cm.activate(position=(100, 100))
+        assert cm.is_in_exclusion_zone(100, 100)
+        cm.tick()
+        cm.tick()
+        cm.tick()
+        assert not cm.is_in_exclusion_zone(100, 100)  # expired
+        assert cm.zone_count == 0
+
+    def test_exclusion_zone_cleared_on_reset(self):
+        cm = CooldownManager(cooldown_frames=30, exclusion_zone_px=50)
+        cm.activate(position=(100, 100))
+        cm.activate(position=(200, 200))
+        assert cm.zone_count == 2
+        cm.reset()
+        assert cm.zone_count == 0
+        assert not cm.is_in_exclusion_zone(100, 100)
+
+    def test_multiple_zones(self):
+        cm = CooldownManager(cooldown_frames=30, exclusion_zone_px=50)
+        cm.activate(position=(100, 100))
+        cm.activate(position=(300, 300))
+        assert cm.is_in_exclusion_zone(105, 105)
+        assert cm.is_in_exclusion_zone(305, 305)
+        assert not cm.is_in_exclusion_zone(200, 200)
+
+    def test_activate_without_position_no_zone(self):
+        cm = CooldownManager(cooldown_frames=30, exclusion_zone_px=50)
+        cm.activate()  # no position
+        assert cm.active
+        assert cm.zone_count == 0
+
+    def test_exclusion_zone_zero_radius(self):
+        cm = CooldownManager(cooldown_frames=30, exclusion_zone_px=0)
+        cm.activate(position=(100, 100))
+        assert cm.zone_count == 0  # no zone added when radius is 0
+
 
 # ---------------------------------------------------------------------------
 # MotionFilter
