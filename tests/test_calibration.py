@@ -134,6 +134,101 @@ class TestManualCalibrationValidation:
         assert MM_PER_PX_MIN <= result["mm_per_px"] <= MM_PER_PX_MAX
 
 
+class TestHomographyFallback:
+    """P60: Homography fallback when markers are occluded."""
+
+    @pytest.fixture
+    def board_manager(self, tmp_path):
+        from src.cv.board_calibration import BoardCalibrationManager
+        config_path = str(tmp_path / "board_calib.yaml")
+        return BoardCalibrationManager(
+            config_path=config_path,
+            max_homography_age_frames=10,
+            homography_warn_age_frames=5,
+        )
+
+    @pytest.fixture
+    def calibrated_board_manager(self, board_manager):
+        """Board manager with a valid manual calibration already set."""
+        points = [[100, 100], [300, 100], [300, 300], [100, 300]]
+        board_manager.manual_calibration(points)
+        # Manually cache the homography (simulates successful aruco detection)
+        h = board_manager.get_homography()
+        assert h is not None
+        board_manager._last_valid_homography = h.copy()
+        board_manager._homography_age = 0
+        return board_manager
+
+    def test_initial_homography_age_zero(self, board_manager):
+        assert board_manager.homography_age == 0
+
+    def test_get_params_initial(self, board_manager):
+        params = board_manager.get_params()
+        assert params["homography_age"] == 0
+        assert params["max_homography_age_frames"] == 10
+        assert params["homography_warn_age_frames"] == 5
+
+    def test_fallback_returns_cached_homography(self, calibrated_board_manager):
+        """When markers not found, fallback uses cached homography."""
+        # Use a blank frame — no markers will be detected
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        result = calibrated_board_manager.aruco_calibration_with_fallback(frame)
+        assert result["ok"]
+        assert result.get("fallback") is True
+        assert result["homography_age"] == 1
+
+    def test_fallback_increments_age(self, calibrated_board_manager):
+        """Each failed detection increments homography_age."""
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        for i in range(3):
+            result = calibrated_board_manager.aruco_calibration_with_fallback(frame)
+            assert result["ok"]
+            assert result["homography_age"] == i + 1
+        assert calibrated_board_manager.homography_age == 3
+
+    def test_fallback_expires_after_max_age(self, calibrated_board_manager):
+        """After max_homography_age_frames, fallback stops working."""
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        # Exhaust the max age (10 frames)
+        for _ in range(10):
+            calibrated_board_manager.aruco_calibration_with_fallback(frame)
+        # 11th attempt should fail
+        result = calibrated_board_manager.aruco_calibration_with_fallback(frame)
+        assert not result["ok"]
+
+    def test_no_fallback_without_cached_homography(self, board_manager):
+        """Without prior calibration, fallback is not available."""
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        result = board_manager.aruco_calibration_with_fallback(frame)
+        assert not result["ok"]
+
+    def test_successful_detection_resets_age(self, calibrated_board_manager, monkeypatch):
+        """Successful aruco detection resets homography_age to 0."""
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        # Simulate some failures
+        calibrated_board_manager.aruco_calibration_with_fallback(frame)
+        calibrated_board_manager.aruco_calibration_with_fallback(frame)
+        assert calibrated_board_manager.homography_age == 2
+
+        # Simulate a successful aruco detection by monkeypatching
+        fake_result = {"ok": True, "homography": np.eye(3).tolist(), "mm_per_px": 1.0}
+        monkeypatch.setattr(
+            calibrated_board_manager._legacy, "aruco_calibration",
+            lambda *a, **kw: fake_result,
+        )
+        result = calibrated_board_manager.aruco_calibration_with_fallback(frame)
+        assert result["ok"]
+        assert calibrated_board_manager.homography_age == 0
+        assert result.get("fallback") is None
+
+    def test_get_params_reflects_age(self, calibrated_board_manager):
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        calibrated_board_manager.aruco_calibration_with_fallback(frame)
+        params = calibrated_board_manager.get_params()
+        assert params["homography_age"] == 1
+        assert params["has_cached_homography"] is True
+
+
 class TestCameraCharucoBoardConfig:
     def test_camera_calibration_manager_uses_default_board_spec(self, tmp_path):
         path = str(tmp_path / "cal.yaml")
