@@ -466,7 +466,9 @@ Typische Arbeiten:
 - Fehlermeldungen mit Kontext (welche Kamera, welcher Fehler, Zeitstempel)
 - Dateien: src/cv/multi_camera.py, src/web/routes.py, static/js/app.js
 
-## Prioritaet 31: Intrinsics Validation vor Stereo-Kalibrierung (neu — Multi-Cam Assessment)
+## Prioritaet 31: Intrinsics Validation vor Stereo-Kalibrierung (✅ ERLEDIGT 2026-03-18)
+
+**Umsetzung:** `validate_stereo_prerequisites()` in `src/cv/stereo_calibration.py` prueft beide Kameras via `CameraCalibrationManager.validate_intrinsics()`. Stereo-Kalibrierungsendpunkt in `src/web/routes.py` blockiert mit deutscher Fehlermeldung ("Bitte Linsen-Kalibrierung zuerst durchfuehren") wenn Intrinsics fehlen. `has_valid_intrinsics()` in `BoardCalibrationManager` als zusaetzlicher Check. 25 Tests in `tests/test_intrinsics_validation.py` und `tests/test_calibration_validation.py` decken alle Szenarien ab (beide gueltig, eine fehlend, beide fehlend, Warnings).
 
 Kritikalitaet: KRITISCH
 
@@ -677,7 +679,9 @@ Typische Arbeiten:
 
 Warum kritisch: Ohne echte Videovalidierung bleiben Algorithmus-Aenderungen ungetestet. Grundlage fuer P11 (E2E Tests mit echten Clips).
 
-**Status:** Infrastruktur implementiert (marker_size_mm konfigurierbar, Batch-Script, pytest). Noch ausstehend: Ground-Truth-Annotation der Videos.
+**Status: ✅ ERLEDIGT 2026-03-18**
+
+**Umsetzung:** Alle Arbeitspakete abgeschlossen: (1) `marker_size_mm` konfigurierbar in Pipeline-Konstruktor, (2) `scripts/test_all_videos.py` Batch-Script mit Ground-Truth-Vergleich, (3) `testvids/ground_truth.yaml` mit 5 annotierten Videos (30 Wuerfe total), (4) `tests/e2e/test_testvid_replay.py` no-crash Tests fuer alle Videos, (5) NEU: `tests/e2e/test_ground_truth_validation.py` — pytest-Tests die Detection-Counts gegen Ground Truth validieren (Calibration-Test + parametrisierte Detection-Count-Tests pro Video). Detection-Count-Tests sind `xfail` markiert da Pipeline-Accuracy auf echten Videos noch nicht ausreichend (3/5 Videos bestehen bereits, 2/5 erkennen 0 Wuerfe wegen Baseline-Warmup-Problem). Geaenderte Dateien: `tests/e2e/test_ground_truth_validation.py`.
 
 ## Prioritaet 40: Adaptive Thresholds (Otsu-Bias + Search Mode) (✅ ERLEDIGT 2026-03-18)
 
@@ -854,3 +858,27 @@ Typische Arbeiten:
 - Settling-Phase + Cooldown-Interaktion testen
 
 Warum sinnvoll: P49 testet die modularen Komponenten, aber nicht den tatsaechlichen Single-Cam-Erkennungspfad der FrameDiffDetector nutzt.
+
+## Prioritaet 54: Stereo-Kalibrierung Fortschritts-Feedback im Frontend (NIEDRIG)
+
+Kritikalitaet: NIEDRIG
+
+Ziel: Benutzer waehrend der Stereo-Kalibrierung ueber den Fortschritt informieren (Frame-Paare erfasst, Qualitaet, Fehler).
+
+Typische Arbeiten:
+- Progress-Events via SSE waehrend Frame-Capture senden
+- Frontend-Anzeige: Fortschrittsbalken, erfasste Paare, Qualitaetsindikator
+- Fehlerfaelle visuell darstellen (z.B. "Board nicht in beiden Kameras sichtbar")
+- Dateien: src/web/routes.py, src/web/stereo_progress.py, static/js/app.js
+
+## Prioritaet 55: Pipeline Baseline-Warmup fuer Video-Replay fixen (neu — entdeckt bei P39)
+
+Kritikalitaet: MITTEL
+
+Ziel: FrameDiffDetector Baseline-Aufbau funktioniert nicht zuverlaessig bei Video-Replay (2 von 5 Test-Videos erkennen 0 Wuerfe wegen fehlendem Baseline). Ohne Fix koennen Ground-Truth-Validierungstests nicht von xfail auf strict umgestellt werden.
+
+Typische Arbeiten:
+- Analysieren warum Baseline in manchen Videos nicht gesetzt wird (Warmup-Frames zu wenig? seek-Reset-Problem?)
+- FrameDiffDetector.reset() Baseline-Initialisierung nach Seek pruefen
+- Nach Fix: `xfail` in `tests/e2e/test_ground_truth_validation.py` entfernen und strikte Thresholds setzen
+- Dateien: src/cv/diff_detector.py, src/cv/pipeline.py, tests/e2e/test_ground_truth_validation.py

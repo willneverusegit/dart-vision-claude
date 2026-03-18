@@ -14,6 +14,22 @@
     --border: #2a2a4a;
     --shadow: rgba(0, 0, 0, 0.4);
     --radius: 8px;
+    --danger: #c0392b;
+    --danger-hover: #e74c3c;
+    --text-on-accent: #fff;
+    --text-on-danger: #fff;
+    --text-on-success: #111;
+    --text-on-warning: #111;
+    --bg-video: #000;
+    --bg-danger-banner: #b91c1c;
+    --bg-danger-banner-alt: #7f1d1d;
+    --success-hover: #4ceb8f;
+    --cam-health-green: #4caf50;
+    --cam-health-yellow: #ff9800;
+    --cam-health-red: #f44336;
+    --bg-subtle: rgba(255, 255, 255, 0.05);
+    --bg-subtle-2: rgba(255, 255, 255, 0.1);
+    --bg-inset: rgba(0, 0, 0, 0.3);
 }
 
 /* Light Theme */
@@ -30,26 +46,26 @@
     --warning: #e67700;
     --border: #ced4da;
     --shadow: rgba(0, 0, 0, 0.12);
-}
-
-/* High-Contrast Theme — WCAG AAA compliant */
-:root.high-contrast {
-    --bg-primary: #000000;
-    --bg-secondary: #0a0a0a;
-    --bg-panel: #1a1a1a;
-    --accent: #ff4d6a;
-    --accent-hover: #ff7a90;
-    --text-primary: #ffffff;
-    --text-secondary: #e0e0e0;
-    --text-muted: #b0b0b0;
-    --success: #4cff7a;
-    --warning: #ffcc00;
-    --border: #555555;
-    --shadow: rgba(0, 0, 0, 0.6);
+    --danger: #c0392b;
+    --danger-hover: #e74c3c;
+    --text-on-accent: #fff;
+    --text-on-danger: #fff;
+    --text-on-success: #fff;
+    --text-on-warning: #fff;
+    --bg-video: #1a1a1a;
+    --bg-danger-banner: #dc2626;
+    --bg-danger-banner-alt: #991b1b;
+    --success-hover: #2bbd6e;
+    --cam-health-green: #16a34a;
+    --cam-health-yellow: #ca8a04;
+    --cam-health-red: #dc2626;
+    --bg-subtle: rgba(0, 0, 0, 0.04);
+    --bg-subtle-2: rgba(0, 0, 0, 0.08);
+    --bg-inset: rgba(0, 0, 0, 0.06);
 }
 
 @media (prefers-color-scheme: light) {
-    :root:not(.dark-theme):not(.high-contrast) {
+    :root:not(.dark-theme) {
         --bg-primary: #f0f2f5;
         --bg-secondary: #ffffff;
         --bg-panel: #e8ecf1;
@@ -62,7 +78,55 @@
         --warning: #e67700;
         --border: #ced4da;
         --shadow: rgba(0, 0, 0, 0.12);
+        --danger: #c0392b;
+        --danger-hover: #e74c3c;
+        --text-on-accent: #fff;
+        --text-on-danger: #fff;
+        --text-on-success: #fff;
+        --text-on-warning: #fff;
+        --bg-video: #1a1a1a;
+        --bg-danger-banner: #dc2626;
+        --bg-danger-banner-alt: #991b1b;
+        --success-hover: #2bbd6e;
+        --cam-health-green: #16a34a;
+        --cam-health-yellow: #ca8a04;
+        --cam-health-red: #dc2626;
+        --bg-subtle: rgba(0, 0, 0, 0.04);
+        --bg-subtle-2: rgba(0, 0, 0, 0.08);
+        --bg-inset: rgba(0, 0, 0, 0.06);
     }
+}
+
+/* High-Contrast Theme */
+:root.high-contrast {
+    --bg-primary: #000000;
+    --bg-secondary: #0a0a0a;
+    --bg-panel: #1a1a1a;
+    --accent: #ff4d6a;
+    --accent-hover: #ff8099;
+    --text-primary: #ffffff;
+    --text-secondary: #e0e0e0;
+    --text-muted: #b0b0b0;
+    --success: #00ff7f;
+    --warning: #ffcc00;
+    --border: #555555;
+    --shadow: rgba(0, 0, 0, 0.6);
+    --danger: #ff3333;
+    --danger-hover: #ff6666;
+    --text-on-accent: #000;
+    --text-on-danger: #000;
+    --text-on-success: #000;
+    --text-on-warning: #000;
+    --bg-video: #000;
+    --bg-danger-banner: #cc0000;
+    --bg-danger-banner-alt: #990000;
+    --success-hover: #33ff99;
+    --cam-health-green: #00ff7f;
+    --cam-health-yellow: #ffcc00;
+    --cam-health-red: #ff3333;
+    --bg-subtle: rgba(255, 255, 255, 0.08);
+    --bg-subtle-2: rgba(255, 255, 255, 0.15);
+    --bg-inset: rgba(0, 0, 0, 0.5);
 }
 
 /* Theme toggle button */
@@ -81,43 +145,6 @@
 .theme-toggle:hover {
     border-color: var(--accent);
     color: var(--text-primary);
-}
-
-/* High-contrast: thicker borders and focus outlines */
-:root.high-contrast .panel,
-:root.high-contrast .modal__content,
-:root.high-contrast .btn,
-:root.high-contrast .select,
-:root.high-contrast .input {
-    border-width: 2px;
-}
-:root.high-contrast button:focus-visible,
-:root.high-contrast input:focus-visible,
-:root.high-contrast select:focus-visible,
-:root.high-contrast a:focus-visible {
-    outline-width: 3px;
-}
-
-/* Smooth theme transition */
-body,
-.header,
-.panel,
-.modal__content,
-.btn,
-.select,
-.input,
-.telemetry-panel,
-.capture-settings,
-.player-row,
-.candidate-row,
-.cal-status-overview,
-.charuco-board-panel,
-.multi-status-info,
-.stereo-result,
-.ws-status,
-.pending-badge,
-.theme-toggle {
-    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
 }
 
 * {
@@ -185,8 +212,8 @@ body {
 
 /* Camera warning banner */
 .camera-warning {
-    background: #b91c1c;
-    color: #fff;
+    background: var(--bg-danger-banner);
+    color: var(--text-on-danger);
     text-align: center;
     padding: 8px 16px;
     font-weight: 600;
@@ -194,10 +221,10 @@ body {
     animation: camera-warning-pulse 2s ease-in-out infinite;
 }
 .camera-warning--reconnecting {
-    background: #b91c1c;
+    background: var(--bg-danger-banner);
 }
 .camera-warning--disconnected {
-    background: #7f1d1d;
+    background: var(--bg-danger-banner-alt);
 }
 @keyframes camera-warning-pulse {
     0%, 100% { opacity: 1; }
@@ -207,7 +234,7 @@ body {
 /* Telemetry alert banner */
 .telemetry-alert {
     background: var(--warning);
-    color: #1a1a2e;
+    color: var(--text-on-warning);
     text-align: center;
     padding: 6px 16px;
     font-weight: 600;
@@ -265,7 +292,7 @@ body {
     width: 100%;
     height: 120px;
     border-radius: 4px;
-    background: rgba(0,0,0,0.3);
+    background: var(--bg-inset);
 }
 .telemetry-panel__summary {
     display: flex;
@@ -277,7 +304,7 @@ body {
 
 /* Calibration status overview */
 .cal-status-overview {
-    background: rgba(255,255,255,0.05);
+    background: var(--bg-subtle);
     border-radius: 6px;
     padding: 8px 12px;
     margin-bottom: 12px;
@@ -299,11 +326,11 @@ body {
 }
 .cal-status-item--done {
     background: rgba(80, 200, 120, 0.2);
-    color: #50c878;
+    color: var(--success);
 }
 .cal-status-item--pending {
     background: rgba(255, 165, 0, 0.15);
-    color: #ffa500;
+    color: var(--warning);
 }
 .cal-hint-text {
     font-size: 0.82em;
@@ -322,12 +349,12 @@ body {
 
 .ws-status--connected {
     background: var(--success);
-    color: #111;
+    color: var(--text-on-success);
 }
 
 .ws-status--disconnected {
     background: var(--accent);
-    color: #fff;
+    color: var(--text-on-accent);
 }
 
 /* Main Layout */
@@ -362,7 +389,7 @@ body {
 .video-container {
     position: relative;
     width: 100%;
-    background: #000;
+    background: var(--bg-video);
     border-radius: var(--radius);
     overflow: hidden;
 }
@@ -373,7 +400,7 @@ body {
     display: block;
     object-fit: contain;
     aspect-ratio: 4/3;
-    background: #000;
+    background: var(--bg-video);
 }
 
 .video-overlay {
@@ -430,7 +457,7 @@ body {
     justify-content: center;
 }
 .shortcut-hints kbd {
-    background: rgba(255,255,255,0.1);
+    background: var(--bg-subtle-2);
     padding: 1px 5px;
     border-radius: 3px;
     font-family: monospace;
@@ -548,7 +575,7 @@ body {
 
 .player-row--active .player-name {
     font-size: 1.15rem;
-    color: #fff;
+    color: var(--text-on-accent);
 }
 
 .player-name {
@@ -645,8 +672,8 @@ body {
 }
 
 .btn--recording {
-    background: var(--accent-red, #e74c3c);
-    color: #fff;
+    background: var(--danger);
+    color: var(--text-on-danger);
     opacity: 1;
     animation: rec-pulse 1.5s ease-in-out infinite;
 }
@@ -723,7 +750,7 @@ body {
 
 .btn--accent {
     background: var(--accent);
-    color: #fff;
+    color: var(--text-on-accent);
 }
 
 .btn--accent:hover {
@@ -738,16 +765,16 @@ body {
 
 .btn--warning {
     background: var(--warning);
-    color: #111;
+    color: var(--text-on-warning);
 }
 
 .btn--danger {
-    background: #c0392b;
-    color: #fff;
+    background: var(--danger);
+    color: var(--text-on-danger);
 }
 
 .btn--danger:hover {
-    background: #e74c3c;
+    background: var(--danger-hover);
 }
 
 /* Calibration Steps */
@@ -972,7 +999,7 @@ a:focus-visible,
 
 .cricket-mark--closed {
     background: var(--success);
-    color: #111;
+    color: var(--text-on-success);
     border-color: var(--success);
 }
 
@@ -1019,7 +1046,7 @@ a:focus-visible,
     font-size: 0.75rem;
     font-weight: 600;
     background: var(--warning);
-    color: #111;
+    color: var(--text-on-warning);
     animation: badge-pulse 1.5s ease-in-out infinite;
 }
 
@@ -1084,7 +1111,7 @@ a:focus-visible,
 .quality-bar {
     flex: 1;
     height: 6px;
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--bg-subtle-2);
     border-radius: 3px;
     overflow: hidden;
     min-width: 40px;
@@ -1122,7 +1149,7 @@ a:focus-visible,
 
 .btn--confirm {
     background: var(--success);
-    color: #111;
+    color: var(--text-on-success);
     border: none;
     cursor: pointer;
     font-weight: 600;
@@ -1130,12 +1157,12 @@ a:focus-visible,
 }
 
 .btn--confirm:hover {
-    background: #4ceb8f;
+    background: var(--success-hover);
 }
 
 .btn--reject {
     background: var(--accent);
-    color: #fff;
+    color: var(--text-on-accent);
     border: none;
     cursor: pointer;
     font-weight: 600;
@@ -1251,7 +1278,7 @@ a:focus-visible,
 }
 
 .setup-step--pending .setup-step__text {
-    color: #ffa502;
+    color: var(--warning);
 }
 
 .setup-step__action {
@@ -1418,6 +1445,6 @@ a:focus-visible,
     margin-left: 8px;
     vertical-align: middle;
 }
-.cam-health-green { background-color: #4caf50; }
-.cam-health-yellow { background-color: #ff9800; }
-.cam-health-red { background-color: #f44336; }
+.cam-health-green { background-color: var(--cam-health-green); }
+.cam-health-yellow { background-color: var(--cam-health-yellow); }
+.cam-health-red { background-color: var(--cam-health-red); }
