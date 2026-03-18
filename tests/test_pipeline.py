@@ -233,3 +233,106 @@ class TestDartPipelineD1:
         pipeline._last_raw_frame = None
         result = pipeline.detect_optical_center()
         assert result is None
+
+
+# ------------------------------------------------------------------
+# Performance optimizations tests
+# ------------------------------------------------------------------
+
+
+class TestMotionDetectorDownscale:
+    """Tests for downscaled motion detection (Tier-2 #13)."""
+
+    def test_downscale_factor_default_is_1(self):
+        md = MotionDetector()
+        assert md._downscale_factor == 1
+
+    def test_downscale_factor_stored(self):
+        md = MotionDetector(downscale_factor=4)
+        assert md._downscale_factor == 4
+
+    def test_invalid_downscale_factor_raises(self):
+        import pytest
+        with pytest.raises(ValueError):
+            MotionDetector(downscale_factor=0)
+
+    def test_downscale_preserves_mask_shape(self):
+        """Mask returned with downscale should match original frame dimensions."""
+        md = MotionDetector(threshold=500, downscale_factor=4)
+        frame = np.zeros((400, 400), dtype=np.uint8)
+        for _ in range(5):
+            mask, _ = md.detect(frame)
+        assert mask.shape == (400, 400)
+
+    def test_downscale_detects_motion(self):
+        """Downscaled detector should still detect motion on large changes."""
+        md = MotionDetector(threshold=100, downscale_factor=4)
+        bg = np.zeros((400, 400), dtype=np.uint8)
+        for _ in range(30):
+            md.detect(bg)
+        fg = bg.copy()
+        fg[100:300, 100:300] = 255
+        _, motion = md.detect(fg)
+        assert motion
+
+    def test_downscale_no_motion_on_static(self):
+        """Downscaled detector should not detect motion on static frames."""
+        md = MotionDetector(threshold=500, downscale_factor=4)
+        frame = np.zeros((400, 400), dtype=np.uint8)
+        for _ in range(10):
+            _, motion = md.detect(frame)
+        assert not motion
+
+    def test_no_downscale_same_as_factor_1(self):
+        """Factor 1 should behave identically to no downscale."""
+        md1 = MotionDetector(threshold=100, downscale_factor=1)
+        md2 = MotionDetector(threshold=100)
+        frame = np.random.randint(0, 255, (100, 100), dtype=np.uint8)
+        for _ in range(5):
+            mask1, m1 = md1.detect(frame)
+            mask2, m2 = md2.detect(frame)
+        np.testing.assert_array_equal(mask1, mask2)
+        assert m1 == m2
+
+
+class TestIdleFrameSkip:
+    """Tests for frame-skip in idle (Tier-5 #33)."""
+
+    def test_frame_skip_defaults(self):
+        from src.cv.pipeline import DartPipeline
+        p = DartPipeline(camera_src=0)
+        assert p._idle_frame_skip_enabled is True
+        assert p._idle_frame_skip_threshold == 10
+        assert p._no_motion_count == 0
+
+    def test_frame_skip_can_be_disabled(self):
+        from src.cv.pipeline import DartPipeline
+        p = DartPipeline(camera_src=0)
+        p._idle_frame_skip_enabled = False
+        # With skip disabled, every frame should be processed
+        fake_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        mock_cam = MagicMock()
+        mock_cam.read.return_value = (True, fake_frame)
+        p.camera = mock_cam
+        # Run many frames; none should be skipped by idle logic
+        results = []
+        for _ in range(20):
+            # process_frame returns None normally (no dart), but runs full pipeline
+            p.process_frame()
+            results.append(p._last_raw_frame is not None)
+        assert all(results)
+
+    def test_no_motion_count_resets_on_motion(self):
+        """_no_motion_count should reset when motion is detected."""
+        from src.cv.pipeline import DartPipeline
+        p = DartPipeline(camera_src=0)
+        p._no_motion_count = 50
+        fake_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        mock_cam = MagicMock()
+        mock_cam.read.return_value = (True, fake_frame)
+        p.camera = mock_cam
+
+        # Inject motion by patching motion detector
+        with patch.object(p.motion_detector, 'detect', return_value=(np.zeros((400, 400), dtype=np.uint8), True)):
+            p.process_frame()
+        assert p._no_motion_count == 0

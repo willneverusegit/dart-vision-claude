@@ -351,3 +351,192 @@ def test_default_min_diff_area_is_30():
     """Default min_diff_area should be 30 (lowered for outer bull detection)."""
     d = FrameDiffDetector()
     assert d.min_diff_area == 30
+
+
+# ------------------------------------------------------------------
+# Adaptive threshold (Otsu-Bias) tests (P40)
+# ------------------------------------------------------------------
+
+
+def test_adaptive_threshold_enabled_by_default():
+    """Adaptive threshold should be enabled by default."""
+    d = FrameDiffDetector()
+    assert d.adaptive_threshold is True
+    assert d.otsu_bias_factor == 0.7
+    assert d.min_threshold == 20
+
+
+def test_adaptive_threshold_detects_dart():
+    """With adaptive threshold, dart detection still works."""
+    d = FrameDiffDetector(
+        settle_frames=2, min_diff_area=10, min_elongation=1.0,
+        adaptive_threshold=True,
+    )
+    baseline = _gray(50)
+    post = _gray(50)
+    post[40:60, 40:60] = 200
+    result = _run_detection(d, baseline, post)
+    assert result is not None
+
+
+def test_adaptive_threshold_disabled_uses_fixed():
+    """With adaptive_threshold=False, fixed diff_threshold is used."""
+    d = FrameDiffDetector(
+        settle_frames=2, diff_threshold=30, min_diff_area=10,
+        min_elongation=1.0, adaptive_threshold=False,
+    )
+    baseline = _gray(100)
+    post = _gray(100)
+    post[45:65, 45:65] = 200
+    result = _run_detection(d, baseline, post)
+    assert result is not None
+
+
+def test_adaptive_threshold_respects_min_threshold():
+    """Otsu bias should never go below min_threshold."""
+    d = FrameDiffDetector(
+        settle_frames=2, min_diff_area=10, min_elongation=1.0,
+        adaptive_threshold=True, min_threshold=25, otsu_bias_factor=0.1,
+    )
+    # With bias_factor=0.1, Otsu result * 0.1 would be very low,
+    # but min_threshold=25 should prevent going below 25
+    baseline = _gray(50)
+    post = _gray(50)
+    post[40:60, 40:60] = 200
+    result = _run_detection(d, baseline, post)
+    assert result is not None
+
+
+def test_get_params_includes_adaptive_fields():
+    """get_params should include adaptive threshold parameters."""
+    d = FrameDiffDetector()
+    params = d.get_params()
+    assert "adaptive_threshold" in params
+    assert "otsu_bias_factor" in params
+    assert "min_threshold" in params
+    assert "search_mode_frames" in params
+    assert "no_detect_count" in params
+
+
+# ------------------------------------------------------------------
+# Search mode tests (P40)
+# ------------------------------------------------------------------
+
+
+def test_search_mode_activates_after_silence():
+    """After search_mode_frames without detection, search mode lowers threshold."""
+    d = FrameDiffDetector(
+        settle_frames=2, diff_threshold=30, min_diff_area=10,
+        min_elongation=1.0, search_mode_frames=5,
+        search_mode_threshold_factor=0.5,
+    )
+    # Simulate several cycles without detection to bump counter
+    baseline = _gray(100)
+    same = _gray(100)  # no dart, so _compute_diff returns None
+    for _ in range(6):
+        d.update(baseline, has_motion=False)
+        d.update(same, has_motion=True)
+        d.update(same, has_motion=False)
+        d.update(same, has_motion=False)
+    assert d._no_detect_count >= 5
+
+
+def test_search_mode_resets_on_detection():
+    """no_detect_count resets to 0 when a dart is detected."""
+    d = FrameDiffDetector(
+        settle_frames=2, diff_threshold=10, min_diff_area=10,
+        min_elongation=1.0, search_mode_frames=3,
+    )
+    baseline = _gray(50)
+    same = _gray(50)
+    # Build up no_detect_count
+    for _ in range(4):
+        d.update(baseline, has_motion=False)
+        d.update(same, has_motion=True)
+        d.update(same, has_motion=False)
+        d.update(same, has_motion=False)
+    assert d._no_detect_count >= 3
+
+    # Now detect a dart — counter should reset
+    post = _gray(50)
+    post[40:60, 40:60] = 200
+    d.update(baseline, has_motion=False)
+    d.update(post, has_motion=True)
+    d.update(post, has_motion=False)
+    result = d.update(post, has_motion=False)
+    assert result is not None
+    assert d._no_detect_count == 0
+
+
+def test_reset_clears_no_detect_count():
+    """reset() should clear the no_detect_count."""
+    d = FrameDiffDetector(search_mode_frames=3)
+    d._no_detect_count = 10
+    d.reset()
+    assert d._no_detect_count == 0
+
+
+# ------------------------------------------------------------------
+# Edge cache tests (P41)
+# ------------------------------------------------------------------
+
+
+def test_edge_cache_enabled_by_default():
+    """Edge cache should be enabled by default."""
+    d = FrameDiffDetector()
+    assert d._edge_cache_enabled is True
+    assert d._cached_edges is None
+
+
+def test_edge_cache_returns_same_result_same_frame():
+    """Calling get_cached_edges twice with same frame_id returns cached result."""
+    d = FrameDiffDetector()
+    frame = _gray(128)
+    d._frame_id = 42
+    edges1 = d.get_cached_edges(frame)
+    edges2 = d.get_cached_edges(frame)
+    assert edges1 is edges2  # same object, not just equal
+
+
+def test_edge_cache_invalidates_on_new_frame():
+    """New frame_id should recompute edges."""
+    d = FrameDiffDetector()
+    frame1 = _gray(100)
+    frame2 = _gray(200)
+    d._frame_id = 1
+    edges1 = d.get_cached_edges(frame1)
+    d._frame_id = 2
+    edges2 = d.get_cached_edges(frame2)
+    assert edges1 is not edges2
+
+
+def test_edge_cache_disabled():
+    """When edge cache is disabled, edges are not cached."""
+    d = FrameDiffDetector()
+    d._edge_cache_enabled = False
+    frame = _gray(128)
+    d._frame_id = 1
+    edges1 = d.get_cached_edges(frame)
+    edges2 = d.get_cached_edges(frame)
+    # Should be different objects when cache disabled
+    assert edges1 is not edges2
+
+
+def test_reset_clears_edge_cache():
+    """reset() should clear cached edges."""
+    d = FrameDiffDetector()
+    d._frame_id = 5
+    d.get_cached_edges(_gray(128))
+    assert d._cached_edges is not None
+    d.reset()
+    assert d._cached_edges is None
+
+
+def test_frame_id_increments_on_update():
+    """Each call to update() should increment _frame_id."""
+    d = FrameDiffDetector()
+    initial = d._frame_id
+    d.update(_gray(128), has_motion=False)
+    assert d._frame_id == initial + 1
+    d.update(_gray(128), has_motion=False)
+    assert d._frame_id == initial + 2

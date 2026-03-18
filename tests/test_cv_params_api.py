@@ -12,8 +12,8 @@ class TestFrameDiffDetectorParams:
     def test_get_params_returns_defaults(self):
         det = FrameDiffDetector()
         params = det.get_params()
-        assert params["settle_frames"] == 5
-        assert params["diff_threshold"] == 50
+        assert params["settle_frames"] == 3
+        assert params["diff_threshold"] == 30
         assert params["min_diff_area"] == 30
         assert params["max_diff_area"] == 8000
         assert params["min_elongation"] == 1.5
@@ -31,7 +31,7 @@ class TestFrameDiffDetectorParams:
         det = FrameDiffDetector()
         det.set_params(min_elongation=2.5)
         assert det.min_elongation == 2.5
-        assert det.diff_threshold == 50  # unchanged
+        assert det.diff_threshold == 30  # unchanged
 
     def test_set_params_rejects_invalid_settle_frames(self):
         det = FrameDiffDetector()

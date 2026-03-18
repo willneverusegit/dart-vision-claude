@@ -66,13 +66,10 @@ class DartPipeline:
         # Modules
         self.camera: ThreadedCamera | ReplayCamera | None = None
         self.roi_processor = ROIProcessor(roi_size=(400, 400))
-        self.motion_detector = MotionDetector(threshold=200)
+        self.motion_detector = MotionDetector(threshold=200, downscale_factor=4)
         self.dart_detector = DartImpactDetector(confirmation_frames=3)
         self.frame_diff_detector = FrameDiffDetector(
-            settle_frames=5,
-            diff_threshold=diff_threshold if diff_threshold is not None else 50,
-            min_diff_area=30,
-            max_diff_area=8000,
+            diff_threshold=diff_threshold if diff_threshold is not None else 30,
             diagnostics_dir=os.environ.get("DARTVISION_DIAGNOSTICS_DIR"),
         )
         self.fps_counter = FPSCounter()
@@ -105,6 +102,12 @@ class DartPipeline:
         # Temporal lock after scoring: ignore motion for N frames after confirmed hit
         self._scoring_lock_frames: int = 15  # ~0.5s at 30fps
         self._scoring_lock_counter: int = 0
+
+        # Frame-skip in idle: skip every 2nd frame when no motion detected
+        self._idle_frame_skip_enabled: bool = True
+        self._idle_frame_skip_threshold: int = 10  # frames without motion before skipping
+        self._no_motion_count: int = 0
+        self._frame_counter: int = 0
 
         # Motion overlay toggle
         self.show_overlay_motion = False
@@ -179,6 +182,15 @@ class DartPipeline:
             self._dropped_frames += 1
             return None
 
+        # Frame-skip in idle: every 2nd frame when idle for a while
+        self._frame_counter += 1
+        if (
+            self._idle_frame_skip_enabled
+            and self._no_motion_count >= self._idle_frame_skip_threshold
+            and self._frame_counter % 2 == 0
+        ):
+            return None
+
         # 1) Combined remap to ROI board space
         roi_source = self.remapper.remap(frame)
         if roi_source.shape[:2] != (self.roi_processor.roi_size[1], self.roi_processor.roi_size[0]):
@@ -195,6 +207,12 @@ class DartPipeline:
         # 3) Motion detection
         motion_mask, has_motion = self.motion_detector.detect(enhanced)
         self._last_motion_mask = motion_mask
+
+        # Track consecutive no-motion frames for idle frame-skip
+        if has_motion:
+            self._no_motion_count = 0
+        else:
+            self._no_motion_count += 1
 
         # Temporal lock: suppress motion after confirmed scoring
         if self._scoring_lock_counter > 0:

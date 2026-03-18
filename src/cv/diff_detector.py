@@ -19,7 +19,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from src.cv.detector import DartDetection
+from src.cv.detector import DartDetection, compute_dart_confidence
+from src.cv.light_monitor import LightStabilityMonitor
 from src.cv.tip_detection import find_dart_tip
 
 logger = logging.getLogger(__name__)
@@ -61,6 +62,13 @@ class FrameDiffDetector:
         bounce_check_frames: int = 3,
         stability_frames: int = 2,
         stability_max_drift_px: float = 5.0,
+        adaptive_threshold: bool = True,
+        otsu_bias_factor: float = 0.7,
+        min_threshold: int = 20,
+        search_mode_frames: int = 90,
+        search_mode_threshold_factor: float = 0.8,
+        light_variance_threshold: float = 15.0,
+        light_window_size: int = 10,
     ) -> None:
         if settle_frames < 1:
             raise ValueError("settle_frames must be >= 1")
@@ -84,6 +92,20 @@ class FrameDiffDetector:
         self.bounce_check_frames = bounce_check_frames
         self.stability_frames = stability_frames
         self.stability_max_drift_px = stability_max_drift_px
+        self.adaptive_threshold = adaptive_threshold
+        self.otsu_bias_factor = otsu_bias_factor
+        self.min_threshold = min_threshold
+        self.search_mode_frames = search_mode_frames
+        self.search_mode_threshold_factor = search_mode_threshold_factor
+
+        self._no_detect_count: int = 0
+
+        # Light stability monitor
+        self._light_monitor = LightStabilityMonitor(
+            variance_threshold=light_variance_threshold,
+            window_size=light_window_size,
+        )
+        self._base_diff_threshold = diff_threshold  # original threshold for restore
 
         self._state = _State.IDLE
         self._baseline: np.ndarray | None = None
@@ -98,6 +120,13 @@ class FrameDiffDetector:
         self._closing_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
         self._elongated_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 11))
 
+        # Edge cache: compute Canny edges once per detection, reuse for
+        # contour analysis and any future HoughLinesP calls (P41).
+        self._edge_cache_enabled: bool = True
+        self._cached_edges: np.ndarray | None = None
+        self._cached_edges_frame_id: int = -1
+        self._frame_id: int = 0
+
         # Diagnostics: save diff masks + contour images on each detection
         self._diagnostics_dir: Path | None = None
         if diagnostics_dir is not None:
@@ -109,12 +138,40 @@ class FrameDiffDetector:
     # Public API
     # ------------------------------------------------------------------
 
+    def get_cached_edges(self, frame: np.ndarray) -> np.ndarray:
+        """Return Canny edges for the given frame, using cache if available.
+
+        Computes Canny edges once per frame_id and caches the result.
+        Subsequent calls within the same frame return the cached edges.
+        """
+        if (
+            self._edge_cache_enabled
+            and self._cached_edges is not None
+            and self._cached_edges_frame_id == self._frame_id
+        ):
+            return self._cached_edges
+
+        edges = cv2.Canny(frame, 50, 150)
+        if self._edge_cache_enabled:
+            self._cached_edges = edges
+            self._cached_edges_frame_id = self._frame_id
+        return edges
+
     def update(self, frame: np.ndarray, has_motion: bool) -> DartDetection | None:
         """Einen Frame verarbeiten. Gibt DartDetection zurück wenn Dart gelandet.
 
         Muss für JEDEN Frame aufgerufen werden — auch wenn has_motion=False.
         Frames müssen single-channel (Grayscale) sein.
         """
+        self._frame_id += 1
+        # Update light stability monitor and adjust threshold
+        self._light_monitor.update(frame)
+        if self._light_monitor.is_light_unstable():
+            # Raise threshold by 50% during unstable lighting
+            self.diff_threshold = min(int(self._base_diff_threshold * 1.5), 254)
+        else:
+            self.diff_threshold = self._base_diff_threshold
+
         if self._state == _State.IDLE:
             return self._handle_idle(frame, has_motion)
         if self._state == _State.IN_MOTION:
@@ -130,6 +187,10 @@ class FrameDiffDetector:
         self._settle_count = 0
         self._had_motion_event = False
         self._stability_centroids = []
+        self._cached_edges = None
+        self._light_monitor.reset()
+        self.diff_threshold = self._base_diff_threshold
+        self._no_detect_count = 0
 
     @property
     def state(self) -> str:
@@ -144,6 +205,14 @@ class FrameDiffDetector:
             "max_diff_area": self.max_diff_area,
             "min_elongation": self.min_elongation,
             "diagnostics_enabled": self._diagnostics_dir is not None,
+            "adaptive_threshold": self.adaptive_threshold,
+            "otsu_bias_factor": self.otsu_bias_factor,
+            "min_threshold": self.min_threshold,
+            "search_mode_frames": self.search_mode_frames,
+            "search_mode_threshold_factor": self.search_mode_threshold_factor,
+            "no_detect_count": self._no_detect_count,
+            "light_unstable": self._light_monitor.is_light_unstable(),
+            "light_variance": round(self._light_monitor.get_variance(), 2),
         }
 
     def set_params(self, **kwargs) -> dict:
@@ -244,6 +313,12 @@ class FrameDiffDetector:
         # Genug stabile Frames — compute diff first
         detection = self._compute_diff(frame)
 
+        # Update search-mode counter
+        if detection is not None:
+            self._no_detect_count = 0
+        else:
+            self._no_detect_count += 1
+
         # If no dart detected but we had a motion event, check for bounce-out:
         # motion was seen (dart flew) but post-frame matches baseline (dart bounced off)
         if detection is None and self._had_motion_event and self._is_bounce_out(frame):
@@ -335,7 +410,36 @@ class FrameDiffDetector:
             raise ValueError("FrameDiffDetector requires single-channel (grayscale) frames")
 
         diff = cv2.absdiff(self._baseline, post_frame)
-        _, thresh = cv2.threshold(diff, self.diff_threshold, 255, cv2.THRESH_BINARY)
+
+        # Adaptive threshold: Otsu-Bias with search mode
+        effective_threshold = self.diff_threshold  # fallback
+        if self.adaptive_threshold:
+            otsu_val, _ = cv2.threshold(diff, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            biased = otsu_val * self.otsu_bias_factor
+            candidate = max(self.min_threshold, int(biased))
+            # Use Otsu-based value only if it's sensible (not wildly off)
+            if 0 < candidate < 256:
+                effective_threshold = candidate
+            else:
+                effective_threshold = self.diff_threshold
+            logger.debug(
+                "Adaptive threshold: otsu=%d, biased=%.1f, effective=%d (fallback=%d)",
+                int(otsu_val), biased, effective_threshold, self.diff_threshold,
+            )
+
+        # Search mode: lower threshold after prolonged silence
+        in_search_mode = self._no_detect_count >= self.search_mode_frames
+        if in_search_mode:
+            effective_threshold = max(
+                self.min_threshold,
+                int(effective_threshold * self.search_mode_threshold_factor),
+            )
+            logger.debug(
+                "Search mode active (%d frames w/o detection), threshold=%d",
+                self._no_detect_count, effective_threshold,
+            )
+
+        _, thresh = cv2.threshold(diff, effective_threshold, 255, cv2.THRESH_BINARY)
 
         # 1) Opening: entfernt dünne Board-Draht-Artefakte aus dem Diff
         thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, self._opening_kernel)
@@ -388,7 +492,7 @@ class FrameDiffDetector:
             dart_x, dart_y = cx, cy
             logger.info("FrameDiff: Tip-Detection fehlgeschlagen, Fallback auf Centroid (%d, %d) area=%.0f", cx, cy, area)
 
-        confidence = min(area / 500.0, 1.0)
+        confidence = compute_dart_confidence(largest, area)
         quality = self._compute_quality(largest, area, tip, (cx, cy))
 
         # Diagnostics: save diff mask, contour overlay, and metadata

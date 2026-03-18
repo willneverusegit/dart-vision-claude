@@ -53,20 +53,20 @@ class TestDiffThresholdPassthrough:
             # internal attribute naming, so we just check the pipeline created ok
 
     def test_defaultdiff_threshold(self):
-        """Without diff_threshold, default 50 is used."""
+        """Without diff_threshold, default 30 is used."""
         from src.cv.pipeline import DartPipeline
 
         pipeline = DartPipeline.__new__(DartPipeline)
         DartPipeline.__init__(pipeline, camera_src=0)
-        assert pipeline.frame_diff_detector.diff_threshold == 50
+        assert pipeline.frame_diff_detector.diff_threshold == 30
 
     def test_nonediff_threshold_uses_default(self):
-        """diff_threshold=None uses default 50."""
+        """diff_threshold=None uses default 30."""
         from src.cv.pipeline import DartPipeline
 
         pipeline = DartPipeline.__new__(DartPipeline)
         DartPipeline.__init__(pipeline, camera_src=0, diff_threshold=None)
-        assert pipeline.frame_diff_detector.diff_threshold == 50
+        assert pipeline.frame_diff_detector.diff_threshold == 30
 
 
 class TestExposureGainMethods:

@@ -9,6 +9,54 @@ from dataclasses import dataclass
 logger = logging.getLogger(__name__)
 
 
+def compute_dart_confidence(contour: np.ndarray, area: float) -> float:
+    """Weighted confidence score from contour shape metrics.
+
+    Combines aspect ratio, solidity, and area into a 0.0-1.0 score.
+    Tuned for typical dart contour characteristics.
+    """
+    # --- Aspect score (minAreaRect aspect ratio) ---
+    rect = cv2.minAreaRect(contour)
+    rect_w, rect_h = rect[1]
+    if rect_w > 0 and rect_h > 0:
+        ratio = max(rect_w, rect_h) / min(rect_w, rect_h)
+    else:
+        ratio = 1.0
+
+    # Ideal range [3, 8] for darts
+    if 3.0 <= ratio <= 8.0:
+        aspect_score = 1.0
+    elif ratio < 3.0:
+        aspect_score = max(0.0, ratio / 3.0)
+    else:
+        # ratio > 8: decay from 1.0 towards 0 over range 8-16
+        aspect_score = max(0.0, 1.0 - (ratio - 8.0) / 8.0)
+
+    # --- Solidity score (contourArea / convexHullArea) ---
+    hull = cv2.convexHull(contour)
+    hull_area = cv2.contourArea(hull)
+    solidity = (area / hull_area) if hull_area > 0 else 0.0
+
+    if solidity >= 0.7:
+        solidity_score = 1.0
+    elif solidity >= 0.4:
+        solidity_score = (solidity - 0.4) / 0.3
+    else:
+        solidity_score = 0.0
+
+    # --- Area score ---
+    if 80.0 <= area <= 1500.0:
+        area_score = 1.0
+    elif area < 80.0:
+        area_score = max(0.0, area / 80.0)
+    else:
+        # area > 1500: decay towards 0 over range 1500-5000
+        area_score = max(0.0, 1.0 - (area - 1500.0) / 3500.0)
+
+    confidence = 0.4 * aspect_score + 0.3 * solidity_score + 0.3 * area_score
+    return min(max(confidence, 0.0), 1.0)
+
+
 @dataclass
 class DartDetection:
     """Represents a confirmed dart detection."""
