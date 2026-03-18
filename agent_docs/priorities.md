@@ -981,3 +981,21 @@ Kritikalitaet: NIEDRIG (Quick-Wins)
 - **#31 Helle Flights Tipp** — Hinweis im Kalibrierungs-Modal in templates/index.html
 
 Geaenderte Dateien: src/main.py, templates/index.html
+
+## Prioritaet 64: routes.py Test-Coverage auf 80%+ heben
+
+Kritikalitaet: NIEDRIG
+
+Ziel:
+
+- routes.py Coverage von 74% auf mindestens 80% bringen
+- Fehlende Pfade: single/start, single/stop (mit echtem Pipeline-Mock), multi/start Erfolgsfall, stereo calibration Erfolgsfall, charuco calibration, board-pose Erfolgsfall, WebSocket endpoint
+
+Typische Arbeiten:
+
+- Tests fuer Pipeline-Start/Stop-Endpunkte mit gemockten start_single_pipeline / _run_multi_pipeline
+- Stereo-Calibration Erfolgspfad testen (aufwaendig wegen cv2-Abhaengigkeiten)
+- WebSocket-Verbindungstests
+- Dateien: tests/test_routes_coverage4.py
+
+Warum sinnvoll: Weitere Absicherung der API-Endpunkte gegen Regressionen. 74% durch P64-Vorarbeit erreicht, letzte 6-10% erfordern tiefere Mocks.
