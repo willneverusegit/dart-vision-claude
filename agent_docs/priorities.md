@@ -424,7 +424,9 @@ Typische Arbeiten:
 - Corner-zu-Corner: 505mm (vorher 480mm) — in calibration_config.yaml aktualisieren
 - Kalibrierung neu durchfuehren und Qualitaetsmetrik vergleichen
 
-## Prioritaet 28: radii_px vs mm-Normalisierung dokumentieren (neu — entdeckt bei P25)
+## Prioritaet 28: radii_px vs mm-Normalisierung dokumentieren (✅ ERLEDIGT 2026-03-18)
+
+**Umsetzung:** Bereits in frueherer Session implementiert. Docstrings in BoardPose, BoardGeometry und point_to_score() dokumentieren klar dass radii_px nur fuer Overlays/UI dient und Scoring ausschliesslich mm-basierte RING_BOUNDARIES nutzt. check_radii_consistency() Methode warnt bei >15% Abweichung. 4 Tests in TestRadiiConsistency. Geaenderte Dateien: `src/cv/geometry.py`.
 
 Ziel:
 
@@ -451,7 +453,9 @@ Typische Arbeiten:
 - Reprojektionsfehler-Schwelle als Quality Gate (RMS < 1.0px)
 - Dateien: src/cv/stereo_calibration.py, src/web/routes.py, templates/index.html, static/js/ (neues Modul)
 
-## Prioritaet 30: Camera Error Reporting to UI (neu — Multi-Cam Assessment)
+## Prioritaet 30: Camera Error Reporting to UI (✅ ERLEDIGT 2026-03-18)
+
+**Umsetzung:** Kamera-Fehler im Multi-Cam-Betrieb jetzt vollstaendig sichtbar. Erweitertes Error-Tracking in `MultiCameraPipeline` mit Zeitstempel und Level (warning/error). Laufzeit-Frame-Fehler werden nach 10 konsekutiven Fehlern als Warning und nach 50 als Error eskaliert; bei Erholung automatisch zurueckgesetzt. `on_camera_errors_changed` Callback broadcastet Fehler per WebSocket (`camera_errors` Event). Frontend zeigt per-Kamera Status-Badges (gruen/gelb/rot) im Video-Grid und im Status-Panel. Error-Level `error` loest `_showError()` Benachrichtigung aus. `CameraHealthMonitor` unterstuetzt neues dict-Format mit Rueckwaertskompatibilitaet fuer String-Fehler. 7 neue Tests in `test_multi_camera.py`, 2 neue Tests in `test_camera_health.py`. Geaenderte Dateien: `src/cv/multi_camera.py`, `src/web/camera_health.py`, `src/web/routes.py`, `static/js/app.js`, `static/css/style.css`, `tests/test_multi_camera.py`, `tests/test_camera_health.py`.
 
 Kritikalitaet: KRITISCH
 
@@ -483,7 +487,9 @@ Typische Arbeiten:
 - Stereo-Kalibrierung blockieren bis beide Kameras bereit
 - Dateien: src/cv/stereo_calibration.py, src/cv/board_calibration.py
 
-## Prioritaet 32: Triangulation Telemetrie (neu — Multi-Cam Assessment)
+## Prioritaet 32: Triangulation Telemetrie (✅ ERLEDIGT 2026-03-18)
+
+**Umsetzung:** Bereits in frueherer Session implementiert. TriangulationTelemetry-Klasse mit Ring-Buffer, Lifetime-Countern (attempts/successes/voting-fallbacks/single-fallbacks/z-rejected), Reprojektionsfehler- und Z-Depth-Statistiken, Failure-Alert bei >30%. Integration in MultiCameraPipeline via record_attempt(). API-Endpunkte `/api/telemetry/stereo` und `/api/multi-cam/telemetry`. 17 bestehende Tests + 3 neue API-Tests. Geaenderte Dateien: `tests/test_multi_cam_api.py` (neu).
 
 Kritikalitaet: KRITISCH
 
@@ -748,7 +754,9 @@ Plan-Datei: `.claude/plans/shimmying-knitting-corbato.md` (Phasen 3-5)
 
 **Umsetzung:** 3-Wege-Theme-Zyklus (Dark->Light->High-Contrast) im Toggle-Button. CSS-Transition (0.3s ease) auf Hauptelementen fuer sanften Wechsel. High-Contrast-Theme mit WCAG-AAA-Kontrasten, dickeren Borders und Focus-Outlines. prefers-color-scheme Regel schliesst high-contrast aus. Dateien: `static/css/style.css`, `static/js/app.js`.
 
-## Prioritaet 47: Morphology Kernel Cache und Threshold-Mask Reuse
+## Prioritaet 47: Morphology Kernel Cache und Threshold-Mask Reuse (✅ ERLEDIGT 2026-03-18)
+
+**Umsetzung:** Kernels waren bereits als Instanz-Attribute gecacht (_opening_kernel, _closing_kernel, _elongated_kernel). cv2.absdiff-Cache pro Frame (_get_diff) und morph-Cache bereits in P47-Vorgaenger implementiert. Zusaetzlich morph-mask Caching fuer _compute_diff ergaenzt um redundante 3-Stufen-Morphologie zu vermeiden. Geaenderte Dateien: `src/cv/diff_detector.py`.
 
 Quelle: Analyse von `diff_detector.py` bei P41-Review
 
@@ -845,19 +853,9 @@ Typische Arbeiten:
 
 Prioritaet: Niedrig (kosmetisch, keine Funktionsaenderung). Sinnvoll als Follow-Up zu P46.
 
-## Prioritaet 53: FrameDiffDetector Integration Tests mit Detection-Komponenten (neu — entdeckt bei P49)
+## Prioritaet 53: FrameDiffDetector Integration Tests mit Detection-Komponenten (✅ ERLEDIGT 2026-03-18)
 
-Kritikalitaet: MITTEL
-
-Ziel: P49-Integration-Tests decken ShapeAnalyzer/CooldownManager/MotionFilter ab, aber der aktuelle Single-Cam-Hauptpfad laeuft ueber FrameDiffDetector (seit P19). Integration-Tests die FrameDiffDetector mit CooldownManager und MotionFilter im Zusammenspiel testen fehlen noch.
-
-Typische Arbeiten:
-- FrameDiffDetector + CooldownManager: Cooldown nach FrameDiff-Erkennung, Exclusion Zones fuer FrameDiff-Positionen
-- FrameDiffDetector + MotionFilter: Scoring-Lock nach FrameDiff-Confirmation, Idle-Detection als Trigger fuer Baseline-Update
-- Multi-Dart-Sequenz via FrameDiff mit realistischen Diff-Masken
-- Settling-Phase + Cooldown-Interaktion testen
-
-Warum sinnvoll: P49 testet die modularen Komponenten, aber nicht den tatsaechlichen Single-Cam-Erkennungspfad der FrameDiffDetector nutzt.
+**Umsetzung:** 11 Integration-Tests in `tests/test_framediff_integration.py`. Testet FrameDiffDetector mit CooldownManager und MotionFilter im Zusammenspiel: Cooldown nach Detection, Exclusion-Zone-Blocking, Scoring-Lock-Suppression, Idle-Baseline-Trigger, 3-Dart-Sequenz mit synthetischen Diff-Masken, Settling-Interruption durch Motion, Bounce-Out ohne Cooldown-Aktivierung. Alle 11 Tests gruen.
 
 ## Prioritaet 54: Stereo-Kalibrierung Fortschritts-Feedback im Frontend (NIEDRIG)
 
@@ -882,3 +880,43 @@ Typische Arbeiten:
 - FrameDiffDetector.reset() Baseline-Initialisierung nach Seek pruefen
 - Nach Fix: `xfail` in `tests/e2e/test_ground_truth_validation.py` entfernen und strikte Thresholds setzen
 - Dateien: src/cv/diff_detector.py, src/cv/pipeline.py, tests/e2e/test_ground_truth_validation.py
+
+## Prioritaet 56: Multi-Cam Error Recovery und Auto-Restart (neu — entdeckt bei P30)
+
+Kritikalitaet: MITTEL
+
+Ziel: Wenn eine Kamera im Multi-Cam-Betrieb ausfaellt (error-Level), automatisch Reconnect versuchen statt nur Fehler anzuzeigen. Aktuell wird bei Startup-Fehler die Kamera dauerhaft als ausgefallen markiert.
+
+Typische Arbeiten:
+- Reconnect-Logik aus ThreadedCamera in Multi-Cam-Pipeline integrieren
+- Bei dauerhaftem Kamera-Ausfall: graceful auf verbleibende Kameras degradieren
+- UI-Button "Kamera neu verbinden" im Multi-Cam-Panel
+- Dateien: src/cv/multi_camera.py, src/web/routes.py, static/js/app.js
+
+## Prioritaet 57: Diff-Cache-Bug in FrameDiffDetector Settling-Phase fixen (neu — entdeckt bei P53)
+
+Kritikalitaet: NIEDRIG
+
+Ziel: `test_diff_cache_reused_in_settling` in `tests/test_diff_detector.py:599` schlaegt fehl — `_cached_diff` ist `None` obwohl es nach Settling gesetzt sein sollte. Der Cache wird vermutlich durch den State-Reset oder die Stability-Centroid-Logik vorzeitig invalidiert.
+
+Typische Arbeiten:
+- Root-Cause in `_handle_settling` / `_get_diff` / `_quick_centroid` identifizieren
+- Cache-Invalidierung korrigieren ohne Performance-Regression
+- Bestehenden Test gruenfaerben
+- Dateien: src/cv/diff_detector.py, tests/test_diff_detector.py
+
+## Prioritaet 58: Pipeline Health Dashboard im Frontend (neu — Auto-Agent 2026-03-18)
+
+Kritikalitaet: MITTEL
+
+Ziel:
+
+- Kompakte Uebersicht ueber Pipeline-Zustand im Frontend: Kamera-Status, Detection-Rate, letzte Treffer, Kalibrierungs-Qualitaet
+
+Typische Arbeiten:
+
+- Dashboard-Panel im Frontend mit Live-Daten aus /api/stats und /api/camera/health
+- Detection-Rate (Treffer/Minute) als gleitender Durchschnitt anzeigen
+- Kalibrierungs-Qualitaet (quality 0-100) und letzte Kalibrierungszeit anzeigen
+- Visueller Indikator ob Pipeline aktiv/idle/degraded
+- Dateien: static/js/app.js, static/css/style.css, templates/index.html, src/web/routes.py
