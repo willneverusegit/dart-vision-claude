@@ -446,3 +446,65 @@ class TestIdleFrameSkip:
         with patch.object(p.motion_detector, 'detect', return_value=(np.zeros((400, 400), dtype=np.uint8), True)):
             p.process_frame()
         assert p._no_motion_count == 0
+
+
+class TestHomographyFallbackIntegration:
+    """P61: Pipeline integration with homography fallback."""
+
+    def test_homography_age_accessible_from_pipeline(self):
+        """Pipeline exposes homography_age via board_calibration."""
+        from src.cv.pipeline import DartPipeline
+        p = DartPipeline(camera_src=0)
+        assert p.board_calibration.homography_age == 0
+
+    def test_homography_age_increments_on_failed_aruco(self):
+        """Calling aruco_calibration_with_fallback on blank frame increments age
+        when a cached homography exists."""
+        from src.cv.pipeline import DartPipeline
+        p = DartPipeline(camera_src=0)
+        # Seed a cached homography
+        p.board_calibration._last_valid_homography = np.eye(3)
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        result = p.board_calibration.aruco_calibration_with_fallback(frame)
+        assert result["ok"] is True
+        assert result.get("fallback") is True
+        assert p.board_calibration.homography_age == 1
+
+    def test_fallback_without_cache_fails(self, tmp_path):
+        """Without cached homography, fallback returns ok=False."""
+        from src.cv.board_calibration import BoardCalibrationManager
+        # Use a fresh config so no cached homography exists
+        mgr = BoardCalibrationManager(config_path=str(tmp_path / "empty.yaml"))
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        result = mgr.aruco_calibration_with_fallback(frame)
+        assert result["ok"] is False
+
+    def test_get_params_in_pipeline(self):
+        """board_calibration.get_params() returns homography_age for telemetry."""
+        from src.cv.pipeline import DartPipeline
+        p = DartPipeline(camera_src=0)
+        params = p.board_calibration.get_params()
+        assert "homography_age" in params
+        assert params["homography_age"] == 0
+
+    def test_telemetry_sample_includes_homography_age(self):
+        """TelemetrySample accepts homography_age field."""
+        from src.utils.telemetry import TelemetrySample
+        sample = TelemetrySample(
+            timestamp=1.0, fps=30.0, queue_pressure=0.0,
+            dropped_frames=0, memory_mb=100.0, homography_age=5,
+        )
+        assert sample.homography_age == 5
+
+    def test_telemetry_history_includes_homography_age(self):
+        """Telemetry history output includes homography_age."""
+        from src.utils.telemetry import TelemetryHistory, TelemetrySample
+        th = TelemetryHistory()
+        sample = TelemetrySample(
+            timestamp=1.0, fps=30.0, queue_pressure=0.0,
+            dropped_frames=0, memory_mb=100.0, homography_age=3,
+        )
+        th.record(sample)
+        history = th.get_history()
+        assert len(history) == 1
+        assert history[0]["homography_age"] == 3

@@ -21,6 +21,7 @@ class TelemetrySample:
     dropped_frames: int
     memory_mb: float
     cpu_percent: float | None = None
+    homography_age: int | None = None
 
 
 class TelemetryHistory:
@@ -123,6 +124,7 @@ class TelemetryHistory:
                 "drops": s.dropped_frames,
                 "mem": round(s.memory_mb, 1),
                 "cpu": round(s.cpu_percent, 1) if s.cpu_percent is not None else None,
+                "homography_age": s.homography_age,
             }
             for s in samples
         ]
@@ -206,6 +208,7 @@ class TelemetryJSONLWriter:
             "drops": sample.dropped_frames,
             "mem": round(sample.memory_mb, 1),
             "cpu": round(sample.cpu_percent, 1) if sample.cpu_percent is not None else None,
+            "homography_age": sample.homography_age,
         }
         line = json.dumps(record, separators=(",", ":")) + "\n"
         with self._lock:

@@ -582,7 +582,7 @@ def setup_routes(app_state: dict) -> APIRouter:
         pipeline = app_state.get("pipeline")
         if not pipeline or not hasattr(pipeline, "board_calibration"):
             return {"ok": False, "error": "Pipeline nicht aktiv — bitte zuerst die Kamera starten."}
-        result = pipeline.board_calibration.aruco_calibration(frame)
+        result = pipeline.board_calibration.aruco_calibration_with_fallback(frame)
         if result.get("ok"):
             pipeline.refresh_remapper()
         return result

@@ -480,6 +480,11 @@ async def lifespan(app: FastAPI):
             except ImportError:
                 pass
 
+            # Homography age from board calibration fallback
+            h_age = None
+            if pipeline and hasattr(pipeline, "board_calibration"):
+                h_age = pipeline.board_calibration.homography_age
+
             sample = TelemetrySample(
                 timestamp=time.time(),
                 fps=fps,
@@ -487,6 +492,7 @@ async def lifespan(app: FastAPI):
                 dropped_frames=dropped,
                 memory_mb=memory_mb,
                 cpu_percent=cpu,
+                homography_age=h_age,
             )
             telemetry.record(sample)
 
