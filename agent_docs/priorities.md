@@ -1016,6 +1016,31 @@ Typische Arbeiten:
 
 Warum sinnvoll: Verhindert Ressourcen-Konflikte und haengende Requests im Multi-User-Szenario.
 
+**Status: ✅ ERLEDIGT 2026-03-18**
+
+**Umsetzung:** Per-Source `asyncio.Lock` verhindert gleichzeitige Kamera-Oeffnung fuer dieselbe Quelle. TTL-Cache (2.5s) liefert wiederholte Requests aus dem Speicher. `asyncio.timeout(5s)` verhindert endloses Blockieren bei haengendem Kamera-Open. 504-Response bei Timeout. 8 neue Tests. Geaenderte Dateien: `src/web/routes.py`, `tests/test_camera_preview_lock.py`.
+
+## Prioritaet 66: Telemetrie-Dashboard Langzeit-Trends
+
+(reserviert)
+
+## Prioritaet 67: Module-Level Router in routes.py durch Factory-Pattern ersetzen
+
+Kritikalitaet: NIEDRIG
+
+Ziel:
+
+- `router = APIRouter()` ist module-level in `routes.py`. `setup_routes()` haengt Endpunkte an diesen globalen Router. Bei mehrfachem Aufruf (z.B. in Tests) werden Routen doppelt registriert und Closure-Variablen (Caches, Locks) der ersten Registrierung bleiben aktiv. Spaetere Aufrufe erzeugen tote Closures.
+
+Typische Arbeiten:
+
+- `router` innerhalb `setup_routes()` erzeugen statt auf Modul-Ebene
+- Alle `@router.*` Dekoratoren bleiben gleich, nur die Router-Instanz wird lokal
+- Test-Isolation wird drastisch einfacher (jeder Test bekommt eigene Router-Instanz)
+- Dateien: src/web/routes.py, src/main.py, tests/
+
+Warum sinnvoll: Bei P65 entdeckt — der module-level Router verursacht subtile Test-Pollution. Mehrere Test-Dateien (test_routes_coverage*.py, test_camera_preview_lock.py) brauchen Workarounds um Closure-State zwischen Tests zu bereinigen.
+
 ## Prioritaet 68: Timestamp-basiertes Detection Matching fuer Video-Replay-Tests (neu — entdeckt bei P39-Verbesserung)
 
 Kritikalitaet: MITTEL
