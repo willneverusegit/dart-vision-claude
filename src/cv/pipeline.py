@@ -112,6 +112,9 @@ class DartPipeline:
         # Motion overlay toggle
         self.show_overlay_motion = False
 
+        # Camera focus quality threshold (Laplacian variance)
+        self._focus_quality_threshold: float = 50.0
+
         # Marker detection overlay toggle (ArUco + ChArUco)
         self.show_overlay_markers = False
 
@@ -128,6 +131,7 @@ class DartPipeline:
             self._optical_center = oc
 
         self.refresh_remapper()
+        self._check_camera_focus()
         logger.info("DartPipeline started (src=%s, debug=%s)", self.camera_src, self.debug)
 
     def stop(self) -> None:
@@ -149,6 +153,26 @@ class DartPipeline:
             height=self._capture_height,
             fps=self._capture_fps,
         )
+
+    def _check_camera_focus(self) -> None:
+        """Check camera focus quality using Laplacian variance at startup."""
+        if self.camera is None:
+            return
+        ret, frame = self.camera.read()
+        if not ret or frame is None:
+            logger.warning("Could not read frame for focus check")
+            return
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if len(frame.shape) == 3 else frame
+        laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
+        if laplacian_var < self._focus_quality_threshold:
+            logger.warning(
+                "Camera focus quality LOW (Laplacian variance=%.1f, threshold=%.1f). "
+                "Check camera focus for best detection accuracy.",
+                laplacian_var,
+                self._focus_quality_threshold,
+            )
+        else:
+            logger.info("Camera focus quality OK (Laplacian variance=%.1f)", laplacian_var)
 
     def refresh_remapper(self) -> None:
         """Refresh combined remap tables after lens/board calibration changes."""
