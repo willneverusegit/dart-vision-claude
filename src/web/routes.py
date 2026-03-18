@@ -1695,11 +1695,13 @@ def setup_routes(app_state: dict) -> APIRouter:
         # Calibration quality: 0-100 based on viewing angle quality
         calibration_quality = 0
         lens_calibrated = False
+        homography_age = 0
         if pipeline and hasattr(pipeline, "board_calibration"):
             bc = pipeline.board_calibration
             if bc.is_valid():
                 vaq = bc.get_viewing_angle_quality()
                 calibration_quality = min(100, max(0, int(vaq * 100)))
+            homography_age = bc.homography_age
         if pipeline and hasattr(pipeline, "lens_calibration"):
             lc = pipeline.lens_calibration
             if hasattr(lc, "is_valid") and lc.is_valid():
@@ -1733,6 +1735,7 @@ def setup_routes(app_state: dict) -> APIRouter:
                 "calibration_quality": calibration_quality,
                 "lens_calibrated": lens_calibrated,
                 "board_calibrated": board_calibrated,
+                "homography_age": homography_age,
             },
         }
 

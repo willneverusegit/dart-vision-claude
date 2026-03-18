@@ -1570,3 +1570,42 @@ a:focus-visible,
 .cam-health-green { background-color: var(--cam-health-green); }
 .cam-health-yellow { background-color: var(--cam-health-yellow); }
 .cam-health-red { background-color: var(--cam-health-red); }
+
+/* Homography warning banner (P62) */
+.homography-warning {
+    background: var(--warning);
+    color: var(--text-on-warning);
+    text-align: center;
+    padding: 6px 16px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    animation: camera-warning-pulse 2s ease-in-out infinite;
+}
+
+/* Telemetry status widget (P62) */
+.telemetry-status-widget {
+    margin-top: 10px;
+    padding: 8px 10px;
+    background: var(--bg-inset);
+    border-radius: 6px;
+}
+.telemetry-status-widget__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+}
+.telemetry-status-widget__body {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.telemetry-status-widget__item {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}

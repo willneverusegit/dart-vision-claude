@@ -949,7 +949,7 @@ Kritikalitaet: HOCH
 
 Warum kritisch: P60 hat die Fallback-Logik implementiert, aber sie wird noch nicht von der Pipeline aufgerufen. Ohne Integration bleibt das Feature wirkungslos.
 
-## Prioritaet 62: Frontend Homography-Age Warnung und Telemetrie-Status-Widget (neu — entdeckt bei P61/P51)
+## Prioritaet 62: Frontend Homography-Age Warnung und Telemetrie-Status-Widget (✅ ERLEDIGT 2026-03-18)
 
 Kritikalitaet: MITTEL
 
@@ -967,3 +967,5 @@ Typische Arbeiten:
 - Dateien: src/web/routes.py, static/js/app.js, static/css/style.css, templates/index.html
 
 Warum sinnvoll: P61 exponiert homography_age in der API, P51 liefert den Telemetrie-Status-Endpunkt — aber beides hat noch keine Frontend-Darstellung.
+
+**Umsetzung:** Backend: `homography_age` in `/api/stats` pipeline_health-Objekt ergaenzt. Frontend: Warn-Banner "Kalibrierung veraltet — Marker freilegen" bei homography_age > 30. Telemetrie-Status-Widget im Performance-Monitor mit Dateigroesse, Aufbewahrung, Status und Rotate-Button (POST /api/telemetry/rotate). Geaenderte Dateien: `src/web/routes.py`, `static/js/app.js`, `static/css/style.css`, `templates/index.html`, `agent_docs/priorities.md`.
