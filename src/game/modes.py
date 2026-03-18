@@ -29,7 +29,7 @@ X01_CHECKOUTS: dict[int, str] = {
     140: "T20 T20 D10",
     # Common lower finishes
     100: "T20 D20",
-    99: "T19 D21",
+    99: "T19 S10 D16",
     80: "T20 D10",
     60: "20 D20",
     50: "Bull",
