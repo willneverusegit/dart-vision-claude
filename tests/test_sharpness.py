@@ -4,8 +4,10 @@ import numpy as np
 import pytest
 
 from src.cv.sharpness import (
+    compute_brightness,
     compute_sharpness,
     adjusted_diff_threshold,
+    adjusted_clahe_clip_limit,
     compute_wire_filter_kernel_size,
     SharpnessTracker,
 )
@@ -180,3 +182,100 @@ class TestFrameDiffDetectorSharpnessIntegration:
             det.update(frame, has_motion=False)
         # The sharpness tracker should have been updated
         assert det._sharpness_tracker.sharpness > 0
+
+
+class TestComputeBrightness:
+    def test_uniform_image(self):
+        img = np.full((100, 100), 128, dtype=np.uint8)
+        assert abs(compute_brightness(img) - 128.0) < 0.1
+
+    def test_dark_image(self):
+        img = np.full((100, 100), 10, dtype=np.uint8)
+        assert compute_brightness(img) < 15
+
+    def test_bright_image(self):
+        img = np.full((100, 100), 240, dtype=np.uint8)
+        assert compute_brightness(img) > 230
+
+    def test_bgr_input(self):
+        img = np.full((100, 100, 3), 100, dtype=np.uint8)
+        assert compute_brightness(img) > 0
+
+    def test_empty_image(self):
+        assert compute_brightness(np.array([], dtype=np.uint8)) == 0.0
+
+    def test_none_input(self):
+        assert compute_brightness(None) == 0.0
+
+
+class TestAdjustedClaheClipLimit:
+    def test_reference_brightness_returns_base(self):
+        result = adjusted_clahe_clip_limit(128.0, base_clip=2.0, reference_brightness=128.0)
+        assert abs(result - 2.0) < 0.01
+
+    def test_dark_image_higher_clip(self):
+        result = adjusted_clahe_clip_limit(64.0, base_clip=2.0, reference_brightness=128.0)
+        assert result > 2.0
+
+    def test_bright_image_lower_clip(self):
+        result = adjusted_clahe_clip_limit(200.0, base_clip=2.0, reference_brightness=128.0)
+        assert result < 2.0
+
+    def test_clamped_min(self):
+        result = adjusted_clahe_clip_limit(255.0, base_clip=2.0, min_clip=1.0)
+        assert result >= 1.0
+
+    def test_clamped_max(self):
+        result = adjusted_clahe_clip_limit(10.0, base_clip=2.0, max_clip=4.0)
+        assert result <= 4.0
+
+    def test_zero_brightness_returns_base(self):
+        assert adjusted_clahe_clip_limit(0.0) == 2.0
+
+
+class TestSharpnessTrackerBrightness:
+    def test_initial_brightness_zero(self):
+        tracker = SharpnessTracker()
+        assert tracker.brightness == 0.0
+
+    def test_update_sets_brightness(self):
+        tracker = SharpnessTracker(sample_interval=1)
+        img = np.full((100, 100), 150, dtype=np.uint8)
+        tracker.update(img)
+        assert abs(tracker.brightness - 150.0) < 1.0
+
+    def test_quality_report_includes_brightness(self):
+        tracker = SharpnessTracker(sample_interval=1)
+        img = np.full((100, 100), 128, dtype=np.uint8)
+        tracker.update(img)
+        report = tracker.get_quality_report()
+        assert "brightness" in report
+        assert "brightness_label" in report
+        assert report["brightness_label"] == "normal"
+
+    def test_brightness_label_bright(self):
+        tracker = SharpnessTracker(sample_interval=1)
+        img = np.full((100, 100), 200, dtype=np.uint8)
+        tracker.update(img)
+        assert tracker.get_quality_report()["brightness_label"] == "bright"
+
+    def test_brightness_label_dark(self):
+        tracker = SharpnessTracker(sample_interval=1)
+        img = np.full((100, 100), 50, dtype=np.uint8)
+        tracker.update(img)
+        assert tracker.get_quality_report()["brightness_label"] == "dark"
+
+    def test_brightness_label_very_dark(self):
+        tracker = SharpnessTracker(sample_interval=1)
+        img = np.full((100, 100), 10, dtype=np.uint8)
+        tracker.update(img)
+        assert tracker.get_quality_report()["brightness_label"] == "very_dark"
+
+
+class TestFrameDiffDetectorBrightnessIntegration:
+    def test_get_params_includes_brightness(self):
+        from src.cv.diff_detector import FrameDiffDetector
+        det = FrameDiffDetector(diff_threshold=30)
+        params = det.get_params()
+        assert "brightness" in params
+        assert "brightness_label" in params

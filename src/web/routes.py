@@ -1489,6 +1489,24 @@ def setup_routes(app_state: dict) -> APIRouter:
             return {"ok": False, "error": "Keine aktive Kamera verfuegbar"}
         return {"ok": True, "cameras": health}
 
+    @router.get("/api/camera/quality")
+    async def get_camera_quality() -> dict:
+        """Bildqualitaet (Schaerfe + Helligkeit) aller aktiven Kameras."""
+        pipeline = app_state.get("pipeline")
+        multi = app_state.get("multi_pipeline")
+        quality: dict = {}
+        if pipeline and hasattr(pipeline, "frame_diff_detector"):
+            tracker = pipeline.frame_diff_detector._sharpness_tracker
+            quality["default"] = tracker.get_quality_report()
+        if multi is not None:
+            for cam_id, pipe in multi.get_pipelines().items():
+                if hasattr(pipe, "frame_diff_detector"):
+                    tracker = pipe.frame_diff_detector._sharpness_tracker
+                    quality[cam_id] = tracker.get_quality_report()
+        if not quality:
+            return {"ok": False, "error": "Keine aktive Kamera verfuegbar"}
+        return {"ok": True, "cameras": quality}
+
     # --- Telemetry ---
 
     @router.get("/api/telemetry/history")

@@ -11,6 +11,24 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def compute_brightness(frame: np.ndarray) -> float:
+    """Compute mean brightness (intensity) of a frame.
+
+    Args:
+        frame: Grayscale (2D) or BGR (3D) image.
+
+    Returns:
+        Mean pixel intensity as float (0.0-255.0).
+    """
+    if frame is None or frame.size == 0:
+        return 0.0
+    if frame.ndim == 3:
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = frame
+    return float(gray.mean())
+
+
 def compute_sharpness(frame: np.ndarray) -> float:
     """Compute sharpness metric using Laplacian variance.
 
@@ -100,6 +118,35 @@ def compute_wire_filter_kernel_size(sharpness: float, base_size: int = 2) -> int
     return max(3, size)
 
 
+def adjusted_clahe_clip_limit(
+    brightness: float,
+    base_clip: float = 2.0,
+    min_clip: float = 1.0,
+    max_clip: float = 4.0,
+    reference_brightness: float = 128.0,
+) -> float:
+    """Compute brightness-adjusted CLAHE clipLimit.
+
+    Brighter images need lower clipLimit (less contrast enhancement),
+    darker images need higher clipLimit (more enhancement).
+
+    Args:
+        brightness: Current mean brightness (0-255).
+        base_clip: Default CLAHE clipLimit.
+        min_clip: Floor for clipLimit.
+        max_clip: Ceiling for clipLimit.
+        reference_brightness: Expected "normal" brightness.
+
+    Returns:
+        Adjusted clipLimit as float.
+    """
+    if brightness <= 0 or reference_brightness <= 0:
+        return base_clip
+    ratio = reference_brightness / brightness  # darker → ratio > 1 → higher clip
+    adjusted = base_clip * ratio
+    return max(min_clip, min(adjusted, max_clip))
+
+
 class SharpnessTracker:
     """Tracks per-camera sharpness over a rolling window.
 
@@ -117,8 +164,10 @@ class SharpnessTracker:
         self._ema_alpha = ema_alpha
         self._sample_interval = max(1, sample_interval)
         self._sharpness: float = 0.0
+        self._brightness: float = 0.0
         self._frame_count: int = 0
         self._initialized: bool = False
+        self._brightness_initialized: bool = False
 
     def update(self, frame: np.ndarray) -> None:
         """Update sharpness estimate with a new frame.
@@ -130,16 +179,27 @@ class SharpnessTracker:
             return
 
         val = compute_sharpness(frame)
+        bri = compute_brightness(frame)
         if not self._initialized:
             self._sharpness = val
             self._initialized = True
         else:
             self._sharpness = (1 - self._ema_alpha) * self._sharpness + self._ema_alpha * val
+        if not self._brightness_initialized:
+            self._brightness = bri
+            self._brightness_initialized = True
+        else:
+            self._brightness = (1 - self._ema_alpha) * self._brightness + self._ema_alpha * bri
 
     @property
     def sharpness(self) -> float:
         """Current smoothed sharpness estimate."""
         return self._sharpness
+
+    @property
+    def brightness(self) -> float:
+        """Current smoothed brightness estimate (0-255)."""
+        return self._brightness
 
     @property
     def is_sharp(self) -> bool:
@@ -157,9 +217,20 @@ class SharpnessTracker:
         else:
             label = "blurry"
 
+        if self._brightness > 180:
+            brightness_label = "bright"
+        elif self._brightness > 80:
+            brightness_label = "normal"
+        elif self._brightness > 30:
+            brightness_label = "dark"
+        else:
+            brightness_label = "very_dark"
+
         return {
             "sharpness": round(self._sharpness, 1),
+            "brightness": round(self._brightness, 1),
             "quality_label": label,
+            "brightness_label": brightness_label,
             "is_sharp": self.is_sharp,
             "frames_sampled": self._frame_count // self._sample_interval,
         }
