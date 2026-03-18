@@ -147,6 +147,127 @@ def test_video(path: str, marker_size_mm: float,
     }
 
 
+def match_detections_to_ground_truth(
+    dart_frames: list[int],
+    dart_details: list[dict],
+    gt_throws: list[dict],
+    video_fps: float,
+    tolerance_frames: int = 30,
+) -> list[dict]:
+    """Match each GT throw to the closest detection within a tolerance window.
+
+    Returns a list of match results (one per GT throw), each containing:
+      - gt: the ground-truth throw dict
+      - expected_frame: frame index derived from timestamp_s * video_fps
+      - matched: bool — whether a detection was matched
+      - detection: matched detection dict (or None)
+      - detection_frame: matched frame index (or None)
+      - frame_delta: absolute frame difference (or None)
+    """
+    if not gt_throws or video_fps <= 0:
+        return []
+
+    # Build list of available detection indices (each can match at most once)
+    available = set(range(len(dart_frames)))
+    results: list[dict] = []
+
+    for gt in gt_throws:
+        ts = gt.get("timestamp_s")
+        if ts is None:
+            results.append({
+                "gt": gt,
+                "expected_frame": None,
+                "matched": False,
+                "detection": None,
+                "detection_frame": None,
+                "frame_delta": None,
+            })
+            continue
+
+        expected_frame = int(ts * video_fps)
+
+        best_idx: int | None = None
+        best_delta = tolerance_frames + 1
+
+        for i in available:
+            delta = abs(dart_frames[i] - expected_frame)
+            if delta <= tolerance_frames and delta < best_delta:
+                best_delta = delta
+                best_idx = i
+
+        if best_idx is not None:
+            available.discard(best_idx)
+            results.append({
+                "gt": gt,
+                "expected_frame": expected_frame,
+                "matched": True,
+                "detection": dart_details[best_idx],
+                "detection_frame": dart_frames[best_idx],
+                "frame_delta": best_delta,
+            })
+        else:
+            results.append({
+                "gt": gt,
+                "expected_frame": expected_frame,
+                "matched": False,
+                "detection": None,
+                "detection_frame": None,
+                "frame_delta": None,
+            })
+
+    return results
+
+
+def format_match_report(
+    matches: list[dict],
+    dart_frames: list[int],
+    dart_details: list[dict],
+) -> str:
+    """Format a human-readable report of GT-to-detection matching."""
+    lines: list[str] = []
+
+    # Matched GT throws
+    matched_det_indices: set[int] = set()
+    for m in matches:
+        gt = m["gt"]
+        sector = gt.get("sector", "?")
+        ring = gt.get("ring", "?")
+        ts = gt.get("timestamp_s", "?")
+        ef = m["expected_frame"]
+
+        if m["matched"]:
+            det = m["detection"]
+            d_sector = det.get("sector", "?")
+            d_ring = det.get("ring", "?")
+            d_score = det.get("score", "?")
+            correct = (d_sector == sector and d_ring == ring)
+            tag = "OK" if correct else "WRONG"
+            lines.append(
+                f"  GT {ring} {sector} @{ts}s (frame ~{ef}) -> "
+                f"{tag} det {d_ring} {d_sector}={d_score} "
+                f"(frame {m['detection_frame']}, delta {m['frame_delta']})"
+            )
+            # Track which detection index was used
+            if m["detection_frame"] in dart_frames:
+                matched_det_indices.add(dart_frames.index(m["detection_frame"]))
+        else:
+            lines.append(
+                f"  GT {ring} {sector} @{ts}s (frame ~{ef}) -> MISS (no detection)"
+            )
+
+    # False positives: detections not matched to any GT
+    for i, (frame, det) in enumerate(zip(dart_frames, dart_details)):
+        if i not in matched_det_indices:
+            d_sector = det.get("sector", "?")
+            d_ring = det.get("ring", "?")
+            d_score = det.get("score", "?")
+            lines.append(
+                f"  FALSE POS: det {d_ring} {d_sector}={d_score} (frame {frame})"
+            )
+
+    return "\n".join(lines)
+
+
 def load_ground_truth(gt_path: str) -> dict:
     """Load ground truth YAML file."""
     if not os.path.exists(gt_path):
@@ -207,22 +328,44 @@ def main() -> None:
         if result["error"]:
             calib_str = "ERR"
 
+        # Timestamp-based matching
+        matches = match_detections_to_ground_truth(
+            result["dart_frames"],
+            result["dart_details"],
+            gt_throws,
+            result["video_fps"],
+        )
+        matched_count = sum(1 for m in matches if m["matched"])
+        correct_count = sum(
+            1 for m in matches
+            if m["matched"]
+            and m["detection"].get("sector") == m["gt"].get("sector")
+            and m["detection"].get("ring") == m["gt"].get("ring")
+        )
+        total_correct += correct_count
+
         hit_pct = ""
         if gt_count > 0:
-            # Simple hit rate: detected / expected (capped at 100%)
-            rate = min(result["darts"] / gt_count * 100, 100) if gt_count > 0 else 0
+            rate = min(matched_count / gt_count * 100, 100)
             hit_pct = f"{rate:.0f}%"
 
         print(f"{fname:<30} {result['frames']:>7} {calib_str:>5} {result['darts']:>6} "
               f"{gt_count:>4} {hit_pct:>5} {result['fps']:>6} {result['elapsed_s']:>6}s")
 
-        # Print detected darts
-        for i, d in enumerate(result["dart_details"]):
-            sector = d.get("sector", "?")
-            ring = d.get("ring", "?")
-            score = d.get("score", "?")
-            frame = result["dart_frames"][i] if i < len(result["dart_frames"]) else "?"
-            print(f"  detected: {ring} {sector} = {score} (frame ~{frame})")
+        # Print timestamp-matched report if GT exists
+        if gt_throws and matches:
+            report = format_match_report(
+                matches, result["dart_frames"], result["dart_details"]
+            )
+            print(report)
+        else:
+            # Fallback: just list detections
+            for i, d in enumerate(result["dart_details"]):
+                sector = d.get("sector", "?")
+                ring = d.get("ring", "?")
+                score = d.get("score", "?")
+                frame = result["dart_frames"][i] if i < len(result["dart_frames"]) else "?"
+                print(f"  detected: {ring} {sector} = {score} (frame ~{frame})")
 
         if result["error"]:
             print(f"  ERROR: {result['error'][:80]}")
@@ -234,8 +377,9 @@ def main() -> None:
     errors = sum(1 for r in results if r["error"])
     overall_hit = f"{total_detected}/{total_gt}" if total_gt > 0 else "n/a"
     overall_pct = f"({total_detected/total_gt*100:.0f}%)" if total_gt > 0 else ""
+    correct_pct = f", correct: {total_correct}/{total_gt}" if total_gt > 0 else ""
     print(f"Total: {total_frames} frames, {total_detected} detected, "
-          f"{total_gt} ground truth, hit rate: {overall_hit} {overall_pct}")
+          f"{total_gt} ground truth, hit rate: {overall_hit} {overall_pct}{correct_pct}")
     print(f"Calibration: {calib_ok}/{len(results)} videos, {errors} errors")
 
 

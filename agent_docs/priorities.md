@@ -1043,7 +1043,9 @@ Typische Arbeiten:
 
 Warum sinnvoll: Bei P65 entdeckt — der module-level Router verursacht subtile Test-Pollution. Mehrere Test-Dateien (test_routes_coverage*.py, test_camera_preview_lock.py) brauchen Workarounds um Closure-State zwischen Tests zu bereinigen.
 
-## Prioritaet 68: Timestamp-basiertes Detection Matching fuer Video-Replay-Tests (neu — entdeckt bei P39-Verbesserung)
+## Prioritaet 68: Timestamp-basiertes Detection Matching fuer Video-Replay-Tests (✅ ERLEDIGT 2026-03-18)
+
+**Umsetzung:** `match_detections_to_ground_truth()` und `format_match_report()` in `scripts/test_all_videos.py` implementiert. GT-Timestamps werden via `expected_frame = timestamp_s * video_fps` in Frame-Indices umgerechnet und per greedy closest-match (Toleranz +/-30 Frames) gegen tatsaechliche Detection-Frames gematcht. Report zeigt pro GT-Wurf OK/WRONG/MISS und listet ungematchte Detections als FALSE POS. Summary enthaelt jetzt auch `correct`-Zaehler. 10 Unit-Tests in `tests/test_timestamp_matching.py` decken exact match, tolerance window, outside tolerance, empty GT, no detections, closest-match-Greedy, missing timestamps, false positives und report formatting ab.
 
 Kritikalitaet: MITTEL
 
@@ -1111,3 +1113,20 @@ Typische Arbeiten:
 - Dateien: src/web/routes.py
 
 Warum sinnvoll: Bei P67 entdeckt — nach der Router-Factory-Umstellung ist `templates` das letzte verbliebene module-level Objekt mit Seiteneffekten in routes.py.
+
+## Prioritaet 74: Per-Throw Accuracy Regression Gate fuer CI (neu — entdeckt bei P68)
+
+Kritikalitaet: MITTEL
+
+Ziel:
+
+- P68 hat timestamp-basiertes Matching eingefuehrt, das pro Wurf zeigt ob er korrekt erkannt wurde. Darauf aufbauend kann ein CI-Test pruefen, dass bekannte "stable" Wuerfe (die zuverlaessig erkannt werden) nicht regressieren. Ein YAML-Flag `stable: true` pro Wurf in ground_truth.yaml wuerde markieren, welche Wuerfe als Regressions-Gate dienen.
+- Threshold: z.B. "alle stable-Wuerfe muessen korrekt erkannt werden" als harter CI-Check.
+
+Typische Arbeiten:
+
+- `stable: true` Flag in ground_truth.yaml fuer zuverlaessig erkannte Wuerfe setzen
+- CI-Test der stable-Wuerfe via `match_detections_to_ground_truth()` prueft
+- Separate Metriken fuer stable vs. unstable Wuerfe im Report
+
+Warum sinnvoll: Verhindert Regressionen bei CV-Aenderungen, ohne dass alle Wuerfe (inkl. schwieriger Edge Cases) gruen sein muessen.
