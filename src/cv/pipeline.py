@@ -15,6 +15,7 @@ import numpy as np
 from src.cv.board_calibration import BoardCalibrationManager
 from src.cv.camera_calibration import CameraCalibrationManager
 from src.cv.capture import ThreadedCamera
+from src.cv.detection_components import MotionFilter
 from src.cv.detector import DartImpactDetector
 from src.cv.geometry import BoardGeometry, BoardHit, RING_BOUNDARIES
 from src.cv.diff_detector import FrameDiffDetector
@@ -99,14 +100,14 @@ class DartPipeline:
         # Optical center override (ROI pixel space)
         self._optical_center: tuple[float, float] | None = None
 
-        # Temporal lock after scoring: ignore motion for N frames after confirmed hit
-        self._scoring_lock_frames: int = 15  # ~0.5s at 30fps
-        self._scoring_lock_counter: int = 0
+        # Modular motion filter (P43): handles scoring lock + idle detection
+        self._motion_filter = MotionFilter(
+            idle_threshold=10,
+            scoring_lock_frames=15,  # ~0.5s at 30fps
+        )
 
         # Frame-skip in idle: skip every 2nd frame when no motion detected
         self._idle_frame_skip_enabled: bool = True
-        self._idle_frame_skip_threshold: int = 10  # frames without motion before skipping
-        self._no_motion_count: int = 0
         self._frame_counter: int = 0
 
         # Motion overlay toggle
@@ -117,6 +118,39 @@ class DartPipeline:
 
         # Marker detection overlay toggle (ArUco + ChArUco)
         self.show_overlay_markers = False
+
+    # Backward-compatible properties proxying to _motion_filter (P43)
+    @property
+    def _idle_frame_skip_threshold(self) -> int:
+        return self._motion_filter.idle_threshold
+
+    @_idle_frame_skip_threshold.setter
+    def _idle_frame_skip_threshold(self, value: int) -> None:
+        self._motion_filter.idle_threshold = value
+
+    @property
+    def _no_motion_count(self) -> int:
+        return self._motion_filter._no_motion_count
+
+    @_no_motion_count.setter
+    def _no_motion_count(self, value: int) -> None:
+        self._motion_filter._no_motion_count = value
+
+    @property
+    def _scoring_lock_frames(self) -> int:
+        return self._motion_filter.scoring_lock_frames
+
+    @_scoring_lock_frames.setter
+    def _scoring_lock_frames(self, value: int) -> None:
+        self._motion_filter.scoring_lock_frames = value
+
+    @property
+    def _scoring_lock_counter(self) -> int:
+        return self._motion_filter._scoring_lock_counter
+
+    @_scoring_lock_counter.setter
+    def _scoring_lock_counter(self, value: int) -> None:
+        self._motion_filter._scoring_lock_counter = value
 
     def start(self) -> None:
         """Initialize modules and start capture source."""
@@ -210,7 +244,7 @@ class DartPipeline:
         self._frame_counter += 1
         if (
             self._idle_frame_skip_enabled
-            and self._no_motion_count >= self._idle_frame_skip_threshold
+            and self._motion_filter.is_idle
             and self._frame_counter % 2 == 0
         ):
             return None
@@ -232,16 +266,8 @@ class DartPipeline:
         motion_mask, has_motion = self.motion_detector.detect(enhanced)
         self._last_motion_mask = motion_mask
 
-        # Track consecutive no-motion frames for idle frame-skip
-        if has_motion:
-            self._no_motion_count = 0
-        else:
-            self._no_motion_count += 1
-
-        # Temporal lock: suppress motion after confirmed scoring
-        if self._scoring_lock_counter > 0:
-            self._scoring_lock_counter -= 1
-            has_motion = False  # Force motion-free during lock period
+        # Motion filter: tracks idle state + scoring lock
+        has_motion = self._motion_filter.update(has_motion)
 
         # 4) Frame-Diff detection — receives every frame (SETTLING needs motion-free frames)
         detection = self.frame_diff_detector.update(enhanced, has_motion)
@@ -253,7 +279,7 @@ class DartPipeline:
         if detection is not None:
             self.dart_detector.register_confirmed(detection)
             # Activate temporal lock to suppress false positives during dart removal
-            self._scoring_lock_counter = self._scoring_lock_frames
+            self._motion_filter.activate_lock()
         else:
             self._update_annotated_frame(frame, enhanced, motion_mask if has_motion else None)
             return None

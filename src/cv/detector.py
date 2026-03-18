@@ -6,6 +6,8 @@ import math
 import logging
 from dataclasses import dataclass
 
+from src.cv.detection_components import ShapeAnalyzer, CooldownManager
+
 logger = logging.getLogger(__name__)
 
 
@@ -45,13 +47,13 @@ def compute_dart_confidence(contour: np.ndarray, area: float) -> float:
         solidity_score = 0.0
 
     # --- Area score ---
-    if 80.0 <= area <= 1500.0:
+    if 80.0 <= area <= 2500.0:
         area_score = 1.0
     elif area < 80.0:
         area_score = max(0.0, area / 80.0)
     else:
-        # area > 1500: decay towards 0 over range 1500-5000
-        area_score = max(0.0, 1.0 - (area - 1500.0) / 3500.0)
+        # area > 2500: decay towards 0 over range 2500-6000
+        area_score = max(0.0, 1.0 - (area - 2500.0) / 3500.0)
 
     confidence = 0.4 * aspect_score + 0.3 * solidity_score + 0.3 * area_score
     return min(max(confidence, 0.0), 1.0)
@@ -74,7 +76,7 @@ class DartImpactDetector:
 
     def __init__(self, confirmation_frames: int = 3,
                  position_tolerance_px: int = 20,
-                 area_min: int = 10, area_max: int = 1000,
+                 area_min: int = 10, area_max: int = 2000,
                  aspect_ratio_range: tuple[float, float] = (0.3, 3.0),
                  max_candidates: int = 50,
                  exclusion_zone_px: int = 50,
@@ -105,10 +107,36 @@ class DartImpactDetector:
         self.exclusion_zone_px = exclusion_zone_px
         self.cooldown_frames = cooldown_frames
 
+        self._base_area_max = area_max
+
+        # Modular components (P43)
+        self._shape_analyzer = ShapeAnalyzer(
+            area_min=area_min, area_max=area_max,
+            aspect_ratio_range=aspect_ratio_range,
+        )
+        self._cooldown = CooldownManager(cooldown_frames=cooldown_frames)
+
         # Temporal state
         self._candidates: list[dict] = []
         self._confirmed: list[DartDetection] = []
-        self._cooldown_counter: int = 0
+
+    def scale_area_to_roi(self, roi_width: int, roi_height: int,
+                          reference_size: int = 400) -> None:
+        """Scale area_min/area_max based on ROI size relative to a reference.
+
+        Larger ROIs produce larger contours, so we scale proportionally
+        by the ratio of ROI area to reference area (default 400x400).
+        """
+        roi_area = roi_width * roi_height
+        ref_area = reference_size * reference_size
+        scale = roi_area / ref_area
+        self.area_min = max(1, int(self.area_min * scale))
+        self.area_max = max(self.area_min + 1, int(self._base_area_max * scale))
+        # Update shape analyzer too
+        self._shape_analyzer.area_min = self.area_min
+        self._shape_analyzer.area_max = self.area_max
+        logger.debug("Area range scaled to [%d, %d] for ROI %dx%d (scale=%.2f)",
+                     self.area_min, self.area_max, roi_width, roi_height, scale)
 
     def detect(self, roi_frame: np.ndarray, motion_mask: np.ndarray) -> DartDetection | None:
         """Analyze motion mask for dart-shaped objects. Returns confirmed detection or None.
@@ -154,33 +182,8 @@ class DartImpactDetector:
         return None
 
     def _find_dart_shapes(self, motion_mask: np.ndarray) -> list[dict]:
-        """Find contours matching dart shape criteria."""
-        contours, _ = cv2.findContours(motion_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        candidates = []
-
-        for contour in contours:
-            area = cv2.contourArea(contour)
-            if not (self.area_min <= area <= self.area_max):
-                continue
-
-            x, y, w, h = cv2.boundingRect(contour)
-            if h == 0:
-                continue
-            aspect_ratio = float(w) / h
-
-            if not (self.aspect_ratio_range[0] < aspect_ratio < self.aspect_ratio_range[1]):
-                continue
-
-            M = cv2.moments(contour)
-            if M["m00"] <= 0:
-                continue
-
-            cx = int(M["m10"] / M["m00"])
-            cy = int(M["m01"] / M["m00"])
-            candidates.append({"center": (cx, cy), "area": area})
-
-        candidates.sort(key=lambda d: d["area"], reverse=True)
-        return candidates
+        """Find contours matching dart shape criteria. Delegates to ShapeAnalyzer."""
+        return self._shape_analyzer.find_dart_shapes(motion_mask)
 
     def _match_candidate(self, shape: dict) -> dict | None:
         """Find an existing candidate near the given shape."""
@@ -215,7 +218,7 @@ class DartImpactDetector:
         """Reset temporal state (e.g., after dart removal)."""
         self._candidates.clear()
         self._confirmed.clear()
-        self._cooldown_counter = 0
+        self._cooldown.reset()
 
     def get_all_confirmed(self) -> list[DartDetection]:
         """Return all currently confirmed dart positions (up to 3 per turn)."""
@@ -223,12 +226,11 @@ class DartImpactDetector:
 
     def is_in_cooldown(self) -> bool:
         """Return True if the detector is in post-confirmation cooldown."""
-        return self._cooldown_counter > 0
+        return self._cooldown.active
 
     def tick(self) -> None:
         """Advance cooldown counter by one frame. Call once per frame."""
-        if self._cooldown_counter > 0:
-            self._cooldown_counter -= 1
+        self._cooldown.tick()
 
     def register_confirmed(self, detection: "DartDetection") -> bool:
         """Add an externally confirmed detection.
@@ -236,13 +238,13 @@ class DartImpactDetector:
         Returns True if added, False if position already known (deduplication)
         or if detector is in cooldown.
         """
-        if self._cooldown_counter > 0:
+        if self._cooldown.active:
             logger.debug("register_confirmed rejected: cooldown active (%d frames left)",
-                         self._cooldown_counter)
+                         self._cooldown.remaining)
             return False
         if self._is_already_confirmed(detection):
             return False
         self._confirmed.append(detection)
-        self._cooldown_counter = self.cooldown_frames
+        self._cooldown.activate()
         logger.debug("Cooldown activated for %d frames", self.cooldown_frames)
         return True

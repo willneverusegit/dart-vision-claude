@@ -190,7 +190,9 @@ Typische Arbeiten:
 - Accuracy-Thresholds fuer echte Clips kalibrieren (realistischer als synthetisch)
 - outer_bull-Erkennung verbessern (aktuell verpasst wegen zu kleinem Blob in schmaler Ring-Zone)
 
-## Prioritaet 12: DartImpactDetector Area-Range erweitern (neu — entdeckt bei Arbeit an P1)
+## Prioritaet 12: DartImpactDetector Area-Range erweitern (✅ ERLEDIGT 2026-03-18)
+
+**Umsetzung:** area_max Default von 1000 auf 2000 erhoeht. `scale_area_to_roi()` Methode fuer dynamische Skalierung basierend auf ROI-Groesse. Confidence-Scoring Area-Range auf [80, 2500] erweitert. 8 neue Tests. Geaenderte Dateien: `src/cv/detector.py`, `tests/test_detector.py`.
 
 Ziel:
 
@@ -309,7 +311,9 @@ Typische Arbeiten:
 
 **Umsetzung:** FrameDiffDetector mit IDLE/IN_MOTION/SETTLING-State-Machine in `src/cv/diff_detector.py`. MOG2 bleibt Motion-Trigger, Positionsbestimmung via cv2.absdiff() zwischen Baseline und stabilem Post-Wurf-Frame. register_confirmed() public method in DartImpactDetector. Integration in DartPipeline.process_frame() — update() vor Motion-Gate-Early-Return. reset_turn() setzt alle drei Detektoren zurück (dart_detector, frame_diff_detector, motion_detector). Geaenderte Dateien: `src/cv/diff_detector.py`, `src/cv/detector.py`, `src/cv/pipeline.py`, `tests/test_diff_detector.py`, `tests/test_detector.py`, `tests/test_pipeline_diff_integration.py`.
 
-## Prioritaet 22: Telemetrie-Export und Post-Mortem-Analyse (neu — entdeckt bei Arbeit an P8)
+## Prioritaet 22: Telemetrie-Export und Post-Mortem-Analyse (✅ ERLEDIGT 2026-03-18)
+
+**Umsetzung:** TelemetryJSONLWriter schreibt Samples als JSONL (aktiviert via `DARTVISION_TELEMETRY_FILE` env). Export-Endpunkt `/api/telemetry/export` liefert JSON (mit session_id) oder CSV Download (`?format=csv`). Session-ID wird in app_state propagiert und im Export-Response mitgeliefert. Frontend: JSON- und CSV-Download-Buttons im Performance-Monitor-Panel. Tests in test_telemetry.py und test_routes_coverage2.py. Geaenderte Dateien: `src/utils/telemetry.py`, `src/web/routes.py`, `src/main.py`, `static/js/app.js`, `templates/index.html`, `tests/test_routes_coverage2.py`.
 
 Ziel:
 
@@ -403,18 +407,9 @@ Typische Arbeiten:
 - Schwellwert bestimmen: ab welcher Konturgroesse ist Tip-Detection zuverlaessiger als Centroid?
 - Kamera-spezifische Korrekturfaktoren evaluieren (cam_left schaerfer als cam_right)
 
-## Prioritaet 26: Kamera-Qualitaet angleichen oder kompensieren (neu — entdeckt bei P20)
+## Prioritaet 26: Kamera-Qualitaet angleichen oder kompensieren (✅ ERLEDIGT 2026-03-18)
 
-Ziel:
-
-- Unterschiedliche Bildqualitaet zwischen Kameras erkennen und kompensieren
-
-Typische Arbeiten:
-
-- Automatische Schaerfe-Metrik pro Kamera (Laplacian-Varianz oder aehnlich)
-- Kamera-spezifische Threshold-Anpassung (schaerfere Kamera kann niedrigeren diff_threshold nutzen)
-- Board-Draht-Artefakte in Diff bei scharfen Kameras filtern (cam_left zeigt Board-Draehte im Diff)
-- Qualitaets-Report in Diagnostics-Metadaten aufnehmen
+**Umsetzung:** Neues Modul `src/cv/sharpness.py` mit Laplacian-Varianz-Schaerfemetrik, EMA-basiertem SharpnessTracker, sharpness-adaptiver Threshold-Berechnung und dynamischer Wire-Filter-Kernelgroesse. Integration in `FrameDiffDetector`: automatische Schaerfe-Messung pro Kamera, Threshold-Anpassung (scharf→hoeher, unscharf→niedriger), groesserer Morphologie-Kernel fuer Wire-Artefakt-Unterdrueckung bei scharfen Kameras. Schaerfe-Metrik und Quality-Report in Diagnostics-Metadaten (`camera_quality` Block) und `get_params()`. 25 neue Tests in `tests/test_sharpness.py`. Geaenderte Dateien: `src/cv/sharpness.py` (neu), `src/cv/diff_detector.py`, `tests/test_sharpness.py` (neu).
 
 ## Prioritaet 27: Marker-Kalibrierung auf neue Masse aktualisieren (neu — Session-Start)
 
@@ -697,15 +692,9 @@ Typische Arbeiten:
 
 Warum wichtig: Aktuelle feste Thresholds funktionieren nur bei stabiler Beleuchtung. Adaptive Schwellwerte erhoehen Robustheit ohne CPU-Mehrkosten.
 
-## Prioritaet 41: Edge Cache (Canny-Reuse pro Frame)
+## Prioritaet 41: Edge Cache (Canny-Reuse pro Frame) (✅ ERLEDIGT 2026-03-18)
 
-Quelle: `pipeline_patterns.md` Pattern #5
-
-Ziel: Canny-Edges einmal pro Frame berechnen und fuer alle Contour-Operationen wiederverwenden.
-
-Erwarteter Gewinn: 15-25% CPU-Einsparung bei der Contour-Analyse.
-
-Warum sinnvoll: Einfache Optimierung, komplementaer zu #13 (Downscaled Motion) und #33 (Frame-Skip).
+**Umsetzung:** Edge-Cache-Infrastruktur in `FrameDiffDetector` implementiert: `get_cached_edges()` berechnet Canny-Edges einmal pro `frame_id` und cached das Ergebnis. Invalidierung bei neuem Frame, Cache-Clear bei `reset()`. 6 Tests vorhanden (cache hit, miss, invalidierung, disabled-mode, reset-clear, frame_id-increment). Die Contour-Analyse in `_compute_diff` arbeitet auf Threshold-Masken (nicht Canny), daher kein direkter Canny-Reuse moeglich. Der Cache steht fuer kuenftige HoughLinesP- oder Edge-basierte Analysen bereit. Geaenderte Dateien: keine (bereits implementiert in `src/cv/diff_detector.py`, Tests in `tests/test_diff_detector.py`).
 
 ## Prioritaet 42: Cooldown Management (raeumlich + zeitlich)
 
@@ -718,7 +707,9 @@ Typische Arbeiten:
 - 30-Frame zeitlicher Lockout nach Treffer-Bestaetigung
 - Unterschied zu Tier-2 #14 (Temporal Lock): #14 ignoriert Hand-Motion nach Scoring, P42 verhindert Re-Detektion desselben Darts
 
-## Prioritaet 43: Modulare Detection Components
+## Prioritaet 43: Modulare Detection Components (✅ ERLEDIGT 2026-03-18)
+
+**Umsetzung:** `ShapeAnalyzer`, `CooldownManager`, `MotionFilter` als eigenstaendige Klassen in `src/cv/detection_components.py` extrahiert. `DartImpactDetector` delegiert Shape-Analyse und Cooldown an Komponenten. `DartPipeline` nutzt `MotionFilter` fuer Scoring-Lock und Idle-Tracking. 24 neue Tests. Geaenderte Dateien: `src/cv/detection_components.py` (neu), `tests/test_detection_components.py` (neu), `src/cv/detector.py`, `src/cv/pipeline.py`.
 
 Quelle: `pipeline_patterns.md` Pattern #10
 
@@ -773,3 +764,64 @@ Typische Arbeiten:
 - Sicherstellen, dass alle Modals, Tooltips und dynamisch erzeugte Elemente die Theme-Variablen nutzen
 - High-Contrast-Mode als dritte Option fuer Barrierefreiheit
 - Theme-Vorschau in Settings vor dem Umschalten
+
+## Prioritaet 47: Morphology Kernel Cache und Threshold-Mask Reuse
+
+Quelle: Analyse von `diff_detector.py` bei P41-Review
+
+Ziel: Die morphologischen Operationen in `_compute_diff` (Opening + 2x Closing) kosten mehr CPU als Canny. Threshold-Mask und morphologisch bearbeitete Maske koennen gecached werden, wenn `_quick_centroid` und `_compute_diff` im selben Frame auf demselben Diff arbeiten.
+
+Typische Arbeiten:
+- Diff-Ergebnis (`cv2.absdiff`) pro Frame cachen, damit `_quick_centroid` und `_compute_diff` nicht doppelt diffen
+- Morphologie-Ergebnis nach dem dreistufigen Kernel-Durchlauf cachen
+- Profiling mit `cProfile` um tatsaechliche CPU-Einsparung zu messen
+
+Erwarteter Gewinn: 10-20% CPU-Einsparung im Settling-Phase (wo `_quick_centroid` + `_compute_diff` beide `cv2.absdiff` ausfuehren).
+
+Warum sinnvoll: Komplementaer zu P41 (Edge Cache) und P33 (Frame-Skip). Keine Verhaltensaenderung, rein interne Optimierung.
+
+## Prioritaet 48: Telemetrie-Retention-Policy und automatische Rotation (neu — entdeckt bei P22)
+
+Kritikalitaet: NIEDRIG
+
+Ziel:
+
+- JSONL-Telemetrie-Dateien wachsen unbegrenzt bei Langzeitbetrieb. Eine Retention-Policy begrenzt Speicherverbrauch.
+
+Typische Arbeiten:
+
+- Maximale Dateigroesse oder Alter fuer JSONL-Telemetrie konfigurierbar machen (z.B. DARTVISION_TELEMETRY_MAX_MB, DARTVISION_TELEMETRY_RETAIN_DAYS)
+- Automatische Log-Rotation implementieren (z.B. Rename + Truncate bei Ueberschreitung)
+- Alte Telemetrie-Dateien nach konfigurierbarer Frist loeschen
+- Dashboard-Warnung wenn Telemetrie-Datei ueber Schwellwert waechst
+
+Warum sinnvoll: Ohne Retention wachsen JSONL-Dateien bei Dauerbetrieb unbegrenzt. Besonders relevant auf Embedded-Systemen mit begrenztem Speicher.
+
+## Prioritaet 49: Detection-Component Integration Tests (neu — entdeckt bei P43)
+
+Ziel: Die neuen modularen Detection-Komponenten (P43) im Zusammenspiel testen — insbesondere die Interaktion zwischen ShapeAnalyzer, CooldownManager und MotionFilter in realistischen Multi-Dart-Szenarien.
+
+Typische Arbeiten:
+- Integration-Tests: 3 Darts nacheinander erkennen mit Cooldown zwischen jedem
+- ShapeAnalyzer mit dynamisch skalierten Area-Ranges (P12) testen
+- MotionFilter Scoring-Lock + Idle-Tracking in Pipeline-Kontext validieren
+- Edge Cases: Bounce-Out waehrend Cooldown, Shape-Reject gefolgt von gueltigem Dart
+- Performance-Vergleich: sicherstellen dass Delegation keinen messbaren Overhead einfuehrt
+
+Warum sinnvoll: P43 hat Unit-Tests pro Komponente, aber keine Integration-Tests die das Zusammenspiel aller Komponenten in einem realistischen Szenario pruefen.
+
+## Prioritaet 50: Auto-Exposure-Kompensation pro Kamera (neu — entdeckt bei P26)
+
+Ziel:
+
+- Unterschiedliche Auto-Exposure-Einstellungen zwischen Kameras erkennen und kompensieren
+
+Typische Arbeiten:
+
+- Mittlere Helligkeit pro Kamera tracken (EMA ueber ROI-Frames)
+- Bei signifikanter Helligkeitsdifferenz zwischen Kameras: CLAHE clipLimit dynamisch anpassen
+- Gain/Exposure-Harmonisierung via OpenCV CAP_PROP wenn Kameras dies unterstuetzen
+- Helligkeits-Metrik in SharpnessTracker.get_quality_report() aufnehmen
+- API-Endpunkt fuer Kamera-Qualitaetsvergleich (alle Kameras nebeneinander)
+
+Warum sinnvoll: P26 kompensiert Schaerfe-Unterschiede, aber Helligkeits-Unterschiede zwischen Kameras koennen ebenso zu unterschiedlichen Diff-Ergebnissen fuehren. Auto-Exposure-Harmonisierung wuerde die Multi-Cam-Triangulation robuster machen.
