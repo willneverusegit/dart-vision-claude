@@ -190,9 +190,7 @@ Typische Arbeiten:
 - Accuracy-Thresholds fuer echte Clips kalibrieren (realistischer als synthetisch)
 - outer_bull-Erkennung verbessern (aktuell verpasst wegen zu kleinem Blob in schmaler Ring-Zone)
 
-## Prioritaet 12: DartImpactDetector Area-Range erweitern (✅ ERLEDIGT 2026-03-18)
-
-**Umsetzung:** area_max Default von 1000 auf 2000 erhoeht. `scale_area_to_roi()` Methode fuer dynamische Skalierung basierend auf ROI-Groesse. Confidence-Scoring Area-Range auf [80, 2500] erweitert. 8 neue Tests. Geaenderte Dateien: `src/cv/detector.py`, `tests/test_detector.py`.
+## Prioritaet 12: DartImpactDetector Area-Range erweitern (neu — entdeckt bei Arbeit an P1)
 
 Ziel:
 
@@ -292,9 +290,7 @@ Typische Arbeiten:
 
 Warum kritisch: Korrupte Kalibrierungsdaten werden aktuell still geladen und fuehren erst zur Laufzeit zu kryptischen Fehlern.
 
-## Prioritaet 18: Checkout-Tabelle erweitern und Spielvarianten (✅ ERLEDIGT 2026-03-18)
-
-**Umsetzung:** Checkout-Tabelle mit PDC/BDO-Standard-Checkouts fuer alle Scores 2-170 (ausser 7 unmoeglich: 159,162,163,165,166,168,169). Bevorzugte Pfade (z.B. 170=T20 T20 D25) als erste Vorschlaege. Double-In-Variante fuer X01 implementiert (Konstruktor-Parameter `double_in=True`). Checkout-Vorschlag passt sich automatisch an verbleibende Darts an (war bereits via `darts_remaining` implementiert). 18 neue Tests. Geaenderte Dateien: `src/game/checkout.py`, `src/game/engine.py`, `src/game/models.py`, `tests/test_checkout_extended.py`.
+## Prioritaet 18: Checkout-Tabelle erweitern und Spielvarianten (neu — entdeckt bei Arbeit an P7)
 
 Ziel:
 
@@ -311,9 +307,7 @@ Typische Arbeiten:
 
 **Umsetzung:** FrameDiffDetector mit IDLE/IN_MOTION/SETTLING-State-Machine in `src/cv/diff_detector.py`. MOG2 bleibt Motion-Trigger, Positionsbestimmung via cv2.absdiff() zwischen Baseline und stabilem Post-Wurf-Frame. register_confirmed() public method in DartImpactDetector. Integration in DartPipeline.process_frame() — update() vor Motion-Gate-Early-Return. reset_turn() setzt alle drei Detektoren zurück (dart_detector, frame_diff_detector, motion_detector). Geaenderte Dateien: `src/cv/diff_detector.py`, `src/cv/detector.py`, `src/cv/pipeline.py`, `tests/test_diff_detector.py`, `tests/test_detector.py`, `tests/test_pipeline_diff_integration.py`.
 
-## Prioritaet 22: Telemetrie-Export und Post-Mortem-Analyse (✅ ERLEDIGT 2026-03-18)
-
-**Umsetzung:** TelemetryJSONLWriter schreibt Samples als JSONL (aktiviert via `DARTVISION_TELEMETRY_FILE` env). Export-Endpunkt `/api/telemetry/export` liefert JSON (mit session_id) oder CSV Download (`?format=csv`). Session-ID wird in app_state propagiert und im Export-Response mitgeliefert. Frontend: JSON- und CSV-Download-Buttons im Performance-Monitor-Panel. Tests in test_telemetry.py und test_routes_coverage2.py. Geaenderte Dateien: `src/utils/telemetry.py`, `src/web/routes.py`, `src/main.py`, `static/js/app.js`, `templates/index.html`, `tests/test_routes_coverage2.py`.
+## Prioritaet 22: Telemetrie-Export und Post-Mortem-Analyse (neu — entdeckt bei Arbeit an P8)
 
 Ziel:
 
@@ -407,11 +401,22 @@ Typische Arbeiten:
 - Schwellwert bestimmen: ab welcher Konturgroesse ist Tip-Detection zuverlaessiger als Centroid?
 - Kamera-spezifische Korrekturfaktoren evaluieren (cam_left schaerfer als cam_right)
 
-## Prioritaet 26: Kamera-Qualitaet angleichen oder kompensieren (✅ ERLEDIGT 2026-03-18)
+## Prioritaet 26: Kamera-Qualitaet angleichen oder kompensieren (neu — entdeckt bei P20)
 
-**Umsetzung:** Neues Modul `src/cv/sharpness.py` mit Laplacian-Varianz-Schaerfemetrik, EMA-basiertem SharpnessTracker, sharpness-adaptiver Threshold-Berechnung und dynamischer Wire-Filter-Kernelgroesse. Integration in `FrameDiffDetector`: automatische Schaerfe-Messung pro Kamera, Threshold-Anpassung (scharf→hoeher, unscharf→niedriger), groesserer Morphologie-Kernel fuer Wire-Artefakt-Unterdrueckung bei scharfen Kameras. Schaerfe-Metrik und Quality-Report in Diagnostics-Metadaten (`camera_quality` Block) und `get_params()`. 25 neue Tests in `tests/test_sharpness.py`. Geaenderte Dateien: `src/cv/sharpness.py` (neu), `src/cv/diff_detector.py`, `tests/test_sharpness.py` (neu).
+Ziel:
 
-## Prioritaet 27: Marker-Kalibrierung auf neue Masse aktualisieren (neu — Session-Start)
+- Unterschiedliche Bildqualitaet zwischen Kameras erkennen und kompensieren
+
+Typische Arbeiten:
+
+- Automatische Schaerfe-Metrik pro Kamera (Laplacian-Varianz oder aehnlich)
+- Kamera-spezifische Threshold-Anpassung (schaerfere Kamera kann niedrigeren diff_threshold nutzen)
+- Board-Draht-Artefakte in Diff bei scharfen Kameras filtern (cam_left zeigt Board-Draehte im Diff)
+- Qualitaets-Report in Diagnostics-Metadaten aufnehmen
+
+## Prioritaet 27: Marker-Kalibrierung auf neue Masse aktualisieren (✅ ERLEDIGT 2026-03-18)
+
+**Umsetzung:** `marker_spacing_mm` in `aruco_calibration()` folgt jetzt der Config-Chain (expliziter Arg > Config YAML > Modul-Default 430mm) statt hardcoded. Physische Werte waren bereits korrekt. Geaenderte Dateien: `src/cv/calibration.py`.
 
 Ziel:
 
@@ -424,9 +429,7 @@ Typische Arbeiten:
 - Corner-zu-Corner: 505mm (vorher 480mm) — in calibration_config.yaml aktualisieren
 - Kalibrierung neu durchfuehren und Qualitaetsmetrik vergleichen
 
-## Prioritaet 28: radii_px vs mm-Normalisierung dokumentieren (✅ ERLEDIGT 2026-03-18)
-
-**Umsetzung:** Bereits in frueherer Session implementiert. Docstrings in BoardPose, BoardGeometry und point_to_score() dokumentieren klar dass radii_px nur fuer Overlays/UI dient und Scoring ausschliesslich mm-basierte RING_BOUNDARIES nutzt. check_radii_consistency() Methode warnt bei >15% Abweichung. 4 Tests in TestRadiiConsistency. Geaenderte Dateien: `src/cv/geometry.py`.
+## Prioritaet 28: radii_px vs mm-Normalisierung dokumentieren (neu — entdeckt bei P25)
 
 Ziel:
 
@@ -453,9 +456,7 @@ Typische Arbeiten:
 - Reprojektionsfehler-Schwelle als Quality Gate (RMS < 1.0px)
 - Dateien: src/cv/stereo_calibration.py, src/web/routes.py, templates/index.html, static/js/ (neues Modul)
 
-## Prioritaet 30: Camera Error Reporting to UI (✅ ERLEDIGT 2026-03-18)
-
-**Umsetzung:** Kamera-Fehler im Multi-Cam-Betrieb jetzt vollstaendig sichtbar. Erweitertes Error-Tracking in `MultiCameraPipeline` mit Zeitstempel und Level (warning/error). Laufzeit-Frame-Fehler werden nach 10 konsekutiven Fehlern als Warning und nach 50 als Error eskaliert; bei Erholung automatisch zurueckgesetzt. `on_camera_errors_changed` Callback broadcastet Fehler per WebSocket (`camera_errors` Event). Frontend zeigt per-Kamera Status-Badges (gruen/gelb/rot) im Video-Grid und im Status-Panel. Error-Level `error` loest `_showError()` Benachrichtigung aus. `CameraHealthMonitor` unterstuetzt neues dict-Format mit Rueckwaertskompatibilitaet fuer String-Fehler. 7 neue Tests in `test_multi_camera.py`, 2 neue Tests in `test_camera_health.py`. Geaenderte Dateien: `src/cv/multi_camera.py`, `src/web/camera_health.py`, `src/web/routes.py`, `static/js/app.js`, `static/css/style.css`, `tests/test_multi_camera.py`, `tests/test_camera_health.py`.
+## Prioritaet 30: Camera Error Reporting to UI (neu — Multi-Cam Assessment)
 
 Kritikalitaet: KRITISCH
 
@@ -470,9 +471,7 @@ Typische Arbeiten:
 - Fehlermeldungen mit Kontext (welche Kamera, welcher Fehler, Zeitstempel)
 - Dateien: src/cv/multi_camera.py, src/web/routes.py, static/js/app.js
 
-## Prioritaet 31: Intrinsics Validation vor Stereo-Kalibrierung (✅ ERLEDIGT 2026-03-18)
-
-**Umsetzung:** `validate_stereo_prerequisites()` in `src/cv/stereo_calibration.py` prueft beide Kameras via `CameraCalibrationManager.validate_intrinsics()`. Stereo-Kalibrierungsendpunkt in `src/web/routes.py` blockiert mit deutscher Fehlermeldung ("Bitte Linsen-Kalibrierung zuerst durchfuehren") wenn Intrinsics fehlen. `has_valid_intrinsics()` in `BoardCalibrationManager` als zusaetzlicher Check. 25 Tests in `tests/test_intrinsics_validation.py` und `tests/test_calibration_validation.py` decken alle Szenarien ab (beide gueltig, eine fehlend, beide fehlend, Warnings).
+## Prioritaet 31: Intrinsics Validation vor Stereo-Kalibrierung (neu — Multi-Cam Assessment)
 
 Kritikalitaet: KRITISCH
 
@@ -487,9 +486,7 @@ Typische Arbeiten:
 - Stereo-Kalibrierung blockieren bis beide Kameras bereit
 - Dateien: src/cv/stereo_calibration.py, src/cv/board_calibration.py
 
-## Prioritaet 32: Triangulation Telemetrie (✅ ERLEDIGT 2026-03-18)
-
-**Umsetzung:** Bereits in frueherer Session implementiert. TriangulationTelemetry-Klasse mit Ring-Buffer, Lifetime-Countern (attempts/successes/voting-fallbacks/single-fallbacks/z-rejected), Reprojektionsfehler- und Z-Depth-Statistiken, Failure-Alert bei >30%. Integration in MultiCameraPipeline via record_attempt(). API-Endpunkte `/api/telemetry/stereo` und `/api/multi-cam/telemetry`. 17 bestehende Tests + 3 neue API-Tests. Geaenderte Dateien: `tests/test_multi_cam_api.py` (neu).
+## Prioritaet 32: Triangulation Telemetrie (neu — Multi-Cam Assessment)
 
 Kritikalitaet: KRITISCH
 
@@ -685,29 +682,43 @@ Typische Arbeiten:
 
 Warum kritisch: Ohne echte Videovalidierung bleiben Algorithmus-Aenderungen ungetestet. Grundlage fuer P11 (E2E Tests mit echten Clips).
 
-**Status: ✅ ERLEDIGT 2026-03-18**
+**Status:** Infrastruktur implementiert (marker_size_mm konfigurierbar, Batch-Script, pytest). Noch ausstehend: Ground-Truth-Annotation der Videos.
 
-**Umsetzung:** Alle Arbeitspakete abgeschlossen: (1) `marker_size_mm` konfigurierbar in Pipeline-Konstruktor, (2) `scripts/test_all_videos.py` Batch-Script mit Ground-Truth-Vergleich, (3) `testvids/ground_truth.yaml` mit 5 annotierten Videos (30 Wuerfe total), (4) `tests/e2e/test_testvid_replay.py` no-crash Tests fuer alle Videos, (5) NEU: `tests/e2e/test_ground_truth_validation.py` — pytest-Tests die Detection-Counts gegen Ground Truth validieren (Calibration-Test + parametrisierte Detection-Count-Tests pro Video). Detection-Count-Tests sind `xfail` markiert da Pipeline-Accuracy auf echten Videos noch nicht ausreichend (3/5 Videos bestehen bereits, 2/5 erkennen 0 Wuerfe wegen Baseline-Warmup-Problem). Geaenderte Dateien: `tests/e2e/test_ground_truth_validation.py`.
+## Prioritaet 40: Adaptive Thresholds (Otsu-Bias + Search Mode)
 
-## Prioritaet 40: Adaptive Thresholds (Otsu-Bias + Search Mode) (✅ ERLEDIGT 2026-03-18)
+Quelle: `pipeline_patterns.md` Pattern #4
 
-**Umsetzung:** Bereits in Welle 3 implementiert. `FrameDiffDetector` berechnet Otsu-Threshold und biased ihn mit konfigurierbarem `otsu_bias_factor` (default 0.7). Min/Max-Clamping schuetzt gegen Ausreisser. Search Mode aktiviert sich nach `search_mode_frames` (default 90) Frames ohne Detection und senkt den Threshold um `search_mode_threshold_factor` (default 0.8). `adaptive_threshold` Flag erlaubt Deaktivierung fuer festen Threshold-Fallback. 10+ Tests fuer Otsu-Bias, Search Mode Aktivierung/Reset und Parameter-Export. Dual-Threshold Fusion wurde als nicht notwendig bewertet (Otsu-Bias + Search Mode decken die Anforderungen ab). Geaenderte Dateien: `src/cv/diff_detector.py`, `tests/test_diff_detector.py`.
+Ziel: Helligkeitsadaptive Schwellwerte fuer robustere Erkennung bei wechselnden Lichtverhaeltnissen.
 
-## Prioritaet 41: Edge Cache (Canny-Reuse pro Frame) (✅ ERLEDIGT 2026-03-18)
+Typische Arbeiten:
+- Otsu-Bias basierend auf Frame-Helligkeit
+- Search Mode: nach 90 Frames Stille aggressivere Threshold-Suche aktivieren
+- Optional: Dual-Threshold Fusion (zwei Schwellwerte parallel, Union der Ergebnisse)
 
-**Umsetzung:** Edge-Cache-Infrastruktur in `FrameDiffDetector` implementiert: `get_cached_edges()` berechnet Canny-Edges einmal pro `frame_id` und cached das Ergebnis. Invalidierung bei neuem Frame, Cache-Clear bei `reset()`. 6 Tests vorhanden (cache hit, miss, invalidierung, disabled-mode, reset-clear, frame_id-increment). Die Contour-Analyse in `_compute_diff` arbeitet auf Threshold-Masken (nicht Canny), daher kein direkter Canny-Reuse moeglich. Der Cache steht fuer kuenftige HoughLinesP- oder Edge-basierte Analysen bereit. Geaenderte Dateien: keine (bereits implementiert in `src/cv/diff_detector.py`, Tests in `tests/test_diff_detector.py`).
+Warum wichtig: Aktuelle feste Thresholds funktionieren nur bei stabiler Beleuchtung. Adaptive Schwellwerte erhoehen Robustheit ohne CPU-Mehrkosten.
 
-## Prioritaet 42: Cooldown Management (raeumlich + zeitlich) (✅ ERLEDIGT 2026-03-18)
+## Prioritaet 41: Edge Cache (Canny-Reuse pro Frame)
+
+Quelle: `pipeline_patterns.md` Pattern #5
+
+Ziel: Canny-Edges einmal pro Frame berechnen und fuer alle Contour-Operationen wiederverwenden.
+
+Erwarteter Gewinn: 15-25% CPU-Einsparung bei der Contour-Analyse.
+
+Warum sinnvoll: Einfache Optimierung, komplementaer zu #13 (Downscaled Motion) und #33 (Frame-Skip).
+
+## Prioritaet 42: Cooldown Management (raeumlich + zeitlich)
 
 Quelle: `pipeline_patterns.md` Pattern #7
 
 Ziel: Anti-Duplikat-Erkennung nach bestatigtem Treffer.
 
-**Umsetzung:** `CooldownManager` in `src/cv/detection_components.py` um raeumliche Exclusion Zones erweitert. Jede `activate(position=...)` registriert eine 50px-Zone die nach 30 Frames verfaellt. `pipeline.process_frame()` prueft neue FrameDiff-Detections gegen aktive Zones und verwirft Duplikate. `reset()` leert alle Zones (Turn-Reset). 8 neue Tests fuer raeumliche/zeitliche Logik. Geaenderte Dateien: `src/cv/detection_components.py`, `src/cv/detector.py`, `src/cv/pipeline.py`, `tests/test_detection_components.py`.
+Typische Arbeiten:
+- 50px Exclusion Zone um bestaetigte Treffer
+- 30-Frame zeitlicher Lockout nach Treffer-Bestaetigung
+- Unterschied zu Tier-2 #14 (Temporal Lock): #14 ignoriert Hand-Motion nach Scoring, P42 verhindert Re-Detektion desselben Darts
 
-## Prioritaet 43: Modulare Detection Components (✅ ERLEDIGT 2026-03-18)
-
-**Umsetzung:** `ShapeAnalyzer`, `CooldownManager`, `MotionFilter` als eigenstaendige Klassen in `src/cv/detection_components.py` extrahiert. `DartImpactDetector` delegiert Shape-Analyse und Cooldown an Komponenten. `DartPipeline` nutzt `MotionFilter` fuer Scoring-Lock und Idle-Tracking. 24 neue Tests. Geaenderte Dateien: `src/cv/detection_components.py` (neu), `tests/test_detection_components.py` (neu), `src/cv/detector.py`, `src/cv/pipeline.py`.
+## Prioritaet 43: Modulare Detection Components
 
 Quelle: `pipeline_patterns.md` Pattern #10
 
@@ -750,173 +761,46 @@ Typische Arbeiten:
 
 Plan-Datei: `.claude/plans/shimmying-knitting-corbato.md` (Phasen 3-5)
 
-## Prioritaet 46: Dark/Light Theme Toggle — Verbleibende Arbeiten (ERLEDIGT 2026-03-18)
+## Prioritaet 59: Diff-Cache-Bug in FrameDiffDetector Settling-Phase (✅ ERLEDIGT 2026-03-18)
 
-**Umsetzung:** 3-Wege-Theme-Zyklus (Dark->Light->High-Contrast) im Toggle-Button. CSS-Transition (0.3s ease) auf Hauptelementen fuer sanften Wechsel. High-Contrast-Theme mit WCAG-AAA-Kontrasten, dickeren Borders und Focus-Outlines. prefers-color-scheme Regel schliesst high-contrast aus. Dateien: `static/css/style.css`, `static/js/app.js`.
+**Umsetzung:** `_quick_centroid()` cacht jetzt absdiff-Ergebnis fuer Reuse in `_compute_diff`. Root Cause: _cached_diff blieb None weil _quick_centroid erst in _handle_settling aufgerufen wurde. 3 neue Tests. Geaenderte Dateien: `src/cv/diff_detector.py`, `tests/test_diff_detector.py`.
 
-## Prioritaet 47: Morphology Kernel Cache und Threshold-Mask Reuse (✅ ERLEDIGT 2026-03-18)
-
-**Umsetzung:** Kernels waren bereits als Instanz-Attribute gecacht (_opening_kernel, _closing_kernel, _elongated_kernel). cv2.absdiff-Cache pro Frame (_get_diff) und morph-Cache bereits in P47-Vorgaenger implementiert. Zusaetzlich morph-mask Caching fuer _compute_diff ergaenzt um redundante 3-Stufen-Morphologie zu vermeiden. Geaenderte Dateien: `src/cv/diff_detector.py`.
-
-Quelle: Analyse von `diff_detector.py` bei P41-Review
-
-Ziel: Die morphologischen Operationen in `_compute_diff` (Opening + 2x Closing) kosten mehr CPU als Canny. Threshold-Mask und morphologisch bearbeitete Maske koennen gecached werden, wenn `_quick_centroid` und `_compute_diff` im selben Frame auf demselben Diff arbeiten.
-
-Typische Arbeiten:
-- Diff-Ergebnis (`cv2.absdiff`) pro Frame cachen, damit `_quick_centroid` und `_compute_diff` nicht doppelt diffen
-- Morphologie-Ergebnis nach dem dreistufigen Kernel-Durchlauf cachen
-- Profiling mit `cProfile` um tatsaechliche CPU-Einsparung zu messen
-
-Erwarteter Gewinn: 10-20% CPU-Einsparung im Settling-Phase (wo `_quick_centroid` + `_compute_diff` beide `cv2.absdiff` ausfuehren).
-
-Warum sinnvoll: Komplementaer zu P41 (Edge Cache) und P33 (Frame-Skip). Keine Verhaltensaenderung, rein interne Optimierung.
-
-## Prioritaet 48: Telemetrie-Retention-Policy und automatische Rotation (✅ ERLEDIGT 2026-03-18)
-
-Kritikalitaet: NIEDRIG
-
-Ziel:
-
-- JSONL-Telemetrie-Dateien wachsen unbegrenzt bei Langzeitbetrieb. Eine Retention-Policy begrenzt Speicherverbrauch.
-
-Typische Arbeiten:
-
-- Maximale Dateigroesse oder Alter fuer JSONL-Telemetrie konfigurierbar machen (z.B. DARTVISION_TELEMETRY_MAX_MB, DARTVISION_TELEMETRY_RETAIN_DAYS)
-- Automatische Log-Rotation implementieren (z.B. Rename + Truncate bei Ueberschreitung)
-- Alte Telemetrie-Dateien nach konfigurierbarer Frist loeschen
-- Dashboard-Warnung wenn Telemetrie-Datei ueber Schwellwert waechst
-
-Warum sinnvoll: Ohne Retention wachsen JSONL-Dateien bei Dauerbetrieb unbegrenzt. Besonders relevant auf Embedded-Systemen mit begrenztem Speicher.
-
-## Prioritaet 49: Detection-Component Integration Tests (✅ ERLEDIGT 2026-03-18)
-
-**Umsetzung:** 16 Integration-Tests in `tests/test_detection_integration.py`. Abgedeckte Szenarien: 3-Dart-Sequenz mit Cooldown + Exclusion Zones, Bounce-Out waehrend Cooldown (Motion suppressed + Exclusion Zone), Shape-Reject gefolgt von gueltigem Dart, dynamische Area-Skalierung (P12) mit DartImpactDetector.scale_area_to_roi, MotionFilter Scoring-Lock + Idle-Tracking im Pipeline-Kontext, DartImpactDetector register_confirmed + Cooldown-Zyklus, Performance-Benchmarks (ShapeAnalyzer <2ms/call, CooldownManager <100us/iteration).
-
-## Prioritaet 50: Auto-Exposure-Kompensation pro Kamera (neu — entdeckt bei P26)
-
-Ziel:
-
-- Unterschiedliche Auto-Exposure-Einstellungen zwischen Kameras erkennen und kompensieren
-
-Typische Arbeiten:
-
-- Mittlere Helligkeit pro Kamera tracken (EMA ueber ROI-Frames)
-- Bei signifikanter Helligkeitsdifferenz zwischen Kameras: CLAHE clipLimit dynamisch anpassen
-- Gain/Exposure-Harmonisierung via OpenCV CAP_PROP wenn Kameras dies unterstuetzen
-- Helligkeits-Metrik in SharpnessTracker.get_quality_report() aufnehmen
-- API-Endpunkt fuer Kamera-Qualitaetsvergleich (alle Kameras nebeneinander)
-
-Warum sinnvoll: P26 kompensiert Schaerfe-Unterschiede, aber Helligkeits-Unterschiede zwischen Kameras koennen ebenso zu unterschiedlichen Diff-Ergebnissen fuehren. Auto-Exposure-Harmonisierung wuerde die Multi-Cam-Triangulation robuster machen.
-
-## Prioritaet 51: Telemetrie-Cleanup-Scheduler und Dashboard-Anzeige (neu — entdeckt bei P48)
-
-Kritikalitaet: NIEDRIG
-
-Ziel:
-
-- P48 hat Rotation und Cleanup als Methoden implementiert, aber kein automatischer Hintergrund-Scheduler ruft cleanup_old_files() periodisch auf. Ausserdem fehlt eine Dashboard-Anzeige fuer den Telemetrie-Dateistatus.
-
-Typische Arbeiten:
-
-- Background-Thread oder asyncio-Task der cleanup_old_files() taeglich ausfuehrt
-- Dashboard-Widget das check_file_size() Warnungen anzeigt (z.B. in Telemetrie-Panel)
-- API-Endpunkt GET /api/telemetry/status der Dateigroesse und Rotation-Historie zurueckgibt
-- Manuelle Rotation via POST /api/telemetry/rotate Endpunkt
-
-Warum sinnvoll: P48 liefert die Mechanik, aber ohne Scheduler und UI-Integration muss der Cleanup manuell angestossen werden.
-
-## Prioritaet 51: Deduplizierung _is_already_confirmed vs CooldownManager (neu — entdeckt bei P42)
-
-Quelle: Code-Review bei P42-Implementierung
-
-Ziel: Die raeumliche Duplikat-Pruefung in `DartImpactDetector._is_already_confirmed()` und `CooldownManager.is_in_exclusion_zone()` ueberlappen sich. Beide pruefen Distanz zu bestaetigten Positionen, nutzen aber unterschiedliche Datenstrukturen (`_confirmed` Liste vs `_zones` Liste).
-
-Typische Arbeiten:
-- `_is_already_confirmed` auf `CooldownManager.is_in_exclusion_zone` delegieren
-- `_confirmed` Liste nur noch fuer Turn-State (get_all_confirmed) nutzen, nicht fuer Exclusion
-- Sicherstellen dass `register_confirmed` weiterhin korrekt dedupliziert
-- Tests anpassen
-
-Prioritaet: Niedrig (Architektur-Bereinigung, kein Verhaltens-Unterschied). Sinnvoll wenn Detector-Logik weiter refactored wird.
-
-## Prioritaet 52: Hardcoded Farben in CSS durch Theme-Variablen ersetzen (NIEDRIG)
-
-Quelle: Audit bei P46-Implementierung
-
-Ziel: Verbleibende hartcodierte Farbwerte in `style.css` (z.B. `#b91c1c`, `#c0392b`, `#4ceb8f`, `#111`, `#fff`, `#000` in Buttons und Statuselementen) durch CSS-Variablen ersetzen, damit alle drei Themes (Dark, Light, High-Contrast) konsistent wirken.
-
-Typische Arbeiten:
-- Neue Variablen definieren: `--danger`, `--danger-hover`, `--text-on-accent`, `--text-on-danger`, `--bg-video`
-- Alle hartcodierten `color: #fff`, `color: #111`, `background: #000` etc. durch Variablen ersetzen
-- Camera-Warning-Banner und Health-Badges an Theme-Variablen anbinden
-- Visueller Test in allen drei Themes
-
-Prioritaet: Niedrig (kosmetisch, keine Funktionsaenderung). Sinnvoll als Follow-Up zu P46.
-
-## Prioritaet 53: FrameDiffDetector Integration Tests mit Detection-Komponenten (✅ ERLEDIGT 2026-03-18)
-
-**Umsetzung:** 11 Integration-Tests in `tests/test_framediff_integration.py`. Testet FrameDiffDetector mit CooldownManager und MotionFilter im Zusammenspiel: Cooldown nach Detection, Exclusion-Zone-Blocking, Scoring-Lock-Suppression, Idle-Baseline-Trigger, 3-Dart-Sequenz mit synthetischen Diff-Masken, Settling-Interruption durch Motion, Bounce-Out ohne Cooldown-Aktivierung. Alle 11 Tests gruen.
-
-## Prioritaet 54: Stereo-Kalibrierung Fortschritts-Feedback im Frontend (NIEDRIG)
-
-Kritikalitaet: NIEDRIG
-
-Ziel: Benutzer waehrend der Stereo-Kalibrierung ueber den Fortschritt informieren (Frame-Paare erfasst, Qualitaet, Fehler).
-
-Typische Arbeiten:
-- Progress-Events via SSE waehrend Frame-Capture senden
-- Frontend-Anzeige: Fortschrittsbalken, erfasste Paare, Qualitaetsindikator
-- Fehlerfaelle visuell darstellen (z.B. "Board nicht in beiden Kameras sichtbar")
-- Dateien: src/web/routes.py, src/web/stereo_progress.py, static/js/app.js
-
-## Prioritaet 55: Pipeline Baseline-Warmup fuer Video-Replay fixen (neu — entdeckt bei P39)
+## Prioritaet 60: StereoProgressTracker API-Mismatch (neu — entdeckt bei P59)
 
 Kritikalitaet: MITTEL
 
-Ziel: FrameDiffDetector Baseline-Aufbau funktioniert nicht zuverlaessig bei Video-Replay (2 von 5 Test-Videos erkennen 0 Wuerfe wegen fehlendem Baseline). Ohne Fix koennen Ground-Truth-Validierungstests nicht von xfail auf strict umgestellt werden.
+Ziel: `routes.py` uebergibt `valid_pairs` kwarg an `StereoProgressTracker.frame_progress()`, aber die Methode akzeptiert diesen Parameter nicht → TypeError.
 
 Typische Arbeiten:
-- Analysieren warum Baseline in manchen Videos nicht gesetzt wird (Warmup-Frames zu wenig? seek-Reset-Problem?)
-- FrameDiffDetector.reset() Baseline-Initialisierung nach Seek pruefen
-- Nach Fix: `xfail` in `tests/e2e/test_ground_truth_validation.py` entfernen und strikte Thresholds setzen
-- Dateien: src/cv/diff_detector.py, src/cv/pipeline.py, tests/e2e/test_ground_truth_validation.py
+- `frame_progress()` Signatur um `valid_pairs` erweitern oder Aufruf in routes.py korrigieren
+- Dateien: src/web/stereo_progress.py, src/web/routes.py
 
-## Prioritaet 56: Multi-Cam Error Recovery und Auto-Restart (neu — entdeckt bei P30)
-
-Kritikalitaet: MITTEL
-
-Ziel: Wenn eine Kamera im Multi-Cam-Betrieb ausfaellt (error-Level), automatisch Reconnect versuchen statt nur Fehler anzuzeigen. Aktuell wird bei Startup-Fehler die Kamera dauerhaft als ausgefallen markiert.
-
-Typische Arbeiten:
-- Reconnect-Logik aus ThreadedCamera in Multi-Cam-Pipeline integrieren
-- Bei dauerhaftem Kamera-Ausfall: graceful auf verbleibende Kameras degradieren
-- UI-Button "Kamera neu verbinden" im Multi-Cam-Panel
-- Dateien: src/cv/multi_camera.py, src/web/routes.py, static/js/app.js
-
-## Prioritaet 57: Diff-Cache-Bug in FrameDiffDetector Settling-Phase fixen (neu — entdeckt bei P53)
+## Prioritaet 61: _stability_centroids unbegrenztes Listenwachstum (neu — entdeckt bei P59)
 
 Kritikalitaet: NIEDRIG
 
-Ziel: `test_diff_cache_reused_in_settling` in `tests/test_diff_detector.py:599` schlaegt fehl — `_cached_diff` ist `None` obwohl es nach Settling gesetzt sein sollte. Der Cache wird vermutlich durch den State-Reset oder die Stability-Centroid-Logik vorzeitig invalidiert.
+Ziel: `_stability_centroids` in FrameDiffDetector waechst unbegrenzt bei langem Settling. Cap oder deque mit maxlen einfuehren.
 
 Typische Arbeiten:
-- Root-Cause in `_handle_settling` / `_get_diff` / `_quick_centroid` identifizieren
-- Cache-Invalidierung korrigieren ohne Performance-Regression
-- Bestehenden Test gruenfaerben
-- Dateien: src/cv/diff_detector.py, tests/test_diff_detector.py
+- Max-Laenge oder deque(maxlen=N) einfuehren
+- Dateien: src/cv/diff_detector.py
 
-## Prioritaet 58: Pipeline Health Dashboard im Frontend (neu — Auto-Agent 2026-03-18)
+## Prioritaet 62: Konsistenz-Check marker_spacing_mm vs frame_inner_mm (neu — entdeckt bei P27)
+
+Kritikalitaet: NIEDRIG
+
+Ziel: Geometrische Beziehung frame_inner ~= marker_spacing + marker_size validieren. Warnung wenn nur ein Wert geaendert wird.
+
+Typische Arbeiten:
+- Validierungslogik in calibration.py
+- Dateien: src/cv/calibration.py, src/utils/config.py
+
+## Prioritaet 63: BOARD_CROP_MM Fallback-Mismatch (neu — entdeckt bei P27)
 
 Kritikalitaet: MITTEL
 
-Ziel:
-
-- Kompakte Uebersicht ueber Pipeline-Zustand im Frontend: Kamera-Status, Detection-Rate, letzte Treffer, Kalibrierungs-Qualitaet
+Ziel: `verify_rings()` und `find_optical_center()` fallen auf 420mm zurueck, ArUco-Kalibrierung berechnet 380mm. Mismatch bei fehlendem Config-Key.
 
 Typische Arbeiten:
-
-- Dashboard-Panel im Frontend mit Live-Daten aus /api/stats und /api/camera/health
-- Detection-Rate (Treffer/Minute) als gleitender Durchschnitt anzeigen
-- Kalibrierungs-Qualitaet (quality 0-100) und letzte Kalibrierungszeit anzeigen
-- Visueller Indikator ob Pipeline aktiv/idle/degraded
-- Dateien: static/js/app.js, static/css/style.css, templates/index.html, src/web/routes.py
+- Einheitlichen Default-Wert festlegen oder board_crop_mm als Pflichtfeld
+- Dateien: src/cv/calibration.py, src/utils/config.py

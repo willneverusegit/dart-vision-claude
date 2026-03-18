@@ -1,6 +1,6 @@
 # Current State
 
-Stand dieser Zusammenfassung: 2026-03-18 (Welle 1-4 + Auto-Agents: P22, P26, P27, P28, P31, P39-P43, P46-P49, P52, Tier-2 #5-#7, #10-#14, P30-P33, P35 erledigt)
+Stand dieser Zusammenfassung: 2026-03-18 (Welle 1-4 + Parallel-Agents: P22, P27, P28, P40-P42, P46-P48, P55, P59, Tier-2 #5-#7, #10-#14, P30-P33, P35 erledigt)
 
 ## Technischer Kern
 
@@ -44,8 +44,7 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 - Audio-Feedback bei bestaetigtem Treffer (Web Audio API)
 - Wurf-Badges im Scoreboard statt Klartext
 - Pulsierender Glow-Effekt fuer aktiven Spieler
-- X01-Checkout-Vorschlaege (Scores 2-170) mit PDC/BDO-Standard-Checkouts und Backend-Lookup
-- Double-In-Variante fuer X01 (`double_in=True`)
+- X01-Checkout-Vorschlaege (Scores 2-170) mit Backend-Lookup
 - Performance-Monitoring: TelemetryHistory mit Ring-Buffer (300 Samples), FPS/Queue-Alerts
 - Telemetrie-API (`/api/telemetry/history`) mit History, Alerts, Summary
 - Frontend Performance-Monitor-Panel mit Canvas-Chart und Alert-Banner
@@ -64,19 +63,9 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 - Contour Shape Confidence Score (gewichtet: Aspect-Ratio, Solidity, Area)
 - Light Stability Monitor (automatische Threshold-Erhoehung bei instabilem Licht)
 - Kalibrierung: dynamischer BOARD_CROP_MM, center_px als ROI-Mitte, cornerSubPix-Fix
-- Kamera-Schaerfemetrik (Laplacian-Varianz) mit adaptiver Threshold-Anpassung pro Kamera (P26)
-- Wire-Artefakt-Filter fuer scharfe Kameras (morphologisches Opening, groessenbasiert)
-- Telemetrie-Export: Session-ID in Export, JSON+CSV Download-Buttons im Performance-Monitor (P22)
-- Edge Cache fuer Canny-Reuse pro Frame (P41, war bereits implementiert — verifiziert)
-- Cooldown Management: 50px Spatial Exclusion Zones + 30-Frame Lockout nach bestaetigtem Treffer (P42)
-- cv2.absdiff Cache pro Frame in diff_detector — keine redundante Diff-Berechnung (P47)
-- Telemetrie-Retention: JSONL-Rotation bei Ueberschreitung, Age-Cleanup, File-Size-Warning (P48)
-- High-Contrast Theme als 3. Option, 3-Way Toggle (dark→light→high-contrast), CSS Transitions (P46)
-- 16 Detection-Component Integration Tests (Cooldown-Sequenz, Bounce-Out, Shape-Reject, Overhead) (P49)
-- Adaptive Thresholds verifiziert: Otsu-Bias + Search Mode bereits in Welle 3 implementiert (P40)
-- Intrinsics Validation vor Stereo-Kalibrierung verifiziert (P31)
-- Video-Replay Ground-Truth-Validierungstests: 3/5 Videos bestehen, 2 xfail wegen Baseline-Warmup (P39)
-- CSS Theme-Variablen: 15 neue Variablen, alle hardcoded Farben ersetzt fuer Dark/Light/High-Contrast (P52)
+- Kalibrierung: marker_spacing_mm Config-Chain (explizit > YAML > Default) statt hardcoded (P27)
+- FrameDiffDetector: Diff-Cache korrekt beim IN_MOTION→SETTLING Uebergang (P59)
+- FrameDiffDetector: Motion-Timeout nach 90 Frames + set_baseline() fuer Video-Replay (P55)
 
 ## Was heute als fortgeschritten, aber noch sensibel gilt
 
@@ -88,7 +77,7 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 
 ## Verifizierte Kennzahlen
 
-- `1024` Tests bestanden (Stand 2026-03-18, +379 neue Tests)
+- `829` Tests bestanden (Stand 2026-03-18, +184 neue Tests)
 - Gesamt-Coverage ~77%
 - Wichtige Module: main.py 78%, routes.py 66%, pipeline.py 68%, multi_camera.py 62%, capture.py 72%
 - synthetische Pipeline-Benchmarks fuer `1`, `2` und `3` Kameras innerhalb der definierten KPI-Grenzen
