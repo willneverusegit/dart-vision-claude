@@ -18,6 +18,7 @@ class DartDetection:
     frame_count: int            # Number of confirmation frames
     quality: float = 0.0                # Detection quality score 0.0-1.0
     tip: tuple[int, int] | None = None  # Dart tip position (x, y), None if detection failed
+    bounce_out: bool = False            # True if dart bounced off board (no stick)
 
 
 class DartImpactDetector:
@@ -27,7 +28,9 @@ class DartImpactDetector:
                  position_tolerance_px: int = 20,
                  area_min: int = 10, area_max: int = 1000,
                  aspect_ratio_range: tuple[float, float] = (0.3, 3.0),
-                 max_candidates: int = 50) -> None:
+                 max_candidates: int = 50,
+                 exclusion_zone_px: int = 50,
+                 cooldown_frames: int = 30) -> None:
         if area_min < 0:
             raise ValueError("area_min must be >= 0")
         if area_min >= area_max:
@@ -40,6 +43,10 @@ class DartImpactDetector:
             raise ValueError("aspect_ratio_range values must be > 0")
         if aspect_ratio_range[0] >= aspect_ratio_range[1]:
             raise ValueError("aspect_ratio_range[0] must be less than aspect_ratio_range[1]")
+        if exclusion_zone_px < 0:
+            raise ValueError("exclusion_zone_px must be >= 0")
+        if cooldown_frames < 0:
+            raise ValueError("cooldown_frames must be >= 0")
 
         self.confirmation_frames = confirmation_frames
         self.position_tolerance_px = position_tolerance_px
@@ -47,10 +54,13 @@ class DartImpactDetector:
         self.area_max = area_max
         self.aspect_ratio_range = aspect_ratio_range
         self.max_candidates = max_candidates
+        self.exclusion_zone_px = exclusion_zone_px
+        self.cooldown_frames = cooldown_frames
 
         # Temporal state
         self._candidates: list[dict] = []
         self._confirmed: list[DartDetection] = []
+        self._cooldown_counter: int = 0
 
     def detect(self, roi_frame: np.ndarray, motion_mask: np.ndarray) -> DartDetection | None:
         """Analyze motion mask for dart-shaped objects. Returns confirmed detection or None.
@@ -136,13 +146,14 @@ class DartImpactDetector:
         return None
 
     def _is_already_confirmed(self, detection: DartDetection) -> bool:
-        """Check if a detection is too close to an already confirmed dart."""
+        """Check if a detection is too close to an already confirmed dart (exclusion zone)."""
+        zone = max(self.position_tolerance_px, self.exclusion_zone_px)
         for confirmed in self._confirmed:
             dist = math.hypot(
                 detection.center[0] - confirmed.center[0],
                 detection.center[1] - confirmed.center[1]
             )
-            if dist < self.position_tolerance_px:
+            if dist < zone:
                 return True
         return False
 
@@ -156,17 +167,34 @@ class DartImpactDetector:
         """Reset temporal state (e.g., after dart removal)."""
         self._candidates.clear()
         self._confirmed.clear()
+        self._cooldown_counter = 0
 
     def get_all_confirmed(self) -> list[DartDetection]:
         """Return all currently confirmed dart positions (up to 3 per turn)."""
         return list(self._confirmed)
 
+    def is_in_cooldown(self) -> bool:
+        """Return True if the detector is in post-confirmation cooldown."""
+        return self._cooldown_counter > 0
+
+    def tick(self) -> None:
+        """Advance cooldown counter by one frame. Call once per frame."""
+        if self._cooldown_counter > 0:
+            self._cooldown_counter -= 1
+
     def register_confirmed(self, detection: "DartDetection") -> bool:
         """Add an externally confirmed detection.
 
-        Returns True if added, False if position already known (deduplication).
+        Returns True if added, False if position already known (deduplication)
+        or if detector is in cooldown.
         """
+        if self._cooldown_counter > 0:
+            logger.debug("register_confirmed rejected: cooldown active (%d frames left)",
+                         self._cooldown_counter)
+            return False
         if self._is_already_confirmed(detection):
             return False
         self._confirmed.append(detection)
+        self._cooldown_counter = self.cooldown_frames
+        logger.debug("Cooldown activated for %d frames", self.cooldown_frames)
         return True

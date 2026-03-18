@@ -102,6 +102,10 @@ class DartPipeline:
         # Optical center override (ROI pixel space)
         self._optical_center: tuple[float, float] | None = None
 
+        # Temporal lock after scoring: ignore motion for N frames after confirmed hit
+        self._scoring_lock_frames: int = 60  # ~2s at 30fps
+        self._scoring_lock_counter: int = 0
+
         # Motion overlay toggle
         self.show_overlay_motion = False
 
@@ -185,14 +189,29 @@ class DartPipeline:
         enhanced = self.clahe.apply(gray)
         self._last_roi = enhanced
 
+        # 2b) Advance cooldown timer
+        self.dart_detector.tick()
+
         # 3) Motion detection
         motion_mask, has_motion = self.motion_detector.detect(enhanced)
         self._last_motion_mask = motion_mask
 
+        # Temporal lock: suppress motion after confirmed scoring
+        if self._scoring_lock_counter > 0:
+            self._scoring_lock_counter -= 1
+            has_motion = False  # Force motion-free during lock period
+
         # 4) Frame-Diff detection — receives every frame (SETTLING needs motion-free frames)
         detection = self.frame_diff_detector.update(enhanced, has_motion)
+        if detection is not None and detection.bounce_out:
+            # Bounce-out: dart hit but did not stick — do not score
+            logger.info("Bounce-out detected — not scoring")
+            self._update_annotated_frame(frame, enhanced, motion_mask if has_motion else None)
+            return None
         if detection is not None:
             self.dart_detector.register_confirmed(detection)
+            # Activate temporal lock to suppress false positives during dart removal
+            self._scoring_lock_counter = self._scoring_lock_frames
         else:
             self._update_annotated_frame(frame, enhanced, motion_mask if has_motion else None)
             return None

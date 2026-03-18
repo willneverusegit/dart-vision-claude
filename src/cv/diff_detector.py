@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import time
 from enum import Enum
 from pathlib import Path
@@ -58,6 +57,10 @@ class FrameDiffDetector:
         max_diff_area: int = 8000,
         diagnostics_dir: str | None = None,
         min_elongation: float = 1.5,
+        bounce_diff_threshold: float = 0.2,
+        bounce_check_frames: int = 3,
+        stability_frames: int = 3,
+        stability_max_drift_px: float = 3.0,
     ) -> None:
         if settle_frames < 1:
             raise ValueError("settle_frames must be >= 1")
@@ -67,16 +70,26 @@ class FrameDiffDetector:
             raise ValueError("min_diff_area must be < max_diff_area")
         if min_elongation < 1.0:
             raise ValueError("min_elongation must be >= 1.0")
+        if stability_frames < 1:
+            raise ValueError("stability_frames must be >= 1")
+        if stability_max_drift_px <= 0:
+            raise ValueError("stability_max_drift_px must be > 0")
 
         self.settle_frames = settle_frames
         self.diff_threshold = diff_threshold
         self.min_diff_area = min_diff_area
         self.max_diff_area = max_diff_area
         self.min_elongation = min_elongation
+        self.bounce_diff_threshold = bounce_diff_threshold
+        self.bounce_check_frames = bounce_check_frames
+        self.stability_frames = stability_frames
+        self.stability_max_drift_px = stability_max_drift_px
 
         self._state = _State.IDLE
         self._baseline: np.ndarray | None = None
         self._settle_count: int = 0
+        self._had_motion_event: bool = False
+        self._stability_centroids: list[tuple[int, int]] = []
         # Three-stage morphology:
         # 1) Opening with small kernel removes thin board-wire artefacts
         # 2) Ellipse closing fills small gaps
@@ -115,6 +128,8 @@ class FrameDiffDetector:
         self._state = _State.IDLE
         self._baseline = None
         self._settle_count = 0
+        self._had_motion_event = False
+        self._stability_centroids = []
 
     @property
     def state(self) -> str:
@@ -186,6 +201,8 @@ class FrameDiffDetector:
             # Motion detected — freeze baseline at last stable frame, switch state
             self._state = _State.IN_MOTION
             self._settle_count = 0
+            self._had_motion_event = True
+            self._stability_centroids = []
             logger.debug("FrameDiff: IDLE → IN_MOTION")
         else:
             # No motion — update baseline continuously
@@ -210,14 +227,100 @@ class FrameDiffDetector:
             return None
 
         self._settle_count += 1  # count starts at 1 (set in _handle_in_motion) → fires when == settle_frames
+
+        # Track centroid for temporal stability gating
+        _centroid = self._quick_centroid(frame)
+        if _centroid is not None:
+            self._stability_centroids.append(_centroid)
+
         if self._settle_count < self.settle_frames:
             return None
 
-        # Genug stabile Frames — Diff berechnen
+        # Check temporal stability before confirming
+        if not self._is_position_stable():
+            logger.debug("FrameDiff: Position not stable yet, extending settling")
+            return None
+
+        # Genug stabile Frames — compute diff first
         detection = self._compute_diff(frame)
+
+        # If no dart detected but we had a motion event, check for bounce-out:
+        # motion was seen (dart flew) but post-frame matches baseline (dart bounced off)
+        if detection is None and self._had_motion_event and self._is_bounce_out(frame):
+            logger.info("FrameDiff: Bounce-out detected (post-frame ≈ baseline)")
+            self._state = _State.IDLE
+            self._settle_count = 0
+            self._had_motion_event = False
+            return DartDetection(
+                center=(0, 0), area=0.0, confidence=0.0,
+                frame_count=self.settle_frames, bounce_out=True,
+            )
+
         self._state = _State.IDLE
         self._settle_count = 0
+        self._had_motion_event = False
+        self._stability_centroids = []
         return detection
+
+    # ------------------------------------------------------------------
+    # Bounce-out detection
+    # ------------------------------------------------------------------
+
+    def _is_bounce_out(self, post_frame: np.ndarray) -> bool:
+        """Check if post-frame is nearly identical to baseline (dart bounced off).
+
+        Uses a lower diff threshold (half of normal) to be more sensitive.
+        Computes total changed pixel area and compares against
+        bounce_diff_threshold * min_diff_area.
+        """
+        if self._baseline is None:
+            return False
+        diff = cv2.absdiff(self._baseline, post_frame)
+        bounce_thresh = max(self.diff_threshold // 2, 1)
+        _, thresh = cv2.threshold(diff, bounce_thresh, 255, cv2.THRESH_BINARY)
+        total_changed = cv2.countNonZero(thresh)
+        threshold_area = self.bounce_diff_threshold * self.min_diff_area
+        logger.debug(
+            "FrameDiff bounce check: total_changed=%d, threshold_area=%.1f",
+            total_changed, threshold_area,
+        )
+        return total_changed < threshold_area
+
+    # ------------------------------------------------------------------
+    # Temporal stability gating helpers
+    # ------------------------------------------------------------------
+
+    def _quick_centroid(self, frame: np.ndarray) -> tuple[int, int] | None:
+        """Compute a quick diff centroid against baseline for stability tracking."""
+        if self._baseline is None:
+            return None
+        diff = cv2.absdiff(self._baseline, frame)
+        _, thresh = cv2.threshold(diff, self.diff_threshold, 255, cv2.THRESH_BINARY)
+        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if not contours:
+            return None
+        largest = max(contours, key=cv2.contourArea)
+        M = cv2.moments(largest)
+        if M["m00"] <= 0:
+            return None
+        return (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
+
+    def _is_position_stable(self) -> bool:
+        """Check if the last stability_frames centroids are within drift threshold."""
+        import math
+        n = self.stability_frames
+        pts = self._stability_centroids
+        if len(pts) < n:
+            return True  # Not enough data, allow detection (backward compat)
+        recent = pts[-n:]
+        for i in range(1, len(recent)):
+            drift = math.hypot(
+                recent[i][0] - recent[i - 1][0],
+                recent[i][1] - recent[i - 1][1],
+            )
+            if drift > self.stability_max_drift_px:
+                return False
+        return True
 
     # ------------------------------------------------------------------
     # Diff-Berechnung (CPU-konservativ: absdiff + threshold + closing)

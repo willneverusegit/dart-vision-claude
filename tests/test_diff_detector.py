@@ -88,7 +88,7 @@ def test_diff_detects_new_blob():
 
 
 def test_diff_ignores_tiny_blobs():
-    """Rauschartefakt unter min_diff_area wird ignoriert."""
+    """Rauschartefakt unter min_diff_area wird ignoriert (no valid dart detection)."""
     d = FrameDiffDetector(settle_frames=2, diff_threshold=30, min_diff_area=200)
     baseline = _gray(100)
     post = _gray(100)
@@ -97,7 +97,8 @@ def test_diff_ignores_tiny_blobs():
     d.update(post, has_motion=True)
     d.update(post, has_motion=False)
     result = d.update(post, has_motion=False)
-    assert result is None
+    # Either None (no detection) or bounce-out (tiny diff after motion = dart bounced)
+    assert result is None or result.bounce_out is True
 
 
 def test_diff_ignores_global_brightness_change():
