@@ -17,12 +17,16 @@ from src.web.stream import encode_frame_jpeg, make_mjpeg_frame
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
 templates = Jinja2Templates(directory="templates")
 
 
 def setup_routes(app_state: dict) -> APIRouter:
-    """Create router with access to shared app state."""
+    """Create a fresh router with access to shared app state.
+
+    Each call creates a new APIRouter instance, avoiding module-level
+    state pollution when setup_routes is called multiple times (e.g. in tests).
+    """
+    router = APIRouter()
 
     async def _optional_json_body(request: Request | None) -> dict:
         if request is None:

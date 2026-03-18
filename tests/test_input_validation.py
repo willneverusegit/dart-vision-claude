@@ -30,19 +30,11 @@ def app_state():
 
 @pytest.fixture
 def client(app_state):
-    import src.web.routes as routes_mod
-    from fastapi import APIRouter
-    # Fully isolate: replace module-level router so setup_routes registers on a fresh one
-    original_router = routes_mod.router
-    fresh_router = APIRouter()
-    routes_mod.router = fresh_router
-    try:
-        router = setup_routes(app_state)
-        app = FastAPI()
-        app.include_router(router)
-        yield TestClient(app), app_state
-    finally:
-        routes_mod.router = original_router
+    # setup_routes now creates a fresh router each call (P67), no module-level cleanup needed
+    router = setup_routes(app_state)
+    app = FastAPI()
+    app.include_router(router)
+    yield TestClient(app), app_state
 
 
 # --- Game Engine: new_game validation ---

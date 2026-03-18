@@ -8,8 +8,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-# Fresh import — routes.py uses a module-level router, so we can only call
-# setup_routes once per process.  Build a single app for all tests.
+# Build a single app for all tests in this module.
 import src.web.routes as _routes_mod
 from src.web.routes import setup_routes
 

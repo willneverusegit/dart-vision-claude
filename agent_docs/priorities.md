@@ -1024,7 +1024,9 @@ Warum sinnvoll: Verhindert Ressourcen-Konflikte und haengende Requests im Multi-
 
 (reserviert)
 
-## Prioritaet 67: Module-Level Router in routes.py durch Factory-Pattern ersetzen
+## Prioritaet 67: Module-Level Router in routes.py durch Factory-Pattern ersetzen (✅ ERLEDIGT 2026-03-18)
+
+**Umsetzung:** `router = APIRouter()` von Modul-Ebene in `setup_routes()` verschoben. Jeder Aufruf erzeugt jetzt eine frische Router-Instanz — keine doppelte Routen-Registrierung, keine toten Closures bei wiederholtem Aufruf. Test-Workarounds in `test_input_validation.py` (module-level router swap) entfernt, Kommentar in `test_camera_preview_lock.py` aktualisiert. `src/main.py` unveraendert (nutzte bereits den Rueckgabewert von `setup_routes()`). Geaenderte Dateien: `src/web/routes.py`, `tests/test_input_validation.py`, `tests/test_camera_preview_lock.py`.
 
 Kritikalitaet: NIEDRIG
 
@@ -1092,3 +1094,20 @@ Typische Arbeiten:
 - Tests anpassen (async sleeps lassen sich einfacher mocken)
 
 Warum sinnvoll: Blockierende Sleeps in async Handlern verhindern, dass der Server waehrend Pipeline-Start/Stop auf andere Clients reagieren kann. Bei Multi-Cam-Start sind das bis zu 4 Sekunden Event-Loop-Blockade.
+
+## Prioritaet 73: Jinja2Templates-Instanz in setup_routes Factory verschieben (neu — entdeckt bei P67)
+
+Kritikalitaet: NIEDRIG
+
+Ziel:
+
+- `templates = Jinja2Templates(directory="templates")` ist noch module-level in `routes.py`. Beim Import wird das Template-Verzeichnis relativ zum aktuellen Working Directory aufgeloest. Falls Tests oder andere Aufrufer ein anderes CWD haben, schlaegt das Template-Rendering fehl. Ausserdem verhindert die module-level Instanz, dass Tests eigene Template-Verzeichnisse injizieren koennen.
+
+Typische Arbeiten:
+
+- `templates` innerhalb `setup_routes()` erzeugen oder als Parameter uebergeben
+- Optional: Template-Verzeichnis aus app_state oder Konfiguration beziehen
+- Template-bezogene Tests isolierbar machen
+- Dateien: src/web/routes.py
+
+Warum sinnvoll: Bei P67 entdeckt — nach der Router-Factory-Umstellung ist `templates` das letzte verbliebene module-level Objekt mit Seiteneffekten in routes.py.
