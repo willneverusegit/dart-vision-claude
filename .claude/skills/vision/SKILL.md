@@ -46,7 +46,7 @@ ThreadedCamera → DartPipeline
 
 Key Components:
 - **CooldownManager**: 50px Spatial Exclusion + 30-Frame Lockout
-- **SharpnessTracker**: Laplacian-Varianz pro Kamera, Wire-Artefakt-Filter
+- **SharpnessTracker**: Laplacian-Varianz + Brightness (EMA) pro Kamera, Wire-Artefakt-Filter, adaptive CLAHE clipLimit
 - **LightStabilityMonitor**: automatische Threshold-Erhöhung bei instabilem Licht
 - **Adaptive Thresholds**: Otsu-Bias + Search Mode nach 90 Frames Stille
 
@@ -58,11 +58,11 @@ Key Components:
 | P11 | E2E Tests mit echten Videoclips | OFFEN (Ground-Truth-Annotation fehlt) |
 | P24 | Kamera-Vergleich und Kontur-Referenzdaten | OFFEN |
 | P27 | Marker-Kalibrierung auf neue Masse | OFFEN |
-| P50 | Auto-Exposure-Kompensation pro Kamera | OFFEN |
-| P62 | Frontend Homography-Age Warnung | NEU |
+| P24 | Kamera-Vergleich und Kontur-Referenzdaten | OFFEN |
+| P27 | Marker-Kalibrierung auf neue Masse | OFFEN |
 
 **Erledigte CV-Items (Kurzreferenz):**
-P12 (Area-Range), P19 (Frame-Diff), P20 (Tip-Detection), P21 (Kontur-Robustheit), P25 (Tip vs Centroid), P26 (Schärfemetrik), P38 (3-Stufen-Morphologie), P40-P43 (Adaptive/Cache/Cooldown/Modular), P47 (Kernel Cache), P49 (Component Tests), P53 (FrameDiff Integration), P55 (Baseline-Warmup), P57 (Diff-Cache-Bug), P59 (MOG2 Sensitivity), P60 (Homography-Fallback), P61 (Pipeline-Integration)
+P12 (Area-Range), P19 (Frame-Diff), P20 (Tip-Detection), P21 (Kontur-Robustheit), P25 (Tip vs Centroid), P26 (Schärfemetrik), P38 (3-Stufen-Morphologie), P40-P43 (Adaptive/Cache/Cooldown/Modular), P47 (Kernel Cache), P49 (Component Tests), P50 (Auto-Exposure), P53 (FrameDiff Integration), P55 (Baseline-Warmup), P57 (Diff-Cache-Bug), P59 (MOG2 Sensitivity), P60 (Homography-Fallback), P61 (Pipeline-Integration), P62 (Homography-Warning UI), P63 (Quick-Wins)
 
 ## Risiko-Einschätzung
 
