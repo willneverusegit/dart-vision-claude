@@ -6,6 +6,18 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
+# Ground-truth files may use "bull_inner"/"bull_outer" while the pipeline
+# produces "inner_bull"/"outer_bull".  Normalise before comparison.
+_GT_RING_ALIASES: dict[str, str] = {
+    "bull_inner": "inner_bull",
+    "bull_outer": "outer_bull",
+}
+
+
+def normalize_gt_ring(ring: str) -> str:
+    """Translate ground-truth ring names to backend ring names."""
+    return _GT_RING_ALIASES.get(ring, ring)
+
 
 @dataclass
 class DetectionEvent:
@@ -150,12 +162,13 @@ def compute_accuracy(
                 report.score_correct += 1
             if det.sector == expected["sector"]:
                 report.sector_correct += 1
-            if det.ring == expected["ring"]:
+            expected_ring = normalize_gt_ring(expected["ring"])
+            if det.ring == expected_ring:
                 report.ring_correct += 1
 
             detail["score_ok"] = det.score == expected["score"]
             detail["sector_ok"] = det.sector == expected["sector"]
-            detail["ring_ok"] = det.ring == expected["ring"]
+            detail["ring_ok"] = det.ring == expected_ring
         else:
             report.missed += 1
             detail["detected"] = None
