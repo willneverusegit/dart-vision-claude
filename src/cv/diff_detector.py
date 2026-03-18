@@ -217,6 +217,16 @@ class FrameDiffDetector:
         self.diff_threshold = self._base_diff_threshold
         self._no_detect_count = 0
 
+    def set_baseline(self, frame: np.ndarray) -> None:
+        """Explicitly set baseline frame (e.g. after seek/warmup).
+
+        Useful for video replay scenarios where the MOG2 background model
+        needs time to stabilize. Pre-setting the baseline ensures the
+        diff detector can work from the very first motion event.
+        """
+        self._baseline = frame.copy()
+        logger.debug("FrameDiff: Baseline explicitly set via set_baseline()")
+
     @property
     def state(self) -> str:
         return self._state.value
@@ -294,6 +304,14 @@ class FrameDiffDetector:
 
     def _handle_idle(self, frame: np.ndarray, has_motion: bool) -> DartDetection | None:
         if has_motion:
+            if self._baseline is None:
+                # No baseline yet (e.g. after reset/seek) — use current frame
+                # as emergency baseline so diff detection can work at all.
+                self._baseline = frame.copy()
+                logger.info(
+                    "FrameDiff: Baseline was None at motion start — "
+                    "using current frame as emergency baseline"
+                )
             # Motion detected — freeze baseline at last stable frame, switch state
             self._state = _State.IN_MOTION
             self._settle_count = 0
@@ -311,6 +329,11 @@ class FrameDiffDetector:
         # Bewegung aufgehört → Settling starten (count beginnt bei 1)
         self._state = _State.SETTLING
         self._settle_count = 1
+        # Track centroid on transition frame so diff cache is populated
+        # and stability tracking starts immediately (P57 fix).
+        _centroid = self._quick_centroid(frame)
+        if _centroid is not None:
+            self._stability_centroids.append(_centroid)
         logger.debug("FrameDiff: IN_MOTION → SETTLING (settle_count=1)")
         return None
 
