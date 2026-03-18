@@ -1,6 +1,6 @@
 # Current State
 
-Stand dieser Zusammenfassung: 2026-03-18 (Welle 1-4 + Auto-Agents: P22, P26, P27, P28, P30-P31, P39-P43, P46-P49, P52-P53, P55, Tier-2 #5-#7, #10-#14, P32-P33, P35 erledigt)
+Stand dieser Zusammenfassung: 2026-03-18 (Welle 1-4 + Auto-Agents: P22, P26, P27, P28, P30-P31, P39-P43, P46-P49, P52-P56, P60, Tier-2 #5-#7, #10-#14, P32-P33, P35 erledigt)
 
 ## Technischer Kern
 
@@ -80,6 +80,10 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 - Camera Error Reporting: Dict-basierte Fehler, WebSocket broadcast, per-camera Status-Badges (P30)
 - 11 FrameDiffDetector Integration Tests mit CooldownManager/MotionFilter (P53)
 - Baseline-Warmup Fix: force-init bei erster Motion, 3/5 Videos bestehen jetzt strikt (P55)
+- Homography-Fallback: gecachte Homography bei Marker-Occlusion mit Age-Counter und konfigurierbarem Timeout (P60)
+- Multi-Cam Error Recovery: Auto-Reconnect mit exponentiellem Backoff, graceful Degradation, manueller Reconnect-API (P56)
+- Stereo-Kalibrierung Fortschritts-Feedback: Fehleranzeige bei nicht erkanntem Board, valid_pairs Tracking (P54)
+- Deduplizierung _is_already_confirmed vs CooldownManager verifiziert und dokumentiert (P51)
 
 ## Was heute als fortgeschritten, aber noch sensibel gilt
 

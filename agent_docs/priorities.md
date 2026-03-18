@@ -847,7 +847,9 @@ Prioritaet: Niedrig (kosmetisch, keine Funktionsaenderung). Sinnvoll als Follow-
 
 **Umsetzung:** 11 Integration-Tests in `tests/test_framediff_integration.py`. Testet FrameDiffDetector mit CooldownManager und MotionFilter im Zusammenspiel: Cooldown nach Detection, Exclusion-Zone-Blocking, Scoring-Lock-Suppression, Idle-Baseline-Trigger, 3-Dart-Sequenz mit synthetischen Diff-Masken, Settling-Interruption durch Motion, Bounce-Out ohne Cooldown-Aktivierung. Alle 11 Tests gruen.
 
-## Prioritaet 54: Stereo-Kalibrierung Fortschritts-Feedback im Frontend (NIEDRIG)
+## Prioritaet 54: Stereo-Kalibrierung Fortschritts-Feedback im Frontend (✅ ERLEDIGT 2026-03-18)
+
+**Umsetzung:** `frame_progress()` in `stereo_progress.py` erweitert um `valid_pairs`, `phase`, `both_detected` und deutsche Fehlermeldungen. Frontend zeigt orangefarbenen Fortschrittsbalken und Fehlertext wenn Board nicht in beiden Kameras erkannt wird. 8 neue Tests. Geaenderte Dateien: `src/web/stereo_progress.py`, `static/js/app.js`, `tests/test_stereo_progress.py`.
 
 Kritikalitaet: NIEDRIG
 
@@ -870,11 +872,13 @@ Ergebnis:
 - 2/5 Videos (1.mp4, 2.mp4) haben separates Problem: MOG2 Motion-Sensitivity zu niedrig bei kurzen Videos mit subtiler Dart-Bewegung — als per-Video xfail mit Erklaerung markiert
 - Entdeckte Folge-Prio: P59 (MOG2 Motion-Sensitivity fuer kurze Videos tunen)
 
-## Prioritaet 56: Multi-Cam Error Recovery und Auto-Restart (neu — entdeckt bei P30)
+## Prioritaet 56: Multi-Cam Error Recovery und Auto-Restart (✅ ERLEDIGT 2026-03-18)
+
+**Umsetzung:** Auto-Reconnect nach 50 konsekutiven Frame-Fehlern mit exponentiellem Backoff (2-30s, max 5 Versuche). Start-Retry beim initialen Start. Graceful Degradation: bei dauerhaftem Ausfall laeuft Pipeline mit verbleibenden Kameras weiter. Manueller Reconnect via `POST /api/multi/camera/{id}/reconnect`. Degraded-Status via `GET /api/multi/degraded`. 12 neue Tests. Geaenderte Dateien: `src/cv/multi_camera.py`, `src/web/routes.py`, `tests/test_multi_error_recovery.py`.
 
 Kritikalitaet: MITTEL
 
-Ziel: Wenn eine Kamera im Multi-Cam-Betrieb ausfaellt (error-Level), automatisch Reconnect versuchen statt nur Fehler anzuzeigen. Aktuell wird bei Startup-Fehler die Kamera dauerhaft als ausgefallen markiert.
+Ziel: Wenn eine Kamera im Multi-Cam-Betrieb ausfaellt (error-Level), automatisch Reconnect versuchen statt nur Fehler anzuzeigen.
 
 Typische Arbeiten:
 - Reconnect-Logik aus ThreadedCamera in Multi-Cam-Pipeline integrieren
@@ -924,7 +928,9 @@ Typische Arbeiten:
 - Per-Video xfail in test_ground_truth_validation.py entfernen nach Fix
 - Dateien: src/cv/motion.py, src/cv/diff_detector.py, tests/e2e/test_ground_truth_validation.py
 
-## Prioritaet 60: Homography-Fallback bei Marker-Occlusion (neu — Auto-Agent 2026-03-18)
+## Prioritaet 60: Homography-Fallback bei Marker-Occlusion (✅ ERLEDIGT 2026-03-18)
+
+**Umsetzung:** `homography_age` Counter in `BoardCalibrationManager` zaehlt Frames seit letzter erfolgreicher Marker-Detektion. `aruco_calibration_with_fallback()` nutzt gecachte Homography wenn Marker verdeckt. Warnung nach 30 Frames, Fallback verfaellt nach 150 Frames (konfigurierbar). `get_params()` exponiert Alter und Config. 8 neue Tests fuer Occlusion-Szenarien. Geaenderte Dateien: `src/cv/board_calibration.py`, `tests/test_calibration.py`. Hinweis: Pipeline-Integration (Wechsel von `aruco_calibration()` auf `aruco_calibration_with_fallback()`) steht noch aus.
 
 Kritikalitaet: HOCH
 
@@ -945,3 +951,21 @@ Typische Arbeiten:
 - Dateien: src/cv/board_calibration.py, src/cv/calibration.py, src/web/routes.py, tests/test_calibration.py
 
 Warum kritisch: Beim realen Spiel verdeckt die werfende Hand regelmaessig 1-2 Marker. Ohne Fallback geht die Kalibrierung verloren und das Scoring pausiert bis alle Marker wieder sichtbar sind. Direkte Verbesserung der Spielbarkeit.
+
+## Prioritaet 61: Homography-Fallback in Pipeline integrieren (neu — entdeckt bei P60)
+
+Kritikalitaet: HOCH
+
+Ziel:
+
+- `aruco_calibration_with_fallback()` aus P60 in die DartPipeline einbinden, sodass zur Laufzeit der Fallback aktiv ist
+
+Typische Arbeiten:
+
+- In `src/cv/pipeline.py` den Aufruf von `aruco_calibration()` durch `aruco_calibration_with_fallback()` ersetzen
+- Homography-Age in Telemetrie/Stats aufnehmen
+- Frontend-Warnung wenn Homography veraltet (>30 Frames)
+- Tests: Pipeline-Durchlauf mit simulierter Marker-Occlusion
+- Dateien: src/cv/pipeline.py, src/web/routes.py, static/js/app.js
+
+Warum kritisch: P60 hat die Fallback-Logik implementiert, aber sie wird noch nicht von der Pipeline aufgerufen. Ohne Integration bleibt das Feature wirkungslos.
