@@ -1,9 +1,13 @@
 """Telemetry history: ring-buffer for FPS, queue pressure, dropped frames, CPU."""
 
-import time
+import json
+import logging
+import os
 import threading
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -47,11 +51,21 @@ class TelemetryHistory:
         self._fps_alert_since: float | None = None
         self._queue_alert_since: float | None = None
 
+        # Optional JSONL writer
+        self._jsonl_writer: TelemetryJSONLWriter | None = None
+
+    def attach_jsonl_writer(self, writer: "TelemetryJSONLWriter") -> None:
+        """Attach a JSONL writer for persistent telemetry logging."""
+        self._jsonl_writer = writer
+
     def record(self, sample: TelemetrySample) -> None:
         """Add a telemetry sample."""
         with self._lock:
             self._samples.append(sample)
             self._update_alerts(sample)
+        # Write to JSONL outside the lock to avoid blocking
+        if self._jsonl_writer is not None:
+            self._jsonl_writer.write(sample)
 
     def _update_alerts(self, sample: TelemetrySample) -> None:
         """Update alert state based on latest sample."""
@@ -141,3 +155,56 @@ class TelemetryHistory:
                 "queue_max": round(max(queue_vals), 2),
                 "total_drops": self._samples[-1].dropped_frames,
             }
+
+
+class TelemetryJSONLWriter:
+    """Writes telemetry samples as JSONL to a file.
+
+    Activated via DARTVISION_TELEMETRY_FILE environment variable.
+    Each line is a JSON object with session_id and sample data.
+    """
+
+    def __init__(self, filepath: str, session_id: str) -> None:
+        self._filepath = filepath
+        self._session_id = session_id
+        self._lock = threading.Lock()
+        # Ensure directory exists
+        dirpath = os.path.dirname(filepath)
+        if dirpath:
+            os.makedirs(dirpath, exist_ok=True)
+        logger.info("Telemetry JSONL writer: %s (session=%s)", filepath, session_id)
+
+    @property
+    def filepath(self) -> str:
+        return self._filepath
+
+    @property
+    def session_id(self) -> str:
+        return self._session_id
+
+    def write(self, sample: TelemetrySample) -> None:
+        """Append a single sample as a JSON line."""
+        record = {
+            "session": self._session_id,
+            "t": round(sample.timestamp, 3),
+            "fps": round(sample.fps, 1),
+            "queue": round(sample.queue_pressure, 3),
+            "drops": sample.dropped_frames,
+            "mem": round(sample.memory_mb, 1),
+            "cpu": round(sample.cpu_percent, 1) if sample.cpu_percent is not None else None,
+        }
+        line = json.dumps(record, separators=(",", ":")) + "\n"
+        with self._lock:
+            try:
+                with open(self._filepath, "a", encoding="utf-8") as f:
+                    f.write(line)
+            except OSError:
+                logger.warning("Failed to write telemetry JSONL", exc_info=True)
+
+    @staticmethod
+    def from_env(session_id: str) -> "TelemetryJSONLWriter | None":
+        """Create writer if DARTVISION_TELEMETRY_FILE is set, else None."""
+        path = os.environ.get("DARTVISION_TELEMETRY_FILE")
+        if not path:
+            return None
+        return TelemetryJSONLWriter(path, session_id)

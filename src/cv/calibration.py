@@ -23,14 +23,14 @@ BOARD_RADIUS_MM = 170   # Double-outer ring radius
 
 # Known surround frame dimensions (black frame around board)
 FRAME_OUTER_MM = 517  # Outer edge of black frame
-FRAME_INNER_MM = 500  # Corner-to-corner distance of marker square
+FRAME_INNER_MM = 505  # Corner-to-corner distance of marker square
 
 # CRITICAL: Physical center-to-center distance between adjacent ArUco markers.
 # This is the actual measured distance, NOT the frame inner edge.
 MARKER_SPACING_MM = 430  # Measured ArUco marker center-to-center distance
 
 # ROI crop: board diameter + margin so the double ring is fully visible
-BOARD_CROP_MM = 380   # 340mm board + 20mm margin each side
+BOARD_CROP_MM = 420   # 340mm board + 40mm margin each side
 
 # ArUco configuration for the project markers
 ARUCO_DICT_TYPE = cv2.aruco.DICT_4X4_50
@@ -311,10 +311,10 @@ class CalibrationManager:
             ])
             H_frame = cv2.getPerspectiveTransform(src_markers, frame_dst)
 
-            # Step 2: Define a tighter crop centered on the board
-            # BOARD_CROP_MM (380mm) = board diameter + small margin
+            # Step 2: Define a crop centered on the board with generous margin
+            # BOARD_CROP_MM (420mm) = board diameter + 40mm margin each side
             crop_mm = BOARD_CROP_MM
-            margin = (frame_px - crop_mm) / 2  # (430-380)/2 = 25
+            margin = (frame_px - crop_mm) / 2  # (430-420)/2 = 5
             crop_in_frame = np.float32([
                 [margin, margin],
                 [frame_px - margin, margin],
@@ -369,8 +369,8 @@ class CalibrationManager:
             center_y = float(np.mean(src_markers[:, 1]))
 
             # Compute radii in pixels for the cropped ROI
-            # The ROI now spans BOARD_CROP_MM (380mm), not the full frame
-            roi_mm_per_px = crop_mm / roi_w  # 380/400 = 0.95 mm/px
+            # The ROI now spans BOARD_CROP_MM (420mm), not the full frame
+            roi_mm_per_px = crop_mm / roi_w  # 420/400 = 1.05 mm/px
             radii_px = []
             for key in ["bull_inner", "bull_outer", "triple_inner",
                          "triple_outer", "double_inner", "double_outer"]:
@@ -662,7 +662,12 @@ class CalibrationManager:
         return float(self._config.get("mm_per_px", 1.0))
 
     def get_radii_px(self) -> list[float]:
-        """Get ring radii in pixels (for ROI-warped image)."""
+        """Get ring radii in pixels (for ROI-warped image).
+
+        These values are used for visual overlays and UI rendering only.
+        Score classification uses mm-based RING_BOUNDARIES in geometry.py,
+        not these pixel radii.
+        """
         return self._config.get("radii_px", [10, 19, 106, 116, 188, 200])
 
     def _atomic_save(self) -> None:

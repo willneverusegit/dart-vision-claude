@@ -1462,6 +1462,41 @@ def setup_routes(app_state: dict) -> APIRouter:
             "summary": telemetry.get_summary(),
         }
 
+    @router.get("/api/telemetry/export", response_model=None)
+    async def export_telemetry(format: str = "json"):
+        """Export full telemetry history as JSON or CSV download."""
+        telemetry = app_state.get("telemetry")
+        if not telemetry:
+            return JSONResponse({"ok": False, "error": "Telemetry not initialized"})
+        history = telemetry.get_history()
+        summary = telemetry.get_summary()
+
+        if format == "csv":
+            import io
+            import csv
+            output = io.StringIO()
+            if history:
+                writer = csv.DictWriter(output, fieldnames=history[0].keys())
+                writer.writeheader()
+                writer.writerows(history)
+            csv_bytes = output.getvalue().encode("utf-8")
+            return StreamingResponse(
+                iter([csv_bytes]),
+                media_type="text/csv",
+                headers={"Content-Disposition": "attachment; filename=telemetry.csv"},
+            )
+
+        import json as _json
+        payload = _json.dumps(
+            {"history": history, "summary": summary},
+            separators=(",", ":"),
+        )
+        return StreamingResponse(
+            iter([payload.encode("utf-8")]),
+            media_type="application/json",
+            headers={"Content-Disposition": "attachment; filename=telemetry.json"},
+        )
+
     @router.get("/api/telemetry/stereo")
     async def telemetry_stereo() -> dict:
         """Triangulations-Telemetrie."""

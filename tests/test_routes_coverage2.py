@@ -1,11 +1,14 @@
 """Additional route tests to increase routes.py coverage from 34% to 60%+."""
 
+import csv
+import io
 import threading
 import numpy as np
 from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 
 from src.main import app, app_state
+from src.utils.telemetry import TelemetryHistory, TelemetrySample
 
 
 def _make_dummy_pipeline():
@@ -546,3 +549,44 @@ class TestBoardPoseEndpoint:
                 assert resp.json()["ok"] is False
         finally:
             app_state["multi_pipeline"] = saved
+
+
+class TestTelemetryExport:
+    @staticmethod
+    def _make_telemetry():
+        th = TelemetryHistory()
+        th.record(TelemetrySample(timestamp=1.0, fps=30.0, queue_pressure=0.1,
+                                  dropped_frames=0, memory_mb=100.0, cpu_percent=25.0))
+        th.record(TelemetrySample(timestamp=2.0, fps=28.0, queue_pressure=0.2,
+                                  dropped_frames=1, memory_mb=110.0, cpu_percent=30.0))
+        return th
+
+    def test_export_json(self):
+        with TestClient(app) as client:
+            # Replace after startup so app_state is already initialized
+            app_state["telemetry"] = self._make_telemetry()
+            resp = client.get("/api/telemetry/export")
+            assert resp.status_code == 200
+            assert "attachment" in resp.headers.get("content-disposition", "")
+            data = resp.json()
+            assert "history" in data
+            assert "summary" in data
+            assert len(data["history"]) == 2
+
+    def test_export_csv(self):
+        with TestClient(app) as client:
+            app_state["telemetry"] = self._make_telemetry()
+            resp = client.get("/api/telemetry/export?format=csv")
+            assert resp.status_code == 200
+            assert "text/csv" in resp.headers.get("content-type", "")
+            reader = csv.DictReader(io.StringIO(resp.text))
+            rows = list(reader)
+            assert len(rows) == 2
+            assert "fps" in rows[0]
+
+    def test_export_no_telemetry(self):
+        with TestClient(app) as client:
+            app_state["telemetry"] = None
+            resp = client.get("/api/telemetry/export")
+            data = resp.json()
+            assert data["ok"] is False

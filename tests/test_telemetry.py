@@ -1,8 +1,10 @@
 """Tests for telemetry history module."""
 
+import json
+import os
 import time
 import pytest
-from src.utils.telemetry import TelemetryHistory, TelemetrySample
+from src.utils.telemetry import TelemetryHistory, TelemetrySample, TelemetryJSONLWriter
 
 
 def _sample(fps=30.0, queue=0.1, drops=0, mem=100.0, cpu=None, ts=None):
@@ -134,3 +136,63 @@ class TestTelemetryHistory:
     def test_validation_queue_threshold(self):
         with pytest.raises(ValueError):
             TelemetryHistory(queue_alert_threshold=1.5)
+
+
+class TestTelemetryJSONLWriter:
+    def test_write_creates_file(self, tmp_path):
+        filepath = str(tmp_path / "telemetry.jsonl")
+        writer = TelemetryJSONLWriter(filepath, session_id="abc123")
+        writer.write(_sample(fps=25.0, queue=0.3, drops=2, mem=150.0, cpu=45.0, ts=1000.0))
+        with open(filepath, encoding="utf-8") as f:
+            lines = f.readlines()
+        assert len(lines) == 1
+        record = json.loads(lines[0])
+        assert record["session"] == "abc123"
+        assert record["fps"] == 25.0
+        assert record["queue"] == 0.3
+        assert record["drops"] == 2
+        assert record["mem"] == 150.0
+        assert record["cpu"] == 45.0
+
+    def test_write_appends(self, tmp_path):
+        filepath = str(tmp_path / "telemetry.jsonl")
+        writer = TelemetryJSONLWriter(filepath, session_id="s1")
+        writer.write(_sample(fps=10.0, ts=1.0))
+        writer.write(_sample(fps=20.0, ts=2.0))
+        with open(filepath, encoding="utf-8") as f:
+            lines = f.readlines()
+        assert len(lines) == 2
+
+    def test_cpu_none(self, tmp_path):
+        filepath = str(tmp_path / "telemetry.jsonl")
+        writer = TelemetryJSONLWriter(filepath, session_id="s1")
+        writer.write(_sample(cpu=None, ts=1.0))
+        record = json.loads(open(filepath).readline())
+        assert record["cpu"] is None
+
+    def test_from_env_returns_none_when_unset(self, monkeypatch):
+        monkeypatch.delenv("DARTVISION_TELEMETRY_FILE", raising=False)
+        assert TelemetryJSONLWriter.from_env("abc") is None
+
+    def test_from_env_returns_writer(self, tmp_path, monkeypatch):
+        filepath = str(tmp_path / "t.jsonl")
+        monkeypatch.setenv("DARTVISION_TELEMETRY_FILE", filepath)
+        writer = TelemetryJSONLWriter.from_env("sess1")
+        assert writer is not None
+        assert writer.session_id == "sess1"
+
+    def test_attach_to_history(self, tmp_path):
+        filepath = str(tmp_path / "telemetry.jsonl")
+        writer = TelemetryJSONLWriter(filepath, session_id="s1")
+        th = TelemetryHistory()
+        th.attach_jsonl_writer(writer)
+        th.record(_sample(fps=30.0, ts=1.0))
+        with open(filepath, encoding="utf-8") as f:
+            lines = f.readlines()
+        assert len(lines) == 1
+
+    def test_creates_directory(self, tmp_path):
+        filepath = str(tmp_path / "subdir" / "deep" / "telemetry.jsonl")
+        writer = TelemetryJSONLWriter(filepath, session_id="s1")
+        writer.write(_sample(ts=1.0))
+        assert os.path.exists(filepath)

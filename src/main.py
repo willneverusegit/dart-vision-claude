@@ -401,6 +401,12 @@ async def lifespan(app: FastAPI):
     telemetry = TelemetryHistory(max_samples=300, fps_alert_threshold=15.0, queue_alert_threshold=0.8)
     app_state["telemetry"] = telemetry
 
+    # Attach optional JSONL telemetry writer (if DARTVISION_TELEMETRY_FILE is set)
+    from src.utils.telemetry import TelemetryJSONLWriter
+    jsonl_writer = TelemetryJSONLWriter.from_env(session_id=SESSION_ID)
+    if jsonl_writer:
+        telemetry.attach_jsonl_writer(jsonl_writer)
+
     # Start telemetry collection background task
     async def _collect_telemetry():
         """Collect telemetry samples every second."""

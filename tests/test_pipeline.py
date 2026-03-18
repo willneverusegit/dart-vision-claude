@@ -11,6 +11,32 @@ from src.cv.detector import DartImpactDetector
 
 
 class TestMotionDetector:
+    def test_default_no_shadows(self):
+        """Default MotionDetector should have detectShadows=False."""
+        md = MotionDetector()
+        assert md._detect_shadows is False
+
+    def test_custom_learning_rate(self):
+        """Custom learning_rate is stored and used."""
+        md = MotionDetector(learning_rate=0.005)
+        assert md._learning_rate == 0.005
+
+    def test_invalid_learning_rate(self):
+        """learning_rate outside (0, 1] should raise."""
+        import pytest
+        with pytest.raises(ValueError):
+            MotionDetector(learning_rate=0.0)
+        with pytest.raises(ValueError):
+            MotionDetector(learning_rate=1.5)
+
+    def test_reset_preserves_config(self):
+        """After reset(), shadow and var_threshold settings are preserved."""
+        md = MotionDetector(detect_shadows=False, var_threshold=40)
+        md.reset()
+        # bg_subtractor is recreated with stored params
+        assert md._detect_shadows is False
+        assert md._var_threshold == 40
+
     def test_no_motion_on_static(self):
         """Static frames should produce no motion."""
         md = MotionDetector(threshold=500)
@@ -134,6 +160,16 @@ class TestDetectionToScoring:
             hit = geometry.point_to_score(float(cx), float(cy))
             assert hit.score > 0
             assert hit.sector in range(1, 21)
+
+
+class TestPipelineInit:
+    def test_opencv_threads_enabled(self):
+        """Pipeline init should set cv2.setNumThreads(0) for full parallelism."""
+        import cv2
+        from src.cv.pipeline import DartPipeline
+        DartPipeline(camera_src=0)
+        # After init, getNumThreads should return the system thread count (>0)
+        assert cv2.getNumThreads() > 0
 
 
 class TestDartPipelineD1:

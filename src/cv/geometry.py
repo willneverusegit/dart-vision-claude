@@ -162,7 +162,16 @@ class BoardPose:
 
 @dataclass
 class BoardGeometry:
-    """Canonical geometry used by scoring, overlays, APIs and UI rendering."""
+    """Canonical geometry used by scoring, overlays, APIs and UI rendering.
+
+    Important: ``radii_px`` stores ring radii in ROI-pixel space and is used
+    **only** for visual overlays (drawing rings on the warped image) and for
+    normalizing pixel distances via ``double_outer_radius_px``.  Actual score
+    classification in ``point_to_score`` uses ``RING_BOUNDARIES`` which are
+    derived from the physical mm constants (``BULL_INNER_MM`` … ``DOUBLE_OUTER_MM``)
+    normalized to the board radius.  This means scoring is independent of any
+    pixel-level calibration drift in ``radii_px``.
+    """
 
     roi_size: tuple[int, int]
     center_px: tuple[float, float]
@@ -216,6 +225,11 @@ class BoardGeometry:
         """Convert ROI pixel coordinates to a BoardHit.
 
         This is the ONLY function external modules should call for scoring.
+
+        Ring classification uses ``RING_BOUNDARIES`` (mm-based, normalized to
+        ``BOARD_RADIUS_MM``), **not** ``radii_px``.  The only role of
+        ``radii_px`` here is providing ``double_outer_radius_px`` as the
+        pixel-to-normalized-radius scaling factor.
         """
         radius = self.double_outer_radius_px
         if radius <= 0:

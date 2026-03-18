@@ -1978,6 +1978,15 @@ class DartApp {
                 if (panel) panel.style.display = "none";
             });
         }
+        const exportBtn = document.getElementById("btn-export-telemetry");
+        if (exportBtn) {
+            exportBtn.addEventListener("click", () => {
+                const a = document.createElement("a");
+                a.href = "/api/telemetry/export";
+                a.download = "telemetry.json";
+                a.click();
+            });
+        }
         // Listen for telemetry alerts via WebSocket
         this.ws.on("telemetry_alert", (data) => this._onTelemetryAlert(data));
         // Poll telemetry history when panel is open

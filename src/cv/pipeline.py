@@ -50,6 +50,9 @@ class DartPipeline:
         marker_spacing_mm: float | None = None,
         diff_threshold: int | None = None,
     ) -> None:
+        # Ensure OpenCV uses all available CPU cores
+        cv2.setNumThreads(0)
+
         self.camera_src = camera_src
         self.marker_size_mm = marker_size_mm
         self.marker_spacing_mm = marker_spacing_mm
