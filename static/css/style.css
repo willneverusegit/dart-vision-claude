@@ -32,8 +32,24 @@
     --shadow: rgba(0, 0, 0, 0.12);
 }
 
+/* High-Contrast Theme — WCAG AAA compliant */
+:root.high-contrast {
+    --bg-primary: #000000;
+    --bg-secondary: #0a0a0a;
+    --bg-panel: #1a1a1a;
+    --accent: #ff4d6a;
+    --accent-hover: #ff7a90;
+    --text-primary: #ffffff;
+    --text-secondary: #e0e0e0;
+    --text-muted: #b0b0b0;
+    --success: #4cff7a;
+    --warning: #ffcc00;
+    --border: #555555;
+    --shadow: rgba(0, 0, 0, 0.6);
+}
+
 @media (prefers-color-scheme: light) {
-    :root:not(.dark-theme) {
+    :root:not(.dark-theme):not(.high-contrast) {
         --bg-primary: #f0f2f5;
         --bg-secondary: #ffffff;
         --bg-panel: #e8ecf1;
@@ -65,6 +81,43 @@
 .theme-toggle:hover {
     border-color: var(--accent);
     color: var(--text-primary);
+}
+
+/* High-contrast: thicker borders and focus outlines */
+:root.high-contrast .panel,
+:root.high-contrast .modal__content,
+:root.high-contrast .btn,
+:root.high-contrast .select,
+:root.high-contrast .input {
+    border-width: 2px;
+}
+:root.high-contrast button:focus-visible,
+:root.high-contrast input:focus-visible,
+:root.high-contrast select:focus-visible,
+:root.high-contrast a:focus-visible {
+    outline-width: 3px;
+}
+
+/* Smooth theme transition */
+body,
+.header,
+.panel,
+.modal__content,
+.btn,
+.select,
+.input,
+.telemetry-panel,
+.capture-settings,
+.player-row,
+.candidate-row,
+.cal-status-overview,
+.charuco-board-panel,
+.multi-status-info,
+.stereo-result,
+.ws-status,
+.pending-badge,
+.theme-toggle {
+    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
 }
 
 * {

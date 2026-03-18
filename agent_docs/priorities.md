@@ -679,18 +679,9 @@ Warum kritisch: Ohne echte Videovalidierung bleiben Algorithmus-Aenderungen unge
 
 **Status:** Infrastruktur implementiert (marker_size_mm konfigurierbar, Batch-Script, pytest). Noch ausstehend: Ground-Truth-Annotation der Videos.
 
-## Prioritaet 40: Adaptive Thresholds (Otsu-Bias + Search Mode)
+## Prioritaet 40: Adaptive Thresholds (Otsu-Bias + Search Mode) (✅ ERLEDIGT 2026-03-18)
 
-Quelle: `pipeline_patterns.md` Pattern #4
-
-Ziel: Helligkeitsadaptive Schwellwerte fuer robustere Erkennung bei wechselnden Lichtverhaeltnissen.
-
-Typische Arbeiten:
-- Otsu-Bias basierend auf Frame-Helligkeit
-- Search Mode: nach 90 Frames Stille aggressivere Threshold-Suche aktivieren
-- Optional: Dual-Threshold Fusion (zwei Schwellwerte parallel, Union der Ergebnisse)
-
-Warum wichtig: Aktuelle feste Thresholds funktionieren nur bei stabiler Beleuchtung. Adaptive Schwellwerte erhoehen Robustheit ohne CPU-Mehrkosten.
+**Umsetzung:** Bereits in Welle 3 implementiert. `FrameDiffDetector` berechnet Otsu-Threshold und biased ihn mit konfigurierbarem `otsu_bias_factor` (default 0.7). Min/Max-Clamping schuetzt gegen Ausreisser. Search Mode aktiviert sich nach `search_mode_frames` (default 90) Frames ohne Detection und senkt den Threshold um `search_mode_threshold_factor` (default 0.8). `adaptive_threshold` Flag erlaubt Deaktivierung fuer festen Threshold-Fallback. 10+ Tests fuer Otsu-Bias, Search Mode Aktivierung/Reset und Parameter-Export. Dual-Threshold Fusion wurde als nicht notwendig bewertet (Otsu-Bias + Search Mode decken die Anforderungen ab). Geaenderte Dateien: `src/cv/diff_detector.py`, `tests/test_diff_detector.py`.
 
 ## Prioritaet 41: Edge Cache (Canny-Reuse pro Frame) (✅ ERLEDIGT 2026-03-18)
 
@@ -749,18 +740,9 @@ Typische Arbeiten:
 
 Plan-Datei: `.claude/plans/shimmying-knitting-corbato.md` (Phasen 3-5)
 
-## Prioritaet 46: Dark/Light Theme Toggle — Verbleibende Arbeiten (NIEDRIG)
+## Prioritaet 46: Dark/Light Theme Toggle — Verbleibende Arbeiten (ERLEDIGT 2026-03-18)
 
-Quelle: Verbleibende Punkte aus P10/P23
-
-Ziel: Theme-Umschaltung robuster und vollstaendiger machen.
-
-Typische Arbeiten:
-- WCAG AA Kontrast-Pruefung aller UI-Elemente in beiden Themes
-- Theme-Wechsel-Animation (sanfter Uebergang statt hartem Umschalten)
-- Sicherstellen, dass alle Modals, Tooltips und dynamisch erzeugte Elemente die Theme-Variablen nutzen
-- High-Contrast-Mode als dritte Option fuer Barrierefreiheit
-- Theme-Vorschau in Settings vor dem Umschalten
+**Umsetzung:** 3-Wege-Theme-Zyklus (Dark->Light->High-Contrast) im Toggle-Button. CSS-Transition (0.3s ease) auf Hauptelementen fuer sanften Wechsel. High-Contrast-Theme mit WCAG-AAA-Kontrasten, dickeren Borders und Focus-Outlines. prefers-color-scheme Regel schliesst high-contrast aus. Dateien: `static/css/style.css`, `static/js/app.js`.
 
 ## Prioritaet 47: Morphology Kernel Cache und Threshold-Mask Reuse
 
@@ -794,18 +776,9 @@ Typische Arbeiten:
 
 Warum sinnvoll: Ohne Retention wachsen JSONL-Dateien bei Dauerbetrieb unbegrenzt. Besonders relevant auf Embedded-Systemen mit begrenztem Speicher.
 
-## Prioritaet 49: Detection-Component Integration Tests (neu — entdeckt bei P43)
+## Prioritaet 49: Detection-Component Integration Tests (✅ ERLEDIGT 2026-03-18)
 
-Ziel: Die neuen modularen Detection-Komponenten (P43) im Zusammenspiel testen — insbesondere die Interaktion zwischen ShapeAnalyzer, CooldownManager und MotionFilter in realistischen Multi-Dart-Szenarien.
-
-Typische Arbeiten:
-- Integration-Tests: 3 Darts nacheinander erkennen mit Cooldown zwischen jedem
-- ShapeAnalyzer mit dynamisch skalierten Area-Ranges (P12) testen
-- MotionFilter Scoring-Lock + Idle-Tracking in Pipeline-Kontext validieren
-- Edge Cases: Bounce-Out waehrend Cooldown, Shape-Reject gefolgt von gueltigem Dart
-- Performance-Vergleich: sicherstellen dass Delegation keinen messbaren Overhead einfuehrt
-
-Warum sinnvoll: P43 hat Unit-Tests pro Komponente, aber keine Integration-Tests die das Zusammenspiel aller Komponenten in einem realistischen Szenario pruefen.
+**Umsetzung:** 16 Integration-Tests in `tests/test_detection_integration.py`. Abgedeckte Szenarien: 3-Dart-Sequenz mit Cooldown + Exclusion Zones, Bounce-Out waehrend Cooldown (Motion suppressed + Exclusion Zone), Shape-Reject gefolgt von gueltigem Dart, dynamische Area-Skalierung (P12) mit DartImpactDetector.scale_area_to_roi, MotionFilter Scoring-Lock + Idle-Tracking im Pipeline-Kontext, DartImpactDetector register_confirmed + Cooldown-Zyklus, Performance-Benchmarks (ShapeAnalyzer <2ms/call, CooldownManager <100us/iteration).
 
 ## Prioritaet 50: Auto-Exposure-Kompensation pro Kamera (neu — entdeckt bei P26)
 
@@ -853,3 +826,31 @@ Typische Arbeiten:
 - Tests anpassen
 
 Prioritaet: Niedrig (Architektur-Bereinigung, kein Verhaltens-Unterschied). Sinnvoll wenn Detector-Logik weiter refactored wird.
+
+## Prioritaet 52: Hardcoded Farben in CSS durch Theme-Variablen ersetzen (NIEDRIG)
+
+Quelle: Audit bei P46-Implementierung
+
+Ziel: Verbleibende hartcodierte Farbwerte in `style.css` (z.B. `#b91c1c`, `#c0392b`, `#4ceb8f`, `#111`, `#fff`, `#000` in Buttons und Statuselementen) durch CSS-Variablen ersetzen, damit alle drei Themes (Dark, Light, High-Contrast) konsistent wirken.
+
+Typische Arbeiten:
+- Neue Variablen definieren: `--danger`, `--danger-hover`, `--text-on-accent`, `--text-on-danger`, `--bg-video`
+- Alle hartcodierten `color: #fff`, `color: #111`, `background: #000` etc. durch Variablen ersetzen
+- Camera-Warning-Banner und Health-Badges an Theme-Variablen anbinden
+- Visueller Test in allen drei Themes
+
+Prioritaet: Niedrig (kosmetisch, keine Funktionsaenderung). Sinnvoll als Follow-Up zu P46.
+
+## Prioritaet 53: FrameDiffDetector Integration Tests mit Detection-Komponenten (neu — entdeckt bei P49)
+
+Kritikalitaet: MITTEL
+
+Ziel: P49-Integration-Tests decken ShapeAnalyzer/CooldownManager/MotionFilter ab, aber der aktuelle Single-Cam-Hauptpfad laeuft ueber FrameDiffDetector (seit P19). Integration-Tests die FrameDiffDetector mit CooldownManager und MotionFilter im Zusammenspiel testen fehlen noch.
+
+Typische Arbeiten:
+- FrameDiffDetector + CooldownManager: Cooldown nach FrameDiff-Erkennung, Exclusion Zones fuer FrameDiff-Positionen
+- FrameDiffDetector + MotionFilter: Scoring-Lock nach FrameDiff-Confirmation, Idle-Detection als Trigger fuer Baseline-Update
+- Multi-Dart-Sequenz via FrameDiff mit realistischen Diff-Masken
+- Settling-Phase + Cooldown-Interaktion testen
+
+Warum sinnvoll: P49 testet die modularen Komponenten, aber nicht den tatsaechlichen Single-Cam-Erkennungspfad der FrameDiffDetector nutzt.

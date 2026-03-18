@@ -2233,52 +2233,61 @@ class DartApp {
 document.addEventListener("DOMContentLoaded", () => {
     window.dartApp = new DartApp();
 
-    // Theme toggle (self-contained IIFE)
+    // Theme toggle (self-contained IIFE) — cycles: dark -> light -> high-contrast
     (function initThemeToggle() {
         const root = document.documentElement;
-        const saved = localStorage.getItem("theme");
+        const THEMES = ["dark", "light", "high-contrast"];
+        const THEME_CLASSES = ["dark-theme", "light-theme", "high-contrast"];
+        const ICONS = {dark: "\u{2600}\u{FE0F}", light: "\u{1F319}", "high-contrast": "\u{1F441}\u{FE0F}"};
+        const LABELS = {dark: "Zum hellen Theme wechseln", light: "Zum Hochkontrast-Theme wechseln", "high-contrast": "Zum dunklen Theme wechseln"};
 
-        if (saved === "light") {
-            root.classList.add("light-theme");
-            root.classList.remove("dark-theme");
-        } else if (saved === "dark") {
-            root.classList.add("dark-theme");
-            root.classList.remove("light-theme");
+        function clearThemeClasses() {
+            THEME_CLASSES.forEach(function(c) { root.classList.remove(c); });
         }
-        // If no saved preference, the @media (prefers-color-scheme) rule handles it
 
-        const btn = document.createElement("button");
+        function getCurrentTheme() {
+            if (root.classList.contains("high-contrast")) return "high-contrast";
+            if (root.classList.contains("light-theme")) return "light";
+            if (root.classList.contains("dark-theme")) return "dark";
+            // No explicit class — check system preference
+            return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+        }
+
+        var saved = localStorage.getItem("theme");
+        if (saved && THEMES.indexOf(saved) !== -1) {
+            clearThemeClasses();
+            if (saved === "dark") root.classList.add("dark-theme");
+            else if (saved === "light") root.classList.add("light-theme");
+            else if (saved === "high-contrast") root.classList.add("high-contrast");
+        }
+
+        var btn = document.createElement("button");
         btn.className = "theme-toggle";
-        btn.setAttribute("aria-label", "Toggle light/dark theme");
+        btn.setAttribute("aria-label", "Toggle theme");
         btn.title = "Toggle theme";
 
         function updateIcon() {
-            const isLight = root.classList.contains("light-theme") ||
-                (!root.classList.contains("dark-theme") &&
-                 window.matchMedia("(prefers-color-scheme: light)").matches);
-            btn.textContent = isLight ? "\u{1F319}" : "\u{2600}\u{FE0F}";
+            var current = getCurrentTheme();
+            btn.textContent = ICONS[current] || ICONS.dark;
+            btn.setAttribute("aria-label", LABELS[current] || "Toggle theme");
+            btn.title = LABELS[current] || "Toggle theme";
         }
 
-        btn.addEventListener("click", () => {
-            const isCurrentlyLight = root.classList.contains("light-theme") ||
-                (!root.classList.contains("dark-theme") &&
-                 window.matchMedia("(prefers-color-scheme: light)").matches);
-
-            if (isCurrentlyLight) {
-                root.classList.remove("light-theme");
-                root.classList.add("dark-theme");
-                localStorage.setItem("theme", "dark");
-            } else {
-                root.classList.remove("dark-theme");
-                root.classList.add("light-theme");
-                localStorage.setItem("theme", "light");
-            }
+        btn.addEventListener("click", function() {
+            var current = getCurrentTheme();
+            var idx = THEMES.indexOf(current);
+            var next = THEMES[(idx + 1) % THEMES.length];
+            clearThemeClasses();
+            if (next === "dark") root.classList.add("dark-theme");
+            else if (next === "light") root.classList.add("light-theme");
+            else if (next === "high-contrast") root.classList.add("high-contrast");
+            localStorage.setItem("theme", next);
             updateIcon();
         });
 
         updateIcon();
 
-        const container = document.querySelector(".header__stats");
+        var container = document.querySelector(".header__stats");
         if (container) {
             container.appendChild(btn);
         }
