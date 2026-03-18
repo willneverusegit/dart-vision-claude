@@ -51,16 +51,16 @@ class FrameDiffDetector:
 
     def __init__(
         self,
-        settle_frames: int = 5,
-        diff_threshold: int = 50,
+        settle_frames: int = 3,
+        diff_threshold: int = 30,
         min_diff_area: int = 30,
         max_diff_area: int = 8000,
         diagnostics_dir: str | None = None,
         min_elongation: float = 1.5,
         bounce_diff_threshold: float = 0.2,
         bounce_check_frames: int = 3,
-        stability_frames: int = 3,
-        stability_max_drift_px: float = 3.0,
+        stability_frames: int = 2,
+        stability_max_drift_px: float = 5.0,
     ) -> None:
         if settle_frames < 1:
             raise ValueError("settle_frames must be >= 1")

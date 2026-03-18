@@ -103,7 +103,7 @@ class DartPipeline:
         self._optical_center: tuple[float, float] | None = None
 
         # Temporal lock after scoring: ignore motion for N frames after confirmed hit
-        self._scoring_lock_frames: int = 60  # ~2s at 30fps
+        self._scoring_lock_frames: int = 15  # ~0.5s at 30fps
         self._scoring_lock_counter: int = 0
 
         # Motion overlay toggle

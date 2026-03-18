@@ -19,24 +19,75 @@
 videos:
   1.mp4:
     description: ""
-    throws: []
-    #  - {sector: , ring: "", timestamp_s: }
+    throws:
+      - {sector: 12, ring: "single", timestamp_s: 14}
+      - {sector: 18, ring: "single", timestamp_s: 17}
+      - {sector: 2, ring: "single", timestamp_s: 2}
 
   2.mp4:
     description: ""
-    throws: []
+    throws:
+      - {sector: 20, ring: "single", timestamp_s: 3}
+      - {sector: 4, ring: "single", timestamp_s: 6}
+      - {sector: 9, ring: "single", timestamp_s: 9}
 
   3.mp4:
     description: ""
-    throws: []
+    throws:
+      - {sector: 1, ring: "single", timestamp_s: 4}
+      - {sector: 3, ring: "single", timestamp_s: 7}
+      - {sector: 17, ring: "single", timestamp_s: 10}
+      - {sector: 11, ring: "single", timestamp_s: 13}
+      - {sector: 5, ring: "single", timestamp_s: 16}
+      - {sector: 13, ring: "single", timestamp_s: 19}
+      - {sector: 1, ring: "single", timestamp_s: 22}
+      - {sector: 13, ring: "single", timestamp_s: 29}
+      - {sector: 12, ring: "double", timestamp_s: 31}
 
   4.mp4:
     description: ""
-    throws: []
+    throws:
+      - {sector: 12, ring: "triple", timestamp_s: 6}
+      - {sector: 4, ring: "single", timestamp_s: 8}
+      - {sector: 1, ring: "single", timestamp_s: 11}
+      - {sector: 20, ring: "single", timestamp_s: 14}
+      - {sector: 13, ring: "single", timestamp_s: 16}
+      - {sector: 18, ring: "single", timestamp_s: 20}
+      - {sector: 3, ring: "single", timestamp_s: 25}
 
   5.mp4:
     description: ""
-    throws: []
+    throws:
+      - {sector: 25, ring: "bull_outer", timestamp_s: 7}
+      - {sector: 20, ring: "single", timestamp_s: 10}
+      - {sector: 6, ring: "single", timestamp_s: 14}
+      - {sector: 9, ring: "single", timestamp_s: 17}
+      - {sector: 11, ring: "single", timestamp_s: 21}
+      - {sector: 12, ring: "single", timestamp_s: 25}
+      - {sector: 16, ring: "single", timestamp_s: 28}
+      - {sector: 19, ring: "single", timestamp_s: 32}
+      - {sector: 19, ring: "single", timestamp_s: 35}
+      - {sector: 17, ring: "double", timestamp_s: 38}
+      - {sector: 5, ring: "single", timestamp_s: 55}
+      - {sector: 18, ring: "single", timestamp_s: 59}
+      - {sector: 4, ring: "triple", timestamp_s: 102}
+      - {sector: 14, ring: "single", timestamp_s: 104}
+      - {sector: 19, ring: "single", timestamp_s: 111}
+      - {sector: 15, ring: "single", timestamp_s: 114}
+      - {sector: 11, ring: "triple", timestamp_s: 117}
+      - {sector: 12, ring: "single", timestamp_s: 120}
+      - {sector: 15, ring: "single", timestamp_s: 123}
+      - {sector: 16, ring: "single", timestamp_s: 126}
+      - {sector: 18, ring: "triple", timestamp_s: 147}
+      - {sector: 20, ring: "triple", timestamp_s: 150}
+      - {sector: 5, ring: "single", timestamp_s: 155}
+      - {sector: 20, ring: "single", timestamp_s: 158}
+      - {sector: 16, ring: "triple", timestamp_s: 202}
+      - {sector: 15, ring: "single", timestamp_s: 208}
+      - {sector: 19, ring: "single", timestamp_s: 211}
+      - {sector: 13, ring: "single", timestamp_s: 214}
+      - {sector: 0, ring: "miss", timestamp_s: 216}
+      - {sector: 12, ring: "single", timestamp_s: 219}
 
   6.mp4:
     description: ""

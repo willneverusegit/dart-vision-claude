@@ -140,7 +140,8 @@ def _refine_subpixel(
     y0 = max(tip_y - win, 0)
     x1 = min(tip_x + win, w)
     y1 = min(tip_y + win, h)
-    if x1 - x0 < 5 or y1 - y0 < 5:
+    # cornerSubPix needs roi >= winSize*2+5 = 11px in each dimension
+    if x1 - x0 < 11 or y1 - y0 < 11:
         return tip_x, tip_y
 
     roi = gray[y0:y1, x0:x1]
@@ -149,7 +150,10 @@ def _refine_subpixel(
         return tip_x, tip_y
 
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.01)
-    refined = cv2.cornerSubPix(roi, corners, winSize=(3, 3), zeroZone=(-1, -1), criteria=criteria)
+    try:
+        refined = cv2.cornerSubPix(roi, corners, winSize=(3, 3), zeroZone=(-1, -1), criteria=criteria)
+    except cv2.error:
+        return tip_x, tip_y
 
     # Pick corner closest to original tip (in ROI coords)
     local_tip = np.array([tip_x - x0, tip_y - y0], dtype=np.float32)

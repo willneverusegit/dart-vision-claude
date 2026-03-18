@@ -200,7 +200,7 @@ class TestTemporalLockPipeline:
             p = DartPipeline()
             assert hasattr(p, "_scoring_lock_frames")
             assert hasattr(p, "_scoring_lock_counter")
-            assert p._scoring_lock_frames == 60
+            assert p._scoring_lock_frames == 15
             assert p._scoring_lock_counter == 0
 
     def test_scoring_lock_counter_decrements(self):

@@ -312,9 +312,11 @@ class CalibrationManager:
             H_frame = cv2.getPerspectiveTransform(src_markers, frame_dst)
 
             # Step 2: Define a crop centered on the board with generous margin
-            # BOARD_CROP_MM (420mm) = board diameter + 40mm margin each side
-            crop_mm = BOARD_CROP_MM
-            margin = (frame_px - crop_mm) / 2  # (430-420)/2 = 5
+            # Crop = board diameter (340mm) + margin, but never larger than marker frame
+            board_diameter_mm = BOARD_RADIUS_MM * 2  # 340mm
+            max_crop = frame_px - 10  # leave at least 5mm margin to markers
+            crop_mm = min(BOARD_CROP_MM, max_crop, board_diameter_mm + 40)
+            margin = (frame_px - crop_mm) / 2
             crop_in_frame = np.float32([
                 [margin, margin],
                 [frame_px - margin, margin],
@@ -364,9 +366,10 @@ class CalibrationManager:
                     ),
                 }
 
-            # Board center in original image
-            center_x = float(np.mean(src_markers[:, 0]))
-            center_y = float(np.mean(src_markers[:, 1]))
+            # Board center in ROI space (the homography maps the board center
+            # to the center of the ROI output)
+            center_x = roi_w / 2.0
+            center_y = roi_h / 2.0
 
             # Compute radii in pixels for the cropped ROI
             # The ROI now spans BOARD_CROP_MM (420mm), not the full frame
