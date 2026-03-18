@@ -31,6 +31,7 @@ class DartApp {
         this._telemetryData = [];
         this._telemetryVisible = false;
         this._bindTelemetry();
+        this._bindTelemetryStatus();
         this._bindPipelineHealth();
         this._bindCvTuning();
         this.ws.connect();
@@ -1273,6 +1274,10 @@ class DartApp {
                 if (this._pipelineHealthVisible && data.pipeline_health) {
                     this._updatePipelineHealth(data.pipeline_health);
                 }
+                // Homography age warning (P62)
+                if (data.pipeline_health) {
+                    this._updateHomographyWarning(data.pipeline_health.homography_age || 0);
+                }
                 // A2: Update calibration validity and "New Game" button state
                 this.calibrationValid = data.board_calibrated || false;
                 this._updateNewGameButton();
@@ -1995,7 +2000,10 @@ class DartApp {
             btn.addEventListener("click", () => {
                 this._telemetryVisible = !this._telemetryVisible;
                 panel.style.display = this._telemetryVisible ? "block" : "none";
-                if (this._telemetryVisible) this._fetchTelemetryHistory();
+                if (this._telemetryVisible) {
+                    this._fetchTelemetryHistory();
+                    this._fetchTelemetryStatus();
+                }
             });
         }
         if (closeBtn) {
@@ -2314,6 +2322,68 @@ class DartApp {
                 this._showError("CV Param: " + data.error);
             }
         } catch (e) { /* silent */ }
+    }
+
+    // --- Homography Age Warning (P62) ---
+
+    _updateHomographyWarning(age) {
+        var banner = document.getElementById("homography-warning-banner");
+        if (!banner) return;
+        if (age > 30) {
+            banner.style.display = "block";
+        } else {
+            banner.style.display = "none";
+        }
+    }
+
+    // --- Telemetry Status Widget (P62) ---
+
+    _bindTelemetryStatus() {
+        var rotateBtn = document.getElementById("btn-telemetry-rotate");
+        if (rotateBtn) {
+            rotateBtn.addEventListener("click", () => this._rotateTelemetry());
+        }
+    }
+
+    async _fetchTelemetryStatus() {
+        try {
+            var resp = await fetch("/api/telemetry/status");
+            if (!resp.ok) return;
+            var data = await resp.json();
+            var sizeEl = document.getElementById("telem-file-size");
+            var retainEl = document.getElementById("telem-retain-days");
+            var statusEl = document.getElementById("telem-active-status");
+            if (sizeEl) {
+                if (data.active && data.size_bytes != null) {
+                    var kb = (data.size_bytes / 1024).toFixed(1);
+                    sizeEl.textContent = "Groesse: " + kb + " KB";
+                } else {
+                    sizeEl.textContent = "Groesse: --";
+                }
+            }
+            if (retainEl) {
+                retainEl.textContent = "Aufbewahrung: " + (data.retain_days || "--") + " Tage";
+            }
+            if (statusEl) {
+                statusEl.textContent = "Status: " + (data.active ? "Aktiv" : "Inaktiv");
+            }
+        } catch (e) { /* silent */ }
+    }
+
+    async _rotateTelemetry() {
+        try {
+            var resp = await fetch("/api/telemetry/rotate", { method: "POST" });
+            if (!resp.ok) { this._showError("Rotation fehlgeschlagen: " + resp.status); return; }
+            var data = await resp.json();
+            if (data.ok) {
+                this._showError("Telemetrie rotiert (" + (data.old_files_deleted || 0) + " alte Dateien entfernt)");
+                this._fetchTelemetryStatus();
+            } else {
+                this._showError(data.error || "Rotation fehlgeschlagen");
+            }
+        } catch (e) {
+            this._showError("Rotation-Fehler: " + e.message);
+        }
     }
 }
 

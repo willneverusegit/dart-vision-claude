@@ -30,6 +30,10 @@
         <span id="telemetry-alert-text"></span>
     </div>
 
+    <div id="homography-warning-banner" class="homography-warning" role="alert" aria-live="polite" style="display:none;">
+        <span id="homography-warning-text">Kalibrierung veraltet — Marker freilegen</span>
+    </div>
+
     <div id="telemetry-panel" class="telemetry-panel" style="display:none;">
         <div class="telemetry-panel__header">
             <span>Performance Monitor</span>
@@ -39,6 +43,17 @@
         </div>
         <canvas id="telemetry-chart" class="telemetry-chart" width="400" height="120"></canvas>
         <div class="telemetry-panel__summary" id="telemetry-summary"></div>
+        <div class="telemetry-status-widget" id="telemetry-status-widget">
+            <div class="telemetry-status-widget__header">
+                <span>Telemetrie-Datei</span>
+                <button id="btn-telemetry-rotate" class="btn btn--secondary btn--tiny" title="Telemetrie-Datei rotieren">Rotate</button>
+            </div>
+            <div class="telemetry-status-widget__body" id="telemetry-status-body">
+                <span class="telemetry-status-widget__item" id="telem-file-size">Groesse: --</span>
+                <span class="telemetry-status-widget__item" id="telem-retain-days">Aufbewahrung: --</span>
+                <span class="telemetry-status-widget__item" id="telem-active-status">Status: --</span>
+            </div>
+        </div>
     </div>
 
     <div id="cv-tuning-panel" class="telemetry-panel" style="display:none;">

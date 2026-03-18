@@ -949,7 +949,7 @@ Kritikalitaet: HOCH
 
 Warum kritisch: P60 hat die Fallback-Logik implementiert, aber sie wird noch nicht von der Pipeline aufgerufen. Ohne Integration bleibt das Feature wirkungslos.
 
-## Prioritaet 62: Frontend Homography-Age Warnung und Telemetrie-Status-Widget (neu — entdeckt bei P61/P51)
+## Prioritaet 62: Frontend Homography-Age Warnung und Telemetrie-Status-Widget (✅ ERLEDIGT 2026-03-18)
 
 Kritikalitaet: MITTEL
 
@@ -968,15 +968,16 @@ Typische Arbeiten:
 
 Warum sinnvoll: P61 exponiert homography_age in der API, P51 liefert den Telemetrie-Status-Endpunkt — aber beides hat noch keine Frontend-Darstellung.
 
+**Umsetzung:** Backend: `homography_age` in `/api/stats` pipeline_health-Objekt ergaenzt. Frontend: Warn-Banner "Kalibrierung veraltet — Marker freilegen" bei homography_age > 30. Telemetrie-Status-Widget im Performance-Monitor mit Dateigroesse, Aufbewahrung, Status und Rotate-Button (POST /api/telemetry/rotate). Geaenderte Dateien: `src/web/routes.py`, `static/js/app.js`, `static/css/style.css`, `templates/index.html`.
+
 ## Prioritaet 63: Tier-5 Quick-Wins Dart Detection (#28/#29/#31/#32) (✅ ERLEDIGT 2026-03-18)
 
 Kritikalitaet: NIEDRIG (Quick-Wins)
 
-Umsetzung:
-
+**Umsetzung:**
 - **#28 detectShadows=False** — bereits Standard in MotionDetector (detect_shadows=False default)
 - **#29 learningRate=0.002** — bereits Standard in MotionDetector (learning_rate=0.002 default)
 - **#32 cv2.setNumThreads(0)** — in src/main.py beim Import gesetzt, nutzt alle CPU-Kerne
 - **#31 Helle Flights Tipp** — Hinweis im Kalibrierungs-Modal in templates/index.html
 
-Geaenderte Dateien: src/main.py, templates/index.html, agent_docs/priorities.md
+Geaenderte Dateien: src/main.py, templates/index.html
