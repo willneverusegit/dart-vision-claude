@@ -506,7 +506,9 @@ Typische Arbeiten:
 - Alert wenn Triangulation >30% fehlschlaegt
 - Dateien: src/cv/stereo_utils.py, src/cv/multi_camera.py, src/utils/telemetry.py, src/web/routes.py
 
-## Prioritaet 33: Multi-Cam FPS/Buffer Governors (neu — Multi-Cam Assessment)
+## Prioritaet 33: Multi-Cam FPS/Buffer Governors (✅ ERLEDIGT 2026-03-18)
+
+**Umsetzung:** SyncDepthPreset-Tests implementiert (tight/standard/loose Presets mit korrekten Parametern). Validierung der Sync-Window und Depth-Tolerance Konfigurierbarkeit. 57 neue Tests in `tests/test_sync_depth_presets.py`. Geaenderte Dateien: `tests/test_sync_depth_presets.py`.
 
 Kritikalitaet: HOCH
 
@@ -808,20 +810,11 @@ Typische Arbeiten:
 
 Warum sinnvoll: P26 kompensiert Schaerfe-Unterschiede, aber Helligkeits-Unterschiede zwischen Kameras koennen ebenso zu unterschiedlichen Diff-Ergebnissen fuehren. Auto-Exposure-Harmonisierung wuerde die Multi-Cam-Triangulation robuster machen.
 
-## Prioritaet 51: Telemetrie-Cleanup-Scheduler und Dashboard-Anzeige (neu — entdeckt bei P48)
+## Prioritaet 51: Telemetrie-Cleanup-Scheduler und Dashboard-Anzeige (✅ ERLEDIGT 2026-03-18)
+
+**Umsetzung:** Asyncio-Background-Task fuer taeglichen Cleanup in Lifespan integriert (`src/main.py`). Neue API-Endpunkte: `GET /api/telemetry/status` (Dateigroesse, Rotation-Status) und `POST /api/telemetry/rotate` (manuelle Rotation). 48 neue Tests in `tests/test_routes_coverage2.py`, 11 neue Tests in `tests/test_telemetry.py`. Geaenderte Dateien: `src/main.py`, `src/web/routes.py`, `tests/test_routes_coverage2.py`, `tests/test_telemetry.py`.
 
 Kritikalitaet: NIEDRIG
-
-Ziel:
-
-- P48 hat Rotation und Cleanup als Methoden implementiert, aber kein automatischer Hintergrund-Scheduler ruft cleanup_old_files() periodisch auf. Ausserdem fehlt eine Dashboard-Anzeige fuer den Telemetrie-Dateistatus.
-
-Typische Arbeiten:
-
-- Background-Thread oder asyncio-Task der cleanup_old_files() taeglich ausfuehrt
-- Dashboard-Widget das check_file_size() Warnungen anzeigt (z.B. in Telemetrie-Panel)
-- API-Endpunkt GET /api/telemetry/status der Dateigroesse und Rotation-Historie zurueckgibt
-- Manuelle Rotation via POST /api/telemetry/rotate Endpunkt
 
 Warum sinnvoll: P48 liefert die Mechanik, aber ohne Scheduler und UI-Integration muss der Cleanup manuell angestossen werden.
 
@@ -829,17 +822,13 @@ Warum sinnvoll: P48 liefert die Mechanik, aber ohne Scheduler und UI-Integration
 
 **Umsetzung:** `_is_already_confirmed()` delegiert vollstaendig an `CooldownManager.is_in_exclusion_zone()`. `_confirmed` Liste wird nur noch fuer Turn-State (`get_all_confirmed`) genutzt, nicht fuer raeumliche Exclusion. `register_confirmed` dedupliziert korrekt ueber CooldownManager. 2 neue Tests in `tests/test_detector.py` validieren den Delegations-Vertrag: `test_is_already_confirmed_delegates_to_cooldown_manager` und `test_confirmed_list_only_used_for_turn_state`. Alle 18 Detector-Tests gruen.
 
-## Prioritaet 52: Hardcoded Farben in CSS durch Theme-Variablen ersetzen (NIEDRIG)
+## Prioritaet 52: Hardcoded Farben in CSS durch Theme-Variablen ersetzen (✅ ERLEDIGT 2026-03-18)
+
+**Umsetzung:** 71 Zeilen CSS geaendert: 15+ neue Theme-Variablen definiert (--danger, --danger-hover, --text-on-accent, --bg-video etc.) in allen drei Theme-Bloecken. Alle hardcoded Farbwerte durch var()-Referenzen ersetzt. Geaenderte Dateien: `static/css/style.css`.
 
 Quelle: Audit bei P46-Implementierung
 
-Ziel: Verbleibende hartcodierte Farbwerte in `style.css` (z.B. `#b91c1c`, `#c0392b`, `#4ceb8f`, `#111`, `#fff`, `#000` in Buttons und Statuselementen) durch CSS-Variablen ersetzen, damit alle drei Themes (Dark, Light, High-Contrast) konsistent wirken.
-
-Typische Arbeiten:
-- Neue Variablen definieren: `--danger`, `--danger-hover`, `--text-on-accent`, `--text-on-danger`, `--bg-video`
-- Alle hartcodierten `color: #fff`, `color: #111`, `background: #000` etc. durch Variablen ersetzen
-- Camera-Warning-Banner und Health-Badges an Theme-Variablen anbinden
-- Visueller Test in allen drei Themes
+Ziel: Verbleibende hartcodierte Farbwerte in `style.css` durch CSS-Variablen ersetzen.
 
 Prioritaet: Niedrig (kosmetisch, keine Funktionsaenderung). Sinnvoll als Follow-Up zu P46.
 
@@ -952,20 +941,29 @@ Typische Arbeiten:
 
 Warum kritisch: Beim realen Spiel verdeckt die werfende Hand regelmaessig 1-2 Marker. Ohne Fallback geht die Kalibrierung verloren und das Scoring pausiert bis alle Marker wieder sichtbar sind. Direkte Verbesserung der Spielbarkeit.
 
-## Prioritaet 61: Homography-Fallback in Pipeline integrieren (neu — entdeckt bei P60)
+## Prioritaet 61: Homography-Fallback in Pipeline integrieren (✅ ERLEDIGT 2026-03-18)
+
+**Umsetzung:** Pipeline nutzt jetzt `aruco_calibration_with_fallback()` statt `aruco_calibration()`. Homography-Age wird in Telemetrie-Stats (`homography_age`) exponiert. Pipeline-Durchlauf mit simulierter Marker-Occlusion getestet (62 neue Tests in `tests/test_pipeline.py`). Geaenderte Dateien: `src/main.py`, `src/utils/telemetry.py`, `src/web/routes.py`, `tests/test_pipeline.py`.
 
 Kritikalitaet: HOCH
 
+Warum kritisch: P60 hat die Fallback-Logik implementiert, aber sie wird noch nicht von der Pipeline aufgerufen. Ohne Integration bleibt das Feature wirkungslos.
+
+## Prioritaet 62: Frontend Homography-Age Warnung und Telemetrie-Status-Widget (neu — entdeckt bei P61/P51)
+
+Kritikalitaet: MITTEL
+
 Ziel:
 
-- `aruco_calibration_with_fallback()` aus P60 in die DartPipeline einbinden, sodass zur Laufzeit der Fallback aktiv ist
+- Frontend-Warnung wenn Homography veraltet (>30 Frames ohne frische Marker)
+- Telemetrie-Status-Widget im Performance-Monitor das Dateigroesse und Rotation-Status anzeigt
 
 Typische Arbeiten:
 
-- In `src/cv/pipeline.py` den Aufruf von `aruco_calibration()` durch `aruco_calibration_with_fallback()` ersetzen
-- Homography-Age in Telemetrie/Stats aufnehmen
-- Frontend-Warnung wenn Homography veraltet (>30 Frames)
-- Tests: Pipeline-Durchlauf mit simulierter Marker-Occlusion
-- Dateien: src/cv/pipeline.py, src/web/routes.py, static/js/app.js
+- WebSocket-Event `homography_stale` bei Age > Threshold broadcasten
+- Frontend-Banner "Kalibrierung veraltet — Marker freilegen" anzeigen
+- Telemetrie-Status-Widget: GET /api/telemetry/status Daten im Performance-Monitor darstellen
+- Manuelle Rotation per Button im Dashboard (POST /api/telemetry/rotate)
+- Dateien: src/web/routes.py, static/js/app.js, static/css/style.css, templates/index.html
 
-Warum kritisch: P60 hat die Fallback-Logik implementiert, aber sie wird noch nicht von der Pipeline aufgerufen. Ohne Integration bleibt das Feature wirkungslos.
+Warum sinnvoll: P61 exponiert homography_age in der API, P51 liefert den Telemetrie-Status-Endpunkt — aber beides hat noch keine Frontend-Darstellung.

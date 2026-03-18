@@ -1,6 +1,6 @@
 # Current State
 
-Stand dieser Zusammenfassung: 2026-03-18 (Welle 1-4 + Auto-Agents: P22, P26, P27, P28, P30-P31, P39-P43, P46-P49, P52-P56, P60, Tier-2 #5-#7, #10-#14, P32-P33, P35 erledigt)
+Stand dieser Zusammenfassung: 2026-03-18 (Welle 1-4 + Auto-Agents: P22, P26, P27, P28, P30-P31, P33, P39-P43, P46-P49, P51-P56, P60-P61, Tier-2 #5-#7, #10-#14, P32, P35 erledigt)
 
 ## Technischer Kern
 
@@ -84,6 +84,10 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 - Multi-Cam Error Recovery: Auto-Reconnect mit exponentiellem Backoff, graceful Degradation, manueller Reconnect-API (P56)
 - Stereo-Kalibrierung Fortschritts-Feedback: Fehleranzeige bei nicht erkanntem Board, valid_pairs Tracking (P54)
 - Deduplizierung _is_already_confirmed vs CooldownManager verifiziert und dokumentiert (P51)
+- Homography-Fallback in Pipeline integriert: `aruco_calibration_with_fallback()` aktiv, homography_age in Stats (P61)
+- CSS Theme-Variablen: alle hardcoded Farben durch var()-Referenzen ersetzt, 15+ neue Variablen (P52)
+- Telemetrie-Cleanup-Scheduler: asyncio Background-Task, GET /api/telemetry/status, POST /api/telemetry/rotate (P51-Cleanup)
+- Multi-Cam Sync-Depth-Presets: tight/standard/loose validiert mit 57 Tests (P33)
 
 ## Was heute als fortgeschritten, aber noch sensibel gilt
 
@@ -95,7 +99,7 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 
 ## Verifizierte Kennzahlen
 
-- `1045` Tests bestanden (Stand 2026-03-18, +400 neue Tests)
+- `1102` Tests bestanden (Stand 2026-03-18, +457 neue Tests)
 - Gesamt-Coverage ~77%
 - Wichtige Module: main.py 78%, routes.py 66%, pipeline.py 68%, multi_camera.py 62%, capture.py 72%
 - synthetische Pipeline-Benchmarks fuer `1`, `2` und `3` Kameras innerhalb der definierten KPI-Grenzen
