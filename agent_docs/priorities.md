@@ -129,17 +129,17 @@ Typische Arbeiten:
 - CPU-Last pro Pipeline-Thread messen (Windows: `psutil` optional)
 - Telemetrie optional in Logfile schreiben fuer Post-Mortem-Analyse
 
-## Prioritaet 9: Multi-Cam UX weiter verbessern (NIEDRIG)
+## Prioritaet 9: Multi-Cam UX weiter verbessern (NIEDRIG — teilweise erledigt)
+
+**Teilfortschritt 2026-03-18:** Kamera-Vorschau-Thumbnails im Multi-Cam-Setup-Modal implementiert. Neuer Endpunkt `GET /api/camera/preview/{source}` liefert einzelnes JPEG-Bild von beliebiger Kamera-Quelle. Jede Kamera-Zeile zeigt 200x150px Vorschau mit Refresh-Button. Funktioniert unabhaengig von laufender Pipeline. Geaenderte Dateien: `src/web/routes.py`, `templates/index.html`, `static/js/app.js`, `static/css/style.css`.
 
 Ziel:
 
 - Multi-Cam-Setup fuer Nicht-Experten bedienbar machen
 
-Typische Arbeiten:
+Verbleibende Arbeiten:
 
-- Kamera-Vorschau im Multi-Cam-Modal (Live-Thumbnails pro Kamera)
 - Drag-and-Drop Kamera-Anordnung
-- Stereo-Kalibrierung: Fortschrittsanzeige mit Frame-Counter
 - Board-Pose: visuelles Feedback (erkannte Marker im Bild einblenden)
 - Setup-Wizard: automatisch zum naechsten Schritt wechseln wenn ein Schritt erledigt ist
 
@@ -999,3 +999,19 @@ Typische Arbeiten:
 - Dateien: tests/test_routes_coverage4.py
 
 Warum sinnvoll: Weitere Absicherung der API-Endpunkte gegen Regressionen. 74% durch P64-Vorarbeit erreicht, letzte 6-10% erfordern tiefere Mocks.
+
+## Prioritaet 65: Camera Preview Endpoint absichern gegen gleichzeitige Zugriffe (neu — entdeckt bei P9)
+
+Kritikalitaet: NIEDRIG
+
+Ziel:
+
+- Der neue `/api/camera/preview/{source}` Endpunkt oeffnet und schliesst eine Kamera fuer jedes Vorschaubild. Bei schnellem Mehrfachklick oder mehreren Browsern koennte das zu Race Conditions fuehren (gleiche Kamera-Quelle gleichzeitig geoeffnet).
+
+Typische Arbeiten:
+
+- Lock pro Kamera-Source einbauen, damit maximal ein Preview-Request gleichzeitig die Kamera oeffnet
+- Optionalen kurzen Cache (2-3 Sekunden) fuer wiederholte Requests auf gleiche Source
+- Timeout falls Kamera-Open haengt (aktuell blockiert der Endpunkt unbegrenzt)
+
+Warum sinnvoll: Verhindert Ressourcen-Konflikte und haengende Requests im Multi-User-Szenario.

@@ -1435,6 +1435,11 @@ class DartApp {
             this._openMultiCamModal();
             this._showStereoStep();
         });
+
+        // Bind preview buttons on initial entries
+        document.querySelectorAll(".multi-cam-preview-btn").forEach(btn => {
+            btn.addEventListener("click", (e) => this._loadCameraPreview(e.target.closest(".multi-cam-entry")));
+        });
     }
 
     _openMultiCamModal() {
@@ -1465,6 +1470,8 @@ class DartApp {
                     data.cameras.forEach(cam => {
                         const entry = document.createElement("div");
                         entry.className = "multi-cam-entry";
+                        const fields = document.createElement("div");
+                        fields.className = "multi-cam-entry__fields";
                         const idInput = document.createElement("input");
                         idInput.type = "text";
                         idInput.className = "input multi-cam-id";
@@ -1476,8 +1483,28 @@ class DartApp {
                         srcInput.placeholder = "Quelle (0,1,...)";
                         srcInput.value = String(cam.src || 0);
                         srcInput.min = "0";
-                        entry.appendChild(idInput);
-                        entry.appendChild(srcInput);
+                        const previewBtn = document.createElement("button");
+                        previewBtn.type = "button";
+                        previewBtn.className = "btn btn--secondary btn--tiny multi-cam-preview-btn";
+                        previewBtn.title = "Vorschau laden";
+                        previewBtn.textContent = "Vorschau";
+                        previewBtn.addEventListener("click", () => this._loadCameraPreview(entry));
+                        fields.appendChild(idInput);
+                        fields.appendChild(srcInput);
+                        fields.appendChild(previewBtn);
+                        const previewWrap = document.createElement("div");
+                        previewWrap.className = "multi-cam-preview-wrap";
+                        const previewImg = document.createElement("img");
+                        previewImg.className = "multi-cam-preview-img";
+                        previewImg.alt = "Kamera-Vorschau";
+                        previewImg.style.display = "none";
+                        const placeholder = document.createElement("span");
+                        placeholder.className = "multi-cam-preview-placeholder";
+                        placeholder.textContent = "Kein Bild";
+                        previewWrap.appendChild(previewImg);
+                        previewWrap.appendChild(placeholder);
+                        entry.appendChild(fields);
+                        entry.appendChild(previewWrap);
                         list.appendChild(entry);
                     });
                 }
@@ -1499,6 +1526,9 @@ class DartApp {
         const entry = document.createElement("div");
         entry.className = "multi-cam-entry";
 
+        const fields = document.createElement("div");
+        fields.className = "multi-cam-entry__fields";
+
         const idInput = document.createElement("input");
         idInput.type = "text";
         idInput.className = "input multi-cam-id";
@@ -1512,15 +1542,72 @@ class DartApp {
         srcInput.value = String(idx);
         srcInput.min = "0";
 
+        const previewBtn = document.createElement("button");
+        previewBtn.type = "button";
+        previewBtn.className = "btn btn--secondary btn--tiny multi-cam-preview-btn";
+        previewBtn.title = "Vorschau laden";
+        previewBtn.textContent = "Vorschau";
+        previewBtn.addEventListener("click", () => this._loadCameraPreview(entry));
+
         const removeBtn = document.createElement("button");
         removeBtn.className = "btn btn--small btn--reject";
         removeBtn.textContent = "\u2717";
         removeBtn.addEventListener("click", () => entry.remove());
 
-        entry.appendChild(idInput);
-        entry.appendChild(srcInput);
-        entry.appendChild(removeBtn);
+        fields.appendChild(idInput);
+        fields.appendChild(srcInput);
+        fields.appendChild(previewBtn);
+        fields.appendChild(removeBtn);
+
+        const previewWrap = document.createElement("div");
+        previewWrap.className = "multi-cam-preview-wrap";
+        const previewImg = document.createElement("img");
+        previewImg.className = "multi-cam-preview-img";
+        previewImg.alt = "Kamera-Vorschau";
+        previewImg.style.display = "none";
+        const placeholder = document.createElement("span");
+        placeholder.className = "multi-cam-preview-placeholder";
+        placeholder.textContent = "Kein Bild";
+        previewWrap.appendChild(previewImg);
+        previewWrap.appendChild(placeholder);
+
+        entry.appendChild(fields);
+        entry.appendChild(previewWrap);
         list.appendChild(entry);
+    }
+
+    async _loadCameraPreview(entry) {
+        if (!entry) return;
+        const srcInput = entry.querySelector(".multi-cam-src");
+        const img = entry.querySelector(".multi-cam-preview-img");
+        const placeholder = entry.querySelector(".multi-cam-preview-placeholder");
+        const btn = entry.querySelector(".multi-cam-preview-btn");
+        if (!srcInput || !img) return;
+
+        const source = parseInt(srcInput.value, 10);
+        if (isNaN(source)) return;
+
+        if (btn) { btn.disabled = true; btn.textContent = "..."; }
+        if (placeholder) placeholder.textContent = "Lade...";
+
+        try {
+            const url = `/api/camera/preview/${source}?t=${Date.now()}`;
+            const resp = await fetch(url);
+            if (!resp.ok) {
+                if (placeholder) placeholder.textContent = "Nicht verfuegbar";
+                img.style.display = "none";
+                return;
+            }
+            const blob = await resp.blob();
+            img.src = URL.createObjectURL(blob);
+            img.style.display = "block";
+            if (placeholder) placeholder.style.display = "none";
+        } catch (e) {
+            if (placeholder) placeholder.textContent = "Fehler";
+            img.style.display = "none";
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = "Vorschau"; }
+        }
     }
 
     async _startMultiPipeline() {

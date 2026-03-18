@@ -1775,6 +1775,39 @@ def setup_routes(app_state: dict) -> APIRouter:
             media_type="multipart/x-mixed-replace; boundary=frame",
         )
 
+    @router.get("/api/camera/preview/{source}")
+    async def camera_preview_snapshot(source: int) -> StreamingResponse:
+        """Grab a single JPEG frame from a camera source for preview thumbnails.
+
+        Opens the camera briefly, captures one frame, then releases it.
+        This works independently of the running pipeline.
+        """
+        import io
+
+        loop = asyncio.get_event_loop()
+
+        def _grab_frame():
+            cap = cv2.VideoCapture(source)
+            if not cap.isOpened():
+                return None
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
+            ret, frame = cap.read()
+            cap.release()
+            if not ret or frame is None:
+                return None
+            _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+            return buf.tobytes()
+
+        jpeg_bytes = await loop.run_in_executor(None, _grab_frame)
+        if jpeg_bytes is None:
+            return JSONResponse({"ok": False, "error": "Camera not available"}, status_code=404)
+        return StreamingResponse(
+            io.BytesIO(jpeg_bytes),
+            media_type="image/jpeg",
+            headers={"Cache-Control": "no-cache"},
+        )
+
     @router.get("/video/motion")
     async def motion_feed() -> StreamingResponse:
         """MJPEG stream of the motion mask."""

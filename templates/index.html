@@ -389,12 +389,26 @@
                 <p class="modal__text">Kameras konfigurieren (min. 2). Quelle = Kamera-Index (0, 1, 2, ...):</p>
                 <div id="multi-cam-list" class="multi-cam-list">
                     <div class="multi-cam-entry">
-                        <input type="text" class="input multi-cam-id" placeholder="Kamera-ID" value="cam_left">
-                        <input type="number" class="input multi-cam-src" placeholder="Quelle (0,1,...)" value="0" min="0">
+                        <div class="multi-cam-entry__fields">
+                            <input type="text" class="input multi-cam-id" placeholder="Kamera-ID" value="cam_left">
+                            <input type="number" class="input multi-cam-src" placeholder="Quelle (0,1,...)" value="0" min="0">
+                            <button type="button" class="btn btn--secondary btn--tiny multi-cam-preview-btn" title="Vorschau laden">Vorschau</button>
+                        </div>
+                        <div class="multi-cam-preview-wrap">
+                            <img class="multi-cam-preview-img" alt="Kamera-Vorschau" style="display:none;">
+                            <span class="multi-cam-preview-placeholder">Kein Bild</span>
+                        </div>
                     </div>
                     <div class="multi-cam-entry">
-                        <input type="text" class="input multi-cam-id" placeholder="Kamera-ID" value="cam_right">
-                        <input type="number" class="input multi-cam-src" placeholder="Quelle (0,1,...)" value="2" min="0">
+                        <div class="multi-cam-entry__fields">
+                            <input type="text" class="input multi-cam-id" placeholder="Kamera-ID" value="cam_right">
+                            <input type="number" class="input multi-cam-src" placeholder="Quelle (0,1,...)" value="2" min="0">
+                            <button type="button" class="btn btn--secondary btn--tiny multi-cam-preview-btn" title="Vorschau laden">Vorschau</button>
+                        </div>
+                        <div class="multi-cam-preview-wrap">
+                            <img class="multi-cam-preview-img" alt="Kamera-Vorschau" style="display:none;">
+                            <span class="multi-cam-preview-placeholder">Kein Bild</span>
+                        </div>
                     </div>
                 </div>
                 <div class="modal__actions">

@@ -1280,8 +1280,9 @@ a:focus-visible,
 
 .multi-cam-entry {
     display: flex;
-    gap: 8px;
+    gap: 12px;
     align-items: center;
+    flex-wrap: wrap;
 }
 
 .multi-cam-entry .input {
@@ -1290,6 +1291,46 @@ a:focus-visible,
 
 .multi-cam-entry .multi-cam-src {
     max-width: 80px;
+}
+
+.multi-cam-entry__fields {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex: 1;
+}
+
+.multi-cam-entry__fields .input {
+    flex: 1;
+}
+
+.multi-cam-entry__fields .multi-cam-src {
+    max-width: 80px;
+}
+
+.multi-cam-preview-wrap {
+    width: 200px;
+    height: 150px;
+    flex-shrink: 0;
+    background: var(--bg-inset);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.multi-cam-preview-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: var(--radius);
+}
+
+.multi-cam-preview-placeholder {
+    font-size: 0.75rem;
+    color: var(--text-muted);
 }
 
 .multi-status-info {
