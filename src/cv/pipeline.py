@@ -49,6 +49,8 @@ class DartPipeline:
         marker_size_mm: float | None = None,
         marker_spacing_mm: float | None = None,
         diff_threshold: int | None = None,
+        area_min: int | None = None,
+        area_max: int | None = None,
     ) -> None:
         # Ensure OpenCV uses all available CPU cores
         cv2.setNumThreads(0)
@@ -67,7 +69,12 @@ class DartPipeline:
         self.camera: ThreadedCamera | ReplayCamera | None = None
         self.roi_processor = ROIProcessor(roi_size=(400, 400))
         self.motion_detector = MotionDetector(threshold=200, downscale_factor=4)
-        self.dart_detector = DartImpactDetector(confirmation_frames=3)
+        detector_kwargs: dict = {"confirmation_frames": 3}
+        if area_min is not None:
+            detector_kwargs["area_min"] = area_min
+        if area_max is not None:
+            detector_kwargs["area_max"] = area_max
+        self.dart_detector = DartImpactDetector(**detector_kwargs)
         self.frame_diff_detector = FrameDiffDetector(
             diff_threshold=diff_threshold if diff_threshold is not None else 30,
             diagnostics_dir=os.environ.get("DARTVISION_DIAGNOSTICS_DIR"),

@@ -238,6 +238,8 @@ class MultiCameraPipeline:
                 capture_height=cfg.get("capture_height"),
                 capture_fps=per_fps,
                 diff_threshold=cfg.get("diff_threshold"),
+                area_min=cfg.get("area_min"),
+                area_max=cfg.get("area_max"),
             )
 
             # Configure pipeline with camera-specific calibration

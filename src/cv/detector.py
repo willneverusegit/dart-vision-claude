@@ -217,6 +217,34 @@ class DartImpactDetector:
         self._confirmed.clear()
         self._cooldown_counter = 0
 
+    def get_params(self) -> dict:
+        """Return current detector parameters."""
+        return {
+            "area_min": self.area_min,
+            "area_max": self.area_max,
+            "confirmation_frames": self.confirmation_frames,
+            "position_tolerance_px": self.position_tolerance_px,
+        }
+
+    def set_params(self, **kwargs) -> dict:
+        """Update detector parameters at runtime (partial update).
+
+        Validates new values and returns the full parameter dict after update.
+        Raises ValueError on invalid combinations.
+        """
+        area_min = kwargs.get("area_min", self.area_min)
+        area_max = kwargs.get("area_max", self.area_max)
+
+        if area_min < 0:
+            raise ValueError("area_min must be >= 0")
+        if area_min >= area_max:
+            raise ValueError("area_min must be less than area_max")
+
+        self.area_min = area_min
+        self.area_max = area_max
+
+        return self.get_params()
+
     def get_all_confirmed(self) -> list[DartDetection]:
         """Return all currently confirmed dart positions (up to 3 per turn)."""
         return list(self._confirmed)

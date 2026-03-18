@@ -46,6 +46,49 @@ class TestDartImpactDetectorValidation:
         assert len(shapes) >= 1
         assert any(abs(s["area"] - 81.0) < 1 for s in shapes)
 
+    def test_get_params_returns_current_values(self):
+        det = DartImpactDetector(area_min=5, area_max=2000)
+        params = det.get_params()
+        assert params["area_min"] == 5
+        assert params["area_max"] == 2000
+        assert "confirmation_frames" in params
+
+    def test_set_params_updates_area_range(self):
+        det = DartImpactDetector(area_min=10, area_max=1000)
+        result = det.set_params(area_min=5, area_max=2000)
+        assert det.area_min == 5
+        assert det.area_max == 2000
+        assert result["area_min"] == 5
+        assert result["area_max"] == 2000
+
+    def test_set_params_partial_update(self):
+        det = DartImpactDetector(area_min=10, area_max=1000)
+        det.set_params(area_max=2000)
+        assert det.area_min == 10  # unchanged
+        assert det.area_max == 2000
+
+    def test_set_params_rejects_invalid_range(self):
+        det = DartImpactDetector(area_min=10, area_max=1000)
+        with pytest.raises(ValueError, match="area_min must be less than area_max"):
+            det.set_params(area_min=2000, area_max=500)
+        # Original values unchanged
+        assert det.area_min == 10
+        assert det.area_max == 1000
+
+    def test_set_params_rejects_negative_area_min(self):
+        det = DartImpactDetector()
+        with pytest.raises(ValueError, match="area_min must be >= 0"):
+            det.set_params(area_min=-1)
+
+    def test_custom_area_max_allows_small_blobs(self):
+        """With area_max=5000, larger blobs (like outer-bull) pass the filter."""
+        det = DartImpactDetector(area_min=5, area_max=5000)
+        # Create a larger blob (~20x20 = ~361px area)
+        mask = np.zeros((100, 100), dtype=np.uint8)
+        mask[30:50, 30:50] = 255
+        shapes = det._find_dart_shapes(mask)
+        assert len(shapes) >= 1
+
     def test_max_candidates_limit(self):
         det = DartImpactDetector(max_candidates=3)
         # Manually inject candidates beyond the limit via detect path

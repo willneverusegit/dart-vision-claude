@@ -363,6 +363,7 @@ def setup_routes(app_state: dict) -> APIRouter:
             return {"ok": False, "error": "No pipeline active"}
         params = pipeline.frame_diff_detector.get_params()
         params["motion_threshold"] = pipeline.motion_detector.threshold
+        params.update(pipeline.dart_detector.get_params())
         return {"ok": True, **params}
 
     @router.post("/api/cv-params")
@@ -386,9 +387,18 @@ def setup_routes(app_state: dict) -> APIRouter:
         if "motion_threshold" in body:
             mt = int(body["motion_threshold"])
             pipeline.motion_detector.set_threshold(mt)
+        # DartImpactDetector area params (separate detector)
+        detector_params = {}
+        for k in ("area_min", "area_max"):
+            if k in body:
+                detector_params[k] = int(body[k])
         try:
             updated = pipeline.frame_diff_detector.set_params(**params)
             updated["motion_threshold"] = pipeline.motion_detector.threshold
+            if detector_params:
+                updated.update(pipeline.dart_detector.set_params(**detector_params))
+            else:
+                updated.update(pipeline.dart_detector.get_params())
             return {"ok": True, **updated}
         except ValueError as e:
             return {"ok": False, "error": str(e)}
