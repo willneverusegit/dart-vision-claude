@@ -11,6 +11,27 @@ Waechst organisch — jeder Agent fuegt neue Erkenntnisse hinzu.
 - **Pipeline-Stop:** Sowohl eigenes `stop_event` als auch App-`shutdown_event` pruefen in `_run_*` Funktionen
 - **Single↔Multi-Wechsel:** Alten Pipeline-Thread sauber stoppen (Signal + Join) bevor neuer gestartet wird
 
+### Mode-Switch State Cleanup (KRITISCH)
+
+Jeder Moduswechsel (Single→Multi, Multi→Single, Restart) MUSS `_full_state_reset(state)` aus `src/main.py` aufrufen. Ohne diesen Reset bleiben folgende Zustaende stehen und vergiften die naechste Pipeline:
+
+1. **pending_hits** — Hit-Kandidaten aus dem alten Modus bleiben sichtbar, Scoring trifft falsche Pipeline
+2. **latest_frame / multi_latest_frames** — Alte Frames aus anderem Kameramodus
+3. **recent_detections / detection_timestamps** — Ring-Buffer mit veralteten Daten
+
+**Regeln:**
+- `_full_state_reset()` ist die einzige Quelle der Wahrheit fuer transiente State-Bereinigung
+- Niemals `multi_pipeline_running = True` setzen BEVOR `multi.start()` erfolgreich war (verhindert Race Condition mit Polling-Loop)
+- `MultiCameraPipeline.start()` ist atomar: bei Fehler werden alle bereits gestarteten Kameras zurueckgerollt
+- `_wait_for_camera_release()` statt blindem `sleep(0.5)` verwenden — prueft ob Kamera wirklich frei ist
+- `stop_pipeline_thread()` versucht Force-Release wenn Thread-Join timeoutet
+
+**Wo wird `_full_state_reset()` aufgerufen:**
+- `routes.py: single_start` — nach Stop aller Pipelines, vor Start
+- `routes.py: multi_start` — nach Stop der Single-Pipeline, vor Multi-Start
+- `routes.py: multi_stop` — nach Stop der Multi-Pipeline, vor optionalem Single-Restart
+- `main.py: _run_multi_pipeline finally` — bei Multi-Exit (normal oder Fehler)
+
 ## Konfiguration
 
 - **Kalibrierungsdateien:** Niemals ueberschreiben ohne Backup — sind echte Betriebsdaten
