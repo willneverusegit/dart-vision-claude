@@ -1,6 +1,6 @@
 # Current State
 
-Stand dieser Zusammenfassung: 2026-03-18 (Welle 1-4 + Auto-Agents: P22, P26, P27, P28, P40-P43, P46-P48, Tier-2 #5-#7, #10-#14, P30-P33, P35, P41 erledigt)
+Stand dieser Zusammenfassung: 2026-03-18 (Welle 1-4 + Auto-Agents: P22, P26, P27, P28, P40-P43, P46-P48, Tier-2 #5-#7, #10-#14, P30-P33, P35, P41, P42, P47, P48 erledigt)
 
 ## Technischer Kern
 
@@ -68,6 +68,9 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 - Wire-Artefakt-Filter fuer scharfe Kameras (morphologisches Opening, groessenbasiert)
 - Telemetrie-Export: Session-ID in Export, JSON+CSV Download-Buttons im Performance-Monitor (P22)
 - Edge Cache fuer Canny-Reuse pro Frame (P41, war bereits implementiert — verifiziert)
+- Cooldown Management: 50px Spatial Exclusion Zones + 30-Frame Lockout nach bestaetigtem Treffer (P42)
+- cv2.absdiff Cache pro Frame in diff_detector — keine redundante Diff-Berechnung (P47)
+- Telemetrie-Retention: JSONL-Rotation bei Ueberschreitung, Age-Cleanup, File-Size-Warning (P48)
 
 ## Was heute als fortgeschritten, aber noch sensibel gilt
 
@@ -79,7 +82,7 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 
 ## Verifizierte Kennzahlen
 
-- `975` Tests bestanden (Stand 2026-03-18, +330 neue Tests)
+- `1005` Tests bestanden (Stand 2026-03-18, +360 neue Tests)
 - Gesamt-Coverage ~77%
 - Wichtige Module: main.py 78%, routes.py 66%, pipeline.py 68%, multi_camera.py 62%, capture.py 72%
 - synthetische Pipeline-Benchmarks fuer `1`, `2` und `3` Kameras innerhalb der definierten KPI-Grenzen
