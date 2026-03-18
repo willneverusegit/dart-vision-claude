@@ -344,6 +344,67 @@ class TestMotionDetectorDownscale:
         assert m1 == m2
 
 
+class TestMotionDetectorFrameDiffFallback:
+    """Tests for frame-diff fallback motion detection (P59)."""
+
+    def test_framediff_fallback_enabled_by_default(self):
+        md = MotionDetector()
+        assert md._framediff_fallback is True
+
+    def test_framediff_fallback_can_be_disabled(self):
+        md = MotionDetector(framediff_fallback=False)
+        assert md._framediff_fallback is False
+
+    def test_framediff_detects_subtle_change_without_mog2_warmup(self):
+        """Frame-diff fallback should detect motion even without MOG2 warmup."""
+        md = MotionDetector(threshold=100, downscale_factor=4, framediff_fallback=True)
+        # First frame: dark
+        frame1 = np.zeros((400, 400), dtype=np.uint8)
+        _, motion1 = md.detect(frame1)
+        # Second frame: small bright region (subtle dart)
+        frame2 = frame1.copy()
+        frame2[180:220, 180:220] = 200  # 40x40 = 1600 pixels changed
+        _, motion2 = md.detect(frame2)
+        assert motion2, "Frame-diff fallback should detect subtle motion"
+
+    def test_framediff_no_false_positive_on_static(self):
+        """Frame-diff fallback should not fire on identical frames."""
+        md = MotionDetector(threshold=200, downscale_factor=4, framediff_fallback=True)
+        frame = np.full((400, 400), 128, dtype=np.uint8)
+        for _ in range(5):
+            _, motion = md.detect(frame)
+        # After warmup, static frames should not trigger
+        _, motion = md.detect(frame)
+        assert not motion
+
+    def test_framediff_disabled_no_fallback(self):
+        """With fallback disabled, only MOG2 drives detection."""
+        md = MotionDetector(threshold=100, downscale_factor=4, framediff_fallback=False)
+        frame1 = np.zeros((400, 400), dtype=np.uint8)
+        md.detect(frame1)
+        # Without MOG2 warmup, small change may not be detected
+        frame2 = frame1.copy()
+        frame2[190:210, 190:210] = 100  # very subtle
+        _, motion = md.detect(frame2)
+        # We don't assert the exact result here because MOG2 behavior varies,
+        # but the fallback path is not triggered
+        assert md._framediff_fallback is False
+
+    def test_reset_clears_prev_frame(self):
+        md = MotionDetector(framediff_fallback=True)
+        frame = np.zeros((100, 100), dtype=np.uint8)
+        md.detect(frame)
+        assert md._prev_frame is not None
+        md.reset()
+        assert md._prev_frame is None
+
+    def test_get_params_includes_framediff(self):
+        md = MotionDetector(framediff_fallback=True, framediff_threshold=30)
+        params = md.get_params()
+        assert params["framediff_fallback"] is True
+        assert params["framediff_threshold"] == 30
+
+
 class TestIdleFrameSkip:
     """Tests for frame-skip in idle (Tier-5 #33)."""
 

@@ -125,7 +125,24 @@
       "Bash(for skill:*)",
       "Read(//c/Users/domes/OneDrive/Desktop/dart-vision-claude/**)",
       "Bash(python -c \"import json; json.load\\(open\\(''.claude-plugin/plugin.json''\\)\\); print\\(''plugin.json: valid''\\)\")",
-      "Bash(python -c \"import json; json.load\\(open\\(''.claude-plugin/marketplace.json''\\)\\); print\\(''marketplace.json: valid''\\)\")"
+      "Bash(python -c \"import json; json.load\\(open\\(''.claude-plugin/marketplace.json''\\)\\); print\\(''marketplace.json: valid''\\)\")",
+      "Bash(python -m pytest tests/test_bounce_detection.py tests/test_diff_detector.py -q)",
+      "Bash(python:*)",
+      "Bash(PYTHONIOENCODING=utf-8 python << 'PYEOF':*)",
+      "Bash(PYTHONIOENCODING=utf-8 python -c \":*)",
+      "Bash(ls -la testvids/*.mp4)",
+      "Bash(python3 -c \":*)",
+      "Bash(grep -n \"== 50\\\\|== 5$\" tests/test_cv_params_api.py tests/test_multi_cam_profiles.py)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_intrinsics_validation.py -q)",
+      "Bash(.venv/Scripts/python.exe -m ruff check src/cv/multi_camera.py src/web/routes.py src/main.py tests/test_intrinsics_validation.py)",
+      "Bash(.venv/Scripts/python.exe -m ruff check src/main.py src/cv/multi_camera.py src/web/routes.py tests/test_intrinsics_validation.py)",
+      "Bash(.venv/Scripts/python.exe -m ruff check src/main.py tests/test_intrinsics_validation.py)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/ -k \"stereo or multi_cam or intrinsic\" -q)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_routes_extra.py::TestRoutesCoverage::test_stereo_calibration_endpoint_accepts_charuco_override -q)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_routes_extra.py::TestRoutesCoverage::test_stereo_calibration_endpoint_accepts_charuco_override -q -s)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_routes_extra.py::TestRoutesCoverage::test_stereo_calibration_endpoint_accepts_charuco_override tests/ -k \"stereo or multi_cam or intrinsic\" -q)",
+      "Bash(.venv/Scripts/python.exe -m ruff check tests/test_routes_extra.py)"
     ]
   },
   "hooks": {

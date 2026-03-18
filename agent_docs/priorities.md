@@ -825,19 +825,9 @@ Typische Arbeiten:
 
 Warum sinnvoll: P48 liefert die Mechanik, aber ohne Scheduler und UI-Integration muss der Cleanup manuell angestossen werden.
 
-## Prioritaet 51: Deduplizierung _is_already_confirmed vs CooldownManager (neu — entdeckt bei P42)
+## Prioritaet 51: Deduplizierung _is_already_confirmed vs CooldownManager (✅ ERLEDIGT 2026-03-18)
 
-Quelle: Code-Review bei P42-Implementierung
-
-Ziel: Die raeumliche Duplikat-Pruefung in `DartImpactDetector._is_already_confirmed()` und `CooldownManager.is_in_exclusion_zone()` ueberlappen sich. Beide pruefen Distanz zu bestaetigten Positionen, nutzen aber unterschiedliche Datenstrukturen (`_confirmed` Liste vs `_zones` Liste).
-
-Typische Arbeiten:
-- `_is_already_confirmed` auf `CooldownManager.is_in_exclusion_zone` delegieren
-- `_confirmed` Liste nur noch fuer Turn-State (get_all_confirmed) nutzen, nicht fuer Exclusion
-- Sicherstellen dass `register_confirmed` weiterhin korrekt dedupliziert
-- Tests anpassen
-
-Prioritaet: Niedrig (Architektur-Bereinigung, kein Verhaltens-Unterschied). Sinnvoll wenn Detector-Logik weiter refactored wird.
+**Umsetzung:** `_is_already_confirmed()` delegiert vollstaendig an `CooldownManager.is_in_exclusion_zone()`. `_confirmed` Liste wird nur noch fuer Turn-State (`get_all_confirmed`) genutzt, nicht fuer raeumliche Exclusion. `register_confirmed` dedupliziert korrekt ueber CooldownManager. 2 neue Tests in `tests/test_detector.py` validieren den Delegations-Vertrag: `test_is_already_confirmed_delegates_to_cooldown_manager` und `test_confirmed_list_only_used_for_turn_state`. Alle 18 Detector-Tests gruen.
 
 ## Prioritaet 52: Hardcoded Farben in CSS durch Theme-Variablen ersetzen (NIEDRIG)
 

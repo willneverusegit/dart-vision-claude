@@ -167,6 +167,7 @@ class DartImpactDetector:
                 )
                 if not self._is_already_confirmed(detection):
                     self._confirmed.append(detection)
+                    self._cooldown.activate(position=detection.center)
                     logger.info("Dart confirmed at %s (area=%.0f, frames=%d)",
                                 detection.center, detection.area, detection.frame_count)
                     return detection
@@ -198,16 +199,14 @@ class DartImpactDetector:
         return None
 
     def _is_already_confirmed(self, detection: DartDetection) -> bool:
-        """Check if a detection is too close to an already confirmed dart (exclusion zone)."""
-        zone = max(self.position_tolerance_px, self.exclusion_zone_px)
-        for confirmed in self._confirmed:
-            dist = math.hypot(
-                detection.center[0] - confirmed.center[0],
-                detection.center[1] - confirmed.center[1]
-            )
-            if dist < zone:
-                return True
-        return False
+        """Check if a detection is too close to an already confirmed dart (exclusion zone).
+
+        Delegates to CooldownManager.is_in_exclusion_zone() which maintains
+        the spatial exclusion zones (P51 deduplication consolidation).
+        """
+        return self._cooldown.is_in_exclusion_zone(
+            detection.center[0], detection.center[1]
+        )
 
     def _decay_candidates(self) -> None:
         """Remove stale candidates that weren't seen this frame."""

@@ -173,3 +173,46 @@ def test_register_confirmed_deduplicates():
     result = d.register_confirmed(det)  # same position again
     assert result is False
     assert len(d.get_all_confirmed()) == 1
+
+
+def test_is_already_confirmed_delegates_to_cooldown_manager():
+    """P51: _is_already_confirmed delegates to CooldownManager.is_in_exclusion_zone,
+    not to the _confirmed list. Verify by checking that clearing _confirmed
+    does NOT affect exclusion checks (zones live in CooldownManager)."""
+    from src.cv.detector import DartImpactDetector, DartDetection
+    d = DartImpactDetector(exclusion_zone_px=50, cooldown_frames=30)
+    det = DartDetection(center=(100, 100), area=200, confidence=0.8, frame_count=3)
+    d.register_confirmed(det)
+
+    # Exclusion is active via CooldownManager
+    nearby = DartDetection(center=(110, 110), area=200, confidence=0.8, frame_count=3)
+    assert d._is_already_confirmed(nearby) is True
+
+    # Clear _confirmed list (turn state) — exclusion should STILL hold
+    d._confirmed.clear()
+    assert d._is_already_confirmed(nearby) is True
+
+    # Far away detection is not excluded
+    far = DartDetection(center=(300, 300), area=200, confidence=0.8, frame_count=3)
+    assert d._is_already_confirmed(far) is False
+
+
+def test_confirmed_list_only_used_for_turn_state():
+    """P51: _confirmed list is only for get_all_confirmed (turn state),
+    not for spatial exclusion logic."""
+    from src.cv.detector import DartImpactDetector, DartDetection
+    d = DartImpactDetector(exclusion_zone_px=50, cooldown_frames=30)
+    det1 = DartDetection(center=(100, 100), area=200, confidence=0.8, frame_count=3)
+    det2 = DartDetection(center=(300, 300), area=200, confidence=0.8, frame_count=3)
+
+    d.register_confirmed(det1)
+    # Wait out cooldown for det2
+    for _ in range(31):
+        d.tick()
+    d.register_confirmed(det2)
+
+    confirmed = d.get_all_confirmed()
+    assert len(confirmed) == 2
+    centers = {c.center for c in confirmed}
+    assert (100, 100) in centers
+    assert (300, 300) in centers
