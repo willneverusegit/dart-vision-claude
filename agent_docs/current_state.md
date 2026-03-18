@@ -1,6 +1,6 @@
 # Current State
 
-Stand dieser Zusammenfassung: 2026-03-18 (Welle 1-4 + Auto-Agents: P22, P26, P27, P28, P31, P39-P43, P46-P49, P52, Tier-2 #5-#7, #10-#14, P30-P33, P35 erledigt)
+Stand dieser Zusammenfassung: 2026-03-18 (Welle 1-4 + Auto-Agents: P22, P26, P27, P28, P30-P31, P39-P43, P46-P49, P52-P53, P55, Tier-2 #5-#7, #10-#14, P32-P33, P35 erledigt)
 
 ## Technischer Kern
 
@@ -77,6 +77,9 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 - Intrinsics Validation vor Stereo-Kalibrierung verifiziert (P31)
 - Video-Replay Ground-Truth-Validierungstests: 3/5 Videos bestehen, 2 xfail wegen Baseline-Warmup (P39)
 - CSS Theme-Variablen: 15 neue Variablen, alle hardcoded Farben ersetzt fuer Dark/Light/High-Contrast (P52)
+- Camera Error Reporting: Dict-basierte Fehler, WebSocket broadcast, per-camera Status-Badges (P30)
+- 11 FrameDiffDetector Integration Tests mit CooldownManager/MotionFilter (P53)
+- Baseline-Warmup Fix: force-init bei erster Motion, 3/5 Videos bestehen jetzt strikt (P55)
 
 ## Was heute als fortgeschritten, aber noch sensibel gilt
 
@@ -88,7 +91,7 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 
 ## Verifizierte Kennzahlen
 
-- `1024` Tests bestanden (Stand 2026-03-18, +379 neue Tests)
+- `1045` Tests bestanden (Stand 2026-03-18, +400 neue Tests)
 - Gesamt-Coverage ~77%
 - Wichtige Module: main.py 78%, routes.py 66%, pipeline.py 68%, multi_camera.py 62%, capture.py 72%
 - synthetische Pipeline-Benchmarks fuer `1`, `2` und `3` Kameras innerhalb der definierten KPI-Grenzen
