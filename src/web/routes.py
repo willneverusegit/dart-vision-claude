@@ -1543,6 +1543,40 @@ def setup_routes(app_state: dict) -> APIRouter:
             headers={"Content-Disposition": "attachment; filename=telemetry.json"},
         )
 
+    @router.get("/api/telemetry/status")
+    async def get_telemetry_status() -> dict:
+        """Return telemetry file size, rotation status, and retention config."""
+        writer = app_state.get("telemetry_jsonl_writer")
+        if writer is None:
+            return {
+                "ok": True,
+                "active": False,
+                "message": "JSONL telemetry writer not active (set DARTVISION_TELEMETRY_FILE)",
+            }
+        file_info = writer.check_file_size()
+        return {
+            "ok": True,
+            "active": True,
+            "filepath": writer.filepath,
+            "session_id": writer.session_id,
+            "retain_days": writer._retain_days,
+            **file_info,
+        }
+
+    @router.post("/api/telemetry/rotate")
+    async def rotate_telemetry() -> dict:
+        """Manually trigger telemetry file rotation and cleanup."""
+        writer = app_state.get("telemetry_jsonl_writer")
+        if writer is None:
+            return {"ok": False, "error": "JSONL telemetry writer not active"}
+        try:
+            writer.force_rotate()
+            deleted = writer.cleanup_old_files()
+            return {"ok": True, "rotated": True, "old_files_deleted": deleted}
+        except Exception as e:
+            logger.error("Manual telemetry rotation failed: %s", e)
+            return {"ok": False, "error": str(e)}
+
     @router.get("/api/telemetry/stereo")
     async def telemetry_stereo() -> dict:
         """Triangulations-Telemetrie."""

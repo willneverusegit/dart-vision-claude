@@ -289,6 +289,17 @@ class TestTelemetryCheckFileSize:
         assert info["warning"] is not None
         assert "MB" in info["warning"]
 
+    def test_force_rotate_then_cleanup(self, tmp_path):
+        """Integration: force_rotate + cleanup_old_files work together."""
+        filepath = str(tmp_path / "telemetry.jsonl")
+        writer = TelemetryJSONLWriter(filepath, session_id="s1", max_mb=0.000001, retain_days=0)
+        # Write data to create a file
+        for i in range(5):
+            writer.write(_sample(ts=float(i)))
+        writer.force_rotate()
+        # With retain_days=0, cleanup is a no-op
+        assert writer.cleanup_old_files() == 0
+
     def test_from_env_with_config(self, tmp_path, monkeypatch):
         filepath = str(tmp_path / "t.jsonl")
         monkeypatch.setenv("DARTVISION_TELEMETRY_FILE", filepath)

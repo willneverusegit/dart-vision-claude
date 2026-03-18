@@ -593,3 +593,51 @@ class TestTelemetryExport:
             resp = client.get("/api/telemetry/export")
             data = resp.json()
             assert data["ok"] is False
+
+
+class TestTelemetryStatusAndRotate:
+    def test_status_no_writer(self):
+        with TestClient(app) as client:
+            app_state["telemetry_jsonl_writer"] = None
+            resp = client.get("/api/telemetry/status")
+            data = resp.json()
+            assert data["ok"] is True
+            assert data["active"] is False
+
+    def test_status_with_writer(self, tmp_path):
+        from src.utils.telemetry import TelemetryJSONLWriter
+        filepath = str(tmp_path / "telemetry.jsonl")
+        writer = TelemetryJSONLWriter(filepath, session_id="test-sess", max_mb=10, retain_days=5)
+        with TestClient(app) as client:
+            app_state["telemetry_jsonl_writer"] = writer
+            resp = client.get("/api/telemetry/status")
+            data = resp.json()
+            assert data["ok"] is True
+            assert data["active"] is True
+            assert data["session_id"] == "test-sess"
+            assert data["retain_days"] == 5
+            assert "size_mb" in data
+            app_state["telemetry_jsonl_writer"] = None
+
+    def test_rotate_no_writer(self):
+        with TestClient(app) as client:
+            app_state["telemetry_jsonl_writer"] = None
+            resp = client.post("/api/telemetry/rotate")
+            data = resp.json()
+            assert data["ok"] is False
+
+    def test_rotate_with_writer(self, tmp_path):
+        from src.utils.telemetry import TelemetryJSONLWriter, TelemetrySample
+        import time
+        filepath = str(tmp_path / "telemetry.jsonl")
+        writer = TelemetryJSONLWriter(filepath, session_id="s1", max_mb=10, retain_days=7)
+        sample = TelemetrySample(timestamp=time.time(), fps=30.0, queue_pressure=0.1,
+                                 dropped_frames=0, memory_mb=100.0)
+        writer.write(sample)
+        with TestClient(app) as client:
+            app_state["telemetry_jsonl_writer"] = writer
+            resp = client.post("/api/telemetry/rotate")
+            data = resp.json()
+            assert data["ok"] is True
+            assert "old_files_deleted" in data
+            app_state["telemetry_jsonl_writer"] = None
