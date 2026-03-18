@@ -1,6 +1,6 @@
 # Project Context — DartVision
 
-*Last updated: 2026-03-18 (Auto-Agents Welle 2: P33, P51-Cleanup, P52, P61 erledigt, P62 neu)*
+*Last updated: 2026-03-18 (Auto-Agents Welle 3: P50, P62, P63 erledigt, P64 neu)*
 
 ## Projektziel
 Lokales Dart-Scoring-System mit Computer Vision zur automatischen Treffererkennung auf einer Dartscheibe. CPU-only, Windows-Laptop, kein Cloud-Zwang.
@@ -13,7 +13,7 @@ Lokales Dart-Scoring-System mit Computer Vision zur automatischen Treffererkennu
 | Backend | FastAPI | — | REST + WebSocket |
 | CV | OpenCV + NumPy | — | CPU-only, keine GPU |
 | Frontend | Vanilla JS / HTML / CSS | — | Web Audio API |
-| Tests | pytest | — | 1102 Tests, ~77% Coverage |
+| Tests | pytest | — | 1171 Tests, ~77% Coverage |
 | Config | YAML | — | calibration_config.yaml |
 
 ## Architektur
@@ -66,6 +66,10 @@ ThreadedCamera
 | Video Replay Tests | stabil | P39 — 8 Testvideos (100mm Marker, 365mm Spacing), E2E-Tests, Batch-Script |
 | Configurable Markers | stabil | P39 — marker_size_mm + marker_spacing_mm konfigurierbar (CLI + Config) |
 | E2E echte Clips | in Arbeit | P11/P39 — Infra steht, Ground-Truth-Annotation der Videos ausstehend |
+| Auto-Exposure | stabil | P50 — Brightness-Tracking (EMA), adaptive CLAHE clipLimit, /api/camera/quality |
+| Homography-Warning | stabil | P62 — Frontend-Banner bei homography_age>30, Telemetrie-Status-Widget |
+| Quick-Wins | erledigt | P63 — cv2.setNumThreads(0), Flight-Tipp im UI (#28/#29 waren bereits Standard) |
+| Routes Coverage | verbessert | 48 neue Tests → routes.py 74% (P64: Ziel 80%+) |
 
 ## Key Decisions (quick reference)
 

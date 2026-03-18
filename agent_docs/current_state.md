@@ -1,6 +1,6 @@
 # Current State
 
-Stand dieser Zusammenfassung: 2026-03-18 (Welle 1-4 + Auto-Agents: P22, P26, P27, P28, P30-P31, P33, P39-P43, P46-P49, P51-P56, P60-P61, Tier-2 #5-#7, #10-#14, P32, P35 erledigt)
+Stand dieser Zusammenfassung: 2026-03-18 (Welle 1-4 + Auto-Agents: P22, P26, P27, P28, P30-P31, P33, P39-P43, P46-P49, P50-P56, P60-P63, Tier-2 #5-#7, #10-#14, P32, P35 erledigt)
 
 ## Technischer Kern
 
@@ -88,6 +88,10 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 - CSS Theme-Variablen: alle hardcoded Farben durch var()-Referenzen ersetzt, 15+ neue Variablen (P52)
 - Telemetrie-Cleanup-Scheduler: asyncio Background-Task, GET /api/telemetry/status, POST /api/telemetry/rotate (P51-Cleanup)
 - Multi-Cam Sync-Depth-Presets: tight/standard/loose validiert mit 57 Tests (P33)
+- Auto-Exposure-Kompensation: Brightness-Tracking (EMA), adaptive CLAHE clipLimit, /api/camera/quality Endpoint (P50)
+- Frontend Homography-Age Warnung bei >30 Frames ohne Marker + Telemetrie-Status-Widget mit Rotate-Button (P62)
+- cv2.setNumThreads(0) fuer volle CPU-Nutzung, Flight-Tipp im Kalibrierungs-Modal (P63)
+- 48 neue Route-Tests, routes.py Coverage 66%→74% (P64-Vorarbeit)
 
 ## Was heute als fortgeschritten, aber noch sensibel gilt
 
@@ -99,9 +103,9 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 
 ## Verifizierte Kennzahlen
 
-- `1102` Tests bestanden (Stand 2026-03-18, +457 neue Tests)
+- `1171` Tests bestanden (Stand 2026-03-18, +526 neue Tests)
 - Gesamt-Coverage ~77%
-- Wichtige Module: main.py 78%, routes.py 66%, pipeline.py 68%, multi_camera.py 62%, capture.py 72%
+- Wichtige Module: main.py 78%, routes.py 74%, pipeline.py 68%, multi_camera.py 62%, capture.py 72%
 - synthetische Pipeline-Benchmarks fuer `1`, `2` und `3` Kameras innerhalb der definierten KPI-Grenzen
 - E2E-Replay-Tests: 90% Hit Rate, 100% Score Accuracy auf synthetischen Clips (6 Tests)
 - Echte Video-Validierung: ~55% Hit Rate, 64% Sektor-Accuracy auf 2 echten Videos (rec_094311, rec_094521)
