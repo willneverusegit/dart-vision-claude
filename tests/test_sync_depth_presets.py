@@ -151,6 +151,63 @@ class TestFPSGovernorBuffer:
         assert stats["frames_total"] == 1
 
 
+# ── FPSGovernor adaptive FPS ─────────────────────────────────────────
+
+class TestFPSGovernorAdaptive:
+    def test_secondary_reduces_fps_on_overload(self):
+        """Secondary camera should reduce FPS after sustained overload."""
+        gov = FPSGovernor(target_fps=30, min_fps=10, is_primary=False)
+        # Simulate frames that take 90% of budget (overloaded)
+        budget = 1.0 / 30
+        for _ in range(15):
+            gov.record_frame_time(budget * 0.9)
+        assert gov.effective_fps < 30
+
+    def test_primary_does_not_reduce_fps(self):
+        """Primary camera must never reduce FPS even under overload."""
+        gov = FPSGovernor(target_fps=30, min_fps=10, is_primary=True)
+        budget = 1.0 / 30
+        for _ in range(30):
+            gov.record_frame_time(budget * 0.95)
+        assert gov.effective_fps == 30
+
+    def test_fps_does_not_go_below_min(self):
+        """FPS should never drop below min_fps."""
+        gov = FPSGovernor(target_fps=30, min_fps=15, is_primary=False)
+        budget = 1.0 / 30
+        # Trigger many overload reductions
+        for _ in range(200):
+            gov.record_frame_time(budget * 0.95)
+        assert gov.effective_fps >= 15
+
+    def test_recovery_increases_fps(self):
+        """When load drops, FPS should recover toward target."""
+        gov = FPSGovernor(target_fps=30, min_fps=10, is_primary=False)
+        # First force a reduction
+        budget = 1.0 / 30
+        for _ in range(15):
+            gov.record_frame_time(budget * 0.9)
+        reduced = gov.effective_fps
+        assert reduced < 30
+        # Now simulate very fast processing to trigger recovery
+        for _ in range(40):
+            gov.record_frame_time(budget * 0.1)
+        assert gov.effective_fps > reduced
+
+    def test_frame_interval_matches_effective_fps(self):
+        gov = FPSGovernor(target_fps=20)
+        assert gov.frame_interval_s == pytest.approx(1.0 / 20)
+
+    def test_get_stats_keys(self):
+        gov = FPSGovernor(target_fps=25, min_fps=8, is_primary=False, buffer_max_depth=4)
+        stats = gov.get_stats()
+        assert stats["target_fps"] == 25
+        assert stats["is_primary"] is False
+        assert "effective_fps" in stats
+        assert "avg_processing_ms" in stats
+        assert "overload_count" in stats
+
+
 # ── MultiCameraPipeline config integration ───────────────────────────
 
 class TestMultiCamConfigIntegration:
