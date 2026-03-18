@@ -1,6 +1,6 @@
 # Current State
 
-Stand dieser Zusammenfassung: 2026-03-18 (Welle 1-4 + Auto-Agents: P22, P26, P27, P28, P40-P43, P46-P49, Tier-2 #5-#7, #10-#14, P30-P33, P35, P41, P42, P47, P48 erledigt)
+Stand dieser Zusammenfassung: 2026-03-18 (Welle 1-4 + Auto-Agents: P22, P26, P27, P28, P31, P39-P43, P46-P49, P52, Tier-2 #5-#7, #10-#14, P30-P33, P35 erledigt)
 
 ## Technischer Kern
 
@@ -74,6 +74,9 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 - High-Contrast Theme als 3. Option, 3-Way Toggle (dark→light→high-contrast), CSS Transitions (P46)
 - 16 Detection-Component Integration Tests (Cooldown-Sequenz, Bounce-Out, Shape-Reject, Overhead) (P49)
 - Adaptive Thresholds verifiziert: Otsu-Bias + Search Mode bereits in Welle 3 implementiert (P40)
+- Intrinsics Validation vor Stereo-Kalibrierung verifiziert (P31)
+- Video-Replay Ground-Truth-Validierungstests: 3/5 Videos bestehen, 2 xfail wegen Baseline-Warmup (P39)
+- CSS Theme-Variablen: 15 neue Variablen, alle hardcoded Farben ersetzt fuer Dark/Light/High-Contrast (P52)
 
 ## Was heute als fortgeschritten, aber noch sensibel gilt
 
@@ -85,7 +88,7 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 
 ## Verifizierte Kennzahlen
 
-- `1021` Tests bestanden (Stand 2026-03-18, +376 neue Tests)
+- `1024` Tests bestanden (Stand 2026-03-18, +379 neue Tests)
 - Gesamt-Coverage ~77%
 - Wichtige Module: main.py 78%, routes.py 66%, pipeline.py 68%, multi_camera.py 62%, capture.py 72%
 - synthetische Pipeline-Benchmarks fuer `1`, `2` und `3` Kameras innerhalb der definierten KPI-Grenzen
