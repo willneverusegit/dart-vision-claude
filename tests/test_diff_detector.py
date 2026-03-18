@@ -601,3 +601,96 @@ def test_diff_cache_reused_in_settling():
     d.update(post, has_motion=False)
     # Cache was used (frame_id changed, so new cache entry)
     assert d._cached_diff_frame_id > cached_fid_after_qc
+
+
+# set_baseline tests (P55)
+# ------------------------------------------------------------------
+
+
+def test_set_baseline_explicitly():
+    """set_baseline() should set the baseline frame for diff detection."""
+    d = FrameDiffDetector()
+    frame = _gray(100)
+    d.set_baseline(frame)
+    assert d._baseline is not None
+    assert np.array_equal(d._baseline, frame)
+    # Should be a copy, not the same object
+    assert d._baseline is not frame
+
+
+def test_set_baseline_enables_detection_without_idle():
+    """After set_baseline(), detection works from the first motion event."""
+    d = FrameDiffDetector(settle_frames=2, diff_threshold=10, min_diff_area=10, min_elongation=1.0)
+    baseline = _gray(50)
+    dart_frame = _gray(50)
+    dart_frame[40:60, 40:60] = 200
+
+    # Set baseline explicitly (simulates warmup)
+    d.set_baseline(baseline)
+
+    # Go straight to motion — baseline should be used
+    d.update(dart_frame, has_motion=True)
+    d.update(dart_frame, has_motion=False)
+    result = d.update(dart_frame, has_motion=False)
+    assert result is not None
+
+
+# ------------------------------------------------------------------
+# IN_MOTION timeout tests (P55)
+# ------------------------------------------------------------------
+
+
+def test_in_motion_timeout_resets_to_idle():
+    """Detector resets to IDLE after _max_motion_frames of continuous motion."""
+    d = FrameDiffDetector()
+    d._max_motion_frames = 5  # Short timeout for testing
+
+    # Set up baseline and enter IN_MOTION
+    d.update(_gray(128), has_motion=False)
+    d.update(_gray(128), has_motion=True)
+    assert d.state == "in_motion"
+
+    # Stay in motion for max_motion_frames
+    for _ in range(4):
+        d.update(_gray(128), has_motion=True)
+    assert d.state == "in_motion"  # Not yet timed out
+
+    # One more motion frame should trigger timeout
+    d.update(_gray(128), has_motion=True)
+    assert d.state == "idle"
+
+
+def test_in_motion_timeout_updates_baseline():
+    """After timeout, baseline is updated so next cycle can work."""
+    d = FrameDiffDetector()
+    d._max_motion_frames = 3
+
+    d.update(_gray(100), has_motion=False)  # baseline = 100
+    d.update(_gray(100), has_motion=True)   # IN_MOTION
+    d.update(_gray(150), has_motion=True)   # motion continues
+    d.update(_gray(200), has_motion=True)   # motion continues
+    d.update(_gray(200), has_motion=True)   # timeout → IDLE, baseline = 200
+
+    assert d.state == "idle"
+    assert np.array_equal(d._baseline, _gray(200))
+
+
+def test_in_motion_timeout_counter_resets_on_settling():
+    """Motion counter resets when entering a new IN_MOTION from IDLE."""
+    d = FrameDiffDetector()
+    d._max_motion_frames = 10
+
+    # First cycle: enter and exit motion normally
+    d.update(_gray(128), has_motion=False)
+    d.update(_gray(128), has_motion=True)
+    d.update(_gray(128), has_motion=True)  # 2 motion frames
+    d.update(_gray(128), has_motion=False)  # → SETTLING
+    assert d.state == "settling"
+
+    # Complete settling
+    for _ in range(d.settle_frames):
+        d.update(_gray(128), has_motion=False)
+
+    # New motion cycle should start fresh counter
+    d.update(_gray(128), has_motion=True)
+    assert d._motion_frame_count == 0  # Just entered, counter reset

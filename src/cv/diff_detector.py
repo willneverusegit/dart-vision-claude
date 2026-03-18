@@ -117,6 +117,11 @@ class FrameDiffDetector:
         self._settle_count: int = 0
         self._had_motion_event: bool = False
         self._stability_centroids: list[tuple[int, int]] = []
+        # Safety: max frames to stay in IN_MOTION before resetting to IDLE.
+        # Prevents the detector from getting stuck when MOG2 reports prolonged
+        # false motion after a video seek or camera restart.
+        self._max_motion_frames: int = 90  # ~3s at 30fps
+        self._motion_frame_count: int = 0
         # Three-stage morphology:
         # 1) Opening with small kernel removes thin board-wire artefacts
         # 2) Ellipse closing fills small gaps
@@ -208,6 +213,7 @@ class FrameDiffDetector:
         self._settle_count = 0
         self._had_motion_event = False
         self._stability_centroids = []
+        self._motion_frame_count = 0
         self._cached_edges = None
         self._cached_diff = None
         self._cached_diff_frame_id = -1
@@ -315,6 +321,7 @@ class FrameDiffDetector:
             # Motion detected — freeze baseline at last stable frame, switch state
             self._state = _State.IN_MOTION
             self._settle_count = 0
+            self._motion_frame_count = 0
             self._had_motion_event = True
             self._stability_centroids = []
             logger.debug("FrameDiff: IDLE → IN_MOTION")
@@ -325,6 +332,23 @@ class FrameDiffDetector:
 
     def _handle_in_motion(self, frame: np.ndarray, has_motion: bool) -> DartDetection | None:
         if has_motion:
+            self._motion_frame_count += 1
+            # Safety timeout: if we stay in IN_MOTION for too many frames,
+            # the motion is likely false (e.g. MOG2 still learning after
+            # video seek).  Reset to IDLE and update baseline so the
+            # detector can recover for the next real throw.
+            if self._motion_frame_count >= self._max_motion_frames:
+                logger.warning(
+                    "FrameDiff: IN_MOTION timeout after %d frames — "
+                    "resetting to IDLE (likely MOG2 false motion)",
+                    self._motion_frame_count,
+                )
+                self._state = _State.IDLE
+                self._baseline = frame.copy()
+                self._settle_count = 0
+                self._motion_frame_count = 0
+                self._had_motion_event = False
+                self._stability_centroids = []
             return None  # Bewegung geht weiter, Baseline eingefroren
         # Bewegung aufgehört → Settling starten (count beginnt bei 1)
         self._state = _State.SETTLING

@@ -385,3 +385,127 @@ class TestIdleFrameSkip:
         with patch.object(p.motion_detector, 'detect', return_value=(np.zeros((400, 400), dtype=np.uint8), True)):
             p.process_frame()
         assert p._no_motion_count == 0
+
+
+# ------------------------------------------------------------------
+# Pipeline warmup & stable baseline selection tests (P55)
+# ------------------------------------------------------------------
+
+
+class TestPipelineWarmup:
+    def test_warmup_returns_frames_consumed(self):
+        """warmup() should return the number of frames consumed."""
+        from src.cv.pipeline import DartPipeline
+
+        p = DartPipeline(camera_src=0)
+        frames = [np.zeros((480, 640, 3), dtype=np.uint8) for _ in range(10)]
+        call_count = 0
+
+        def mock_read():
+            nonlocal call_count
+            if call_count < len(frames):
+                f = frames[call_count]
+                call_count += 1
+                return True, f
+            return False, None
+
+        mock_cam = MagicMock()
+        mock_cam.read = mock_read
+        p.camera = mock_cam
+        consumed = p.warmup(num_frames=10)
+        assert consumed == 10
+
+    def test_warmup_sets_diff_baseline(self):
+        """warmup() should set the diff detector baseline."""
+        from src.cv.pipeline import DartPipeline
+
+        p = DartPipeline(camera_src=0)
+        frames = [np.full((480, 640, 3), 128, dtype=np.uint8) for _ in range(5)]
+        call_count = 0
+
+        def mock_read():
+            nonlocal call_count
+            if call_count < len(frames):
+                f = frames[call_count]
+                call_count += 1
+                return True, f
+            return False, None
+
+        mock_cam = MagicMock()
+        mock_cam.read = mock_read
+        p.camera = mock_cam
+        p.warmup(num_frames=5)
+        assert p.frame_diff_detector._baseline is not None
+
+    def test_warmup_restores_learning_rate(self):
+        """warmup() should restore the original MOG2 learning rate."""
+        from src.cv.pipeline import DartPipeline
+
+        p = DartPipeline(camera_src=0)
+        original_lr = p.motion_detector._learning_rate
+        frames = [np.zeros((480, 640, 3), dtype=np.uint8) for _ in range(3)]
+        call_count = 0
+
+        def mock_read():
+            nonlocal call_count
+            if call_count < len(frames):
+                f = frames[call_count]
+                call_count += 1
+                return True, f
+            return False, None
+
+        mock_cam = MagicMock()
+        mock_cam.read = mock_read
+        p.camera = mock_cam
+        p.warmup(num_frames=3)
+        assert p.motion_detector._learning_rate == original_lr
+
+    def test_warmup_no_camera_returns_zero(self):
+        """warmup() with no camera should return 0."""
+        from src.cv.pipeline import DartPipeline
+
+        p = DartPipeline(camera_src=0)
+        p.camera = None
+        assert p.warmup() == 0
+
+
+class TestSelectStableBaseline:
+    def test_picks_most_stable_pair(self):
+        """Should pick the frame with smallest diff to successor."""
+        from src.cv.pipeline import DartPipeline
+        import cv2
+
+        # Create candidates: frames 0,1 are very different, frames 2,3 are similar
+        candidates = [
+            np.full((100, 100), 50, dtype=np.uint8),   # 0
+            np.full((100, 100), 200, dtype=np.uint8),   # 1 — big diff to 0
+            np.full((100, 100), 100, dtype=np.uint8),   # 2 — small diff to 3
+            np.full((100, 100), 102, dtype=np.uint8),   # 3
+        ]
+        result = DartPipeline._select_stable_baseline(candidates, None)
+        # Should pick candidate 2 (smallest diff to successor)
+        assert result is not None
+        assert np.array_equal(result, candidates[2])
+
+    def test_single_candidate_returns_it(self):
+        """Single candidate should be returned as-is."""
+        from src.cv.pipeline import DartPipeline
+
+        frame = np.full((100, 100), 128, dtype=np.uint8)
+        result = DartPipeline._select_stable_baseline([frame], None)
+        assert result is frame
+
+    def test_empty_candidates_returns_fallback(self):
+        """Empty candidates should return the fallback."""
+        from src.cv.pipeline import DartPipeline
+
+        fallback = np.full((100, 100), 50, dtype=np.uint8)
+        result = DartPipeline._select_stable_baseline([], fallback)
+        assert result is fallback
+
+    def test_empty_candidates_no_fallback(self):
+        """Empty candidates and no fallback returns None."""
+        from src.cv.pipeline import DartPipeline
+
+        result = DartPipeline._select_stable_baseline([], None)
+        assert result is None

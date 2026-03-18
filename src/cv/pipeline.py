@@ -327,6 +327,108 @@ class DartPipeline:
         logger.info("Optical center detected and saved: (%.1f, %.1f)", cx, cy)
         return (cx, cy)
 
+    def warmup(self, num_frames: int = 30) -> int:
+        """Feed frames through MOG2 and set diff-detector baseline.
+
+        Used after video seek or camera restart to stabilize the background
+        model before detection begins.  Without this, MOG2 reports every
+        early frame as motion, preventing FrameDiffDetector from acquiring
+        a clean baseline.
+
+        The method uses a high MOG2 learning rate (0.5) during warmup so the
+        background model converges within ~10 frames instead of requiring
+        hundreds at the normal rate (0.002).  The original learning rate is
+        restored after warmup completes.
+
+        For the diff-detector baseline, the method collects the last few
+        warmup frames and picks the most stable one (smallest diff to its
+        neighbour), avoiding a baseline captured during residual motion.
+
+        Returns the number of frames actually consumed.
+        """
+        if self.camera is None:
+            return 0
+
+        # Boost MOG2 learning rate so background converges quickly
+        original_lr = self.motion_detector._learning_rate
+        warmup_lr = 0.5
+        self.motion_detector._learning_rate = warmup_lr
+
+        last_gray: np.ndarray | None = None
+        # Collect tail frames for stable baseline selection
+        baseline_candidates: list[np.ndarray] = []
+        _CANDIDATE_WINDOW = 5
+        consumed = 0
+
+        for _ in range(num_frames):
+            ret, frame = self.camera.read()
+            if not ret or frame is None:
+                break
+
+            # Remap to ROI space (same as process_frame)
+            roi_source = self.remapper.remap(frame)
+            if roi_source.shape[:2] != (self.roi_processor.roi_size[1], self.roi_processor.roi_size[0]):
+                roi_source = cv2.resize(roi_source, self.roi_processor.roi_size)
+
+            gray = cv2.cvtColor(roi_source, cv2.COLOR_BGR2GRAY) if len(roi_source.shape) == 3 else roi_source
+            enhanced = self.clahe.apply(gray)
+
+            # Feed into MOG2 so it can learn the background
+            self.motion_detector.detect(enhanced)
+            last_gray = enhanced
+            consumed += 1
+
+            # Keep a sliding window of recent frames for baseline selection
+            baseline_candidates.append(enhanced.copy())
+            if len(baseline_candidates) > _CANDIDATE_WINDOW:
+                baseline_candidates.pop(0)
+
+        # Restore original MOG2 learning rate
+        self.motion_detector._learning_rate = original_lr
+
+        # Pick the most stable baseline from the candidate window
+        baseline_frame = self._select_stable_baseline(baseline_candidates, last_gray)
+
+        if baseline_frame is not None:
+            self.frame_diff_detector.set_baseline(baseline_frame)
+            logger.info(
+                "Pipeline warmup complete: %d frames consumed, baseline set "
+                "(MOG2 warmup lr=%.2f, restored lr=%.4f)",
+                consumed, warmup_lr, original_lr,
+            )
+        else:
+            logger.warning("Pipeline warmup: no frames consumed")
+
+        return consumed
+
+    @staticmethod
+    def _select_stable_baseline(
+        candidates: list[np.ndarray],
+        fallback: np.ndarray | None,
+    ) -> np.ndarray | None:
+        """Pick the most stable frame from a list of candidates.
+
+        Compares consecutive frames via mean absolute difference and returns
+        the one with the smallest change to its successor.  Falls back to
+        the last candidate (or *fallback*) if the list is too short.
+        """
+        if len(candidates) >= 2:
+            best_idx = 0
+            best_diff = float("inf")
+            for i in range(len(candidates) - 1):
+                diff_val = float(cv2.mean(cv2.absdiff(candidates[i], candidates[i + 1]))[0])
+                if diff_val < best_diff:
+                    best_diff = diff_val
+                    best_idx = i
+            logger.debug(
+                "Baseline selection: picked candidate %d/%d (diff=%.2f)",
+                best_idx, len(candidates), best_diff,
+            )
+            return candidates[best_idx]
+        if candidates:
+            return candidates[-1]
+        return fallback
+
     def reset_turn(self) -> None:
         """Reset detector state for new turn (after darts removed)."""
         self.dart_detector.reset()
