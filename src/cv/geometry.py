@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 import math
 from typing import Any, NamedTuple
 
@@ -104,7 +105,14 @@ class CameraIntrinsics:
 
 @dataclass
 class BoardPose:
-    """Board-to-ROI pose and dimensions persisted by board calibration."""
+    """Board-to-ROI pose and dimensions persisted by board calibration.
+
+    ``radii_px`` holds the six ring-boundary radii in ROI-pixel space.
+    These are used **only** for visual overlays and for computing the
+    pixel-to-normalized scaling factor (``double_outer_radius_px``).
+    Score classification always goes through the mm-based
+    ``RING_BOUNDARIES`` constants -- see ``BoardGeometry.point_to_score``.
+    """
 
     homography: np.ndarray | None
     center_px: tuple[float, float]
@@ -321,3 +329,50 @@ class BoardGeometry:
             "radii_px": list(self.radii_px),
             "double_outer_radius_px": self.double_outer_radius_px,
         }
+
+    # -- Calibration consistency check ------------------------------------
+
+    #: Expected mm radii matching the six entries in radii_px order:
+    #: inner_bull, outer_bull, triple_inner, triple_outer, double_inner, double_outer
+    _MM_RADII: tuple[float, ...] = (
+        BULL_INNER_MM, BULL_OUTER_MM,
+        TRIPLE_INNER_MM, TRIPLE_OUTER_MM,
+        DOUBLE_INNER_MM, DOUBLE_OUTER_MM,
+    )
+
+    def check_radii_consistency(self, tolerance: float = 0.15) -> list[str]:
+        """Compare ``radii_px`` proportions against the physical mm standard.
+
+        Each pixel radius is divided by ``double_outer_radius_px`` and compared
+        to the corresponding mm radius divided by ``DOUBLE_OUTER_MM``.  If any
+        ratio deviates by more than *tolerance* (default 15 %), a warning
+        string is returned for that ring.
+
+        Returns an empty list when all proportions are within tolerance.
+        This is a diagnostic helper -- it does **not** affect scoring.
+        """
+        warnings: list[str] = []
+        outer_px = self.double_outer_radius_px
+        if outer_px <= 0:
+            return ["double_outer_radius_px is zero or negative"]
+
+        ring_names = (
+            "inner_bull", "outer_bull",
+            "triple_inner", "triple_outer",
+            "double_inner", "double_outer",
+        )
+        for i, (mm, name) in enumerate(zip(self._MM_RADII, ring_names)):
+            expected = mm / DOUBLE_OUTER_MM
+            actual = self.radii_px[i] / outer_px
+            if expected > 0:
+                deviation = abs(actual - expected) / expected
+                if deviation > tolerance:
+                    msg = (
+                        f"radii_px[{i}] ({name}): pixel proportion {actual:.3f} "
+                        f"deviates {deviation:.0%} from mm standard {expected:.3f}"
+                    )
+                    warnings.append(msg)
+                    logging.getLogger(__name__).warning(
+                        "Calibration drift: %s", msg,
+                    )
+        return warnings

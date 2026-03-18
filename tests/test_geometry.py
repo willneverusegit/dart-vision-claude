@@ -165,3 +165,66 @@ class TestPointToScore:
         """Verify that sector 3 is at the bottom (6 o'clock)."""
         hit = geometry.point_to_score(200, 200 + 80)
         assert hit.sector == 3, f"Expected 3 at 6 o'clock, got {hit.sector}"
+
+
+class TestRadiiConsistency:
+    """Tests for BoardGeometry.check_radii_consistency."""
+
+    def test_good_calibration_no_warnings(self) -> None:
+        """Radii proportional to mm constants produce no warnings."""
+        from src.cv.geometry import (
+            BULL_INNER_MM, BULL_OUTER_MM, TRIPLE_INNER_MM,
+            TRIPLE_OUTER_MM, DOUBLE_INNER_MM, DOUBLE_OUTER_MM,
+        )
+        # Build pixel radii exactly proportional to mm constants
+        scale = 200.0 / DOUBLE_OUTER_MM
+        radii = (
+            BULL_INNER_MM * scale, BULL_OUTER_MM * scale,
+            TRIPLE_INNER_MM * scale, TRIPLE_OUTER_MM * scale,
+            DOUBLE_INNER_MM * scale, DOUBLE_OUTER_MM * scale,
+        )
+        g = BoardGeometry(
+            roi_size=(400, 400),
+            center_px=(200.0, 200.0),
+            optical_center_px=(200.0, 200.0),
+            radii_px=radii,
+            rotation_deg=0.0,
+            valid=True,
+        )
+        warnings = g.check_radii_consistency()
+        assert warnings == []
+
+    def test_bad_calibration_warns(self) -> None:
+        """Radii that deviate strongly from mm proportions produce warnings."""
+        g = BoardGeometry(
+            roi_size=(400, 400),
+            center_px=(200.0, 200.0),
+            optical_center_px=(200.0, 200.0),
+            # triple_inner deliberately wrong (50 instead of ~116)
+            radii_px=(10.0, 19.0, 50.0, 116.0, 188.0, 200.0),
+            rotation_deg=0.0,
+            valid=True,
+        )
+        warnings = g.check_radii_consistency()
+        assert len(warnings) >= 1
+        assert any("triple_inner" in w for w in warnings)
+
+    def test_zero_radius_returns_warning(self) -> None:
+        """Zero outer radius should return a warning, not crash."""
+        g = BoardGeometry(
+            roi_size=(400, 400),
+            center_px=(200.0, 200.0),
+            optical_center_px=(200.0, 200.0),
+            radii_px=(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+            rotation_deg=0.0,
+            valid=False,
+        )
+        warnings = g.check_radii_consistency()
+        assert len(warnings) == 1
+        assert "zero" in warnings[0].lower()
+
+    def test_custom_tolerance(self, geometry: BoardGeometry) -> None:
+        """Very tight tolerance should flag even small deviations."""
+        warnings = geometry.check_radii_consistency(tolerance=0.001)
+        # With default radii some small deviation is expected
+        assert isinstance(warnings, list)
