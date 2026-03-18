@@ -1775,38 +1775,84 @@ def setup_routes(app_state: dict) -> APIRouter:
             media_type="multipart/x-mixed-replace; boundary=frame",
         )
 
+    # P65: per-source lock + TTL cache for camera preview
+    _preview_locks: dict[int, asyncio.Lock] = {}
+    _preview_cache: dict[int, tuple[float, bytes]] = {}
+    _PREVIEW_CACHE_TTL = 2.5  # seconds
+    _PREVIEW_TIMEOUT = 5.0  # seconds
+
     @router.get("/api/camera/preview/{source}")
     async def camera_preview_snapshot(source: int) -> StreamingResponse:
         """Grab a single JPEG frame from a camera source for preview thumbnails.
 
         Opens the camera briefly, captures one frame, then releases it.
         This works independently of the running pipeline.
+        Uses per-source locking to prevent concurrent camera access (P65).
         """
         import io
 
-        loop = asyncio.get_event_loop()
+        # Check TTL cache first (no lock needed)
+        cached = _preview_cache.get(source)
+        if cached is not None:
+            ts, data = cached
+            if (_time.monotonic() - ts) < _PREVIEW_CACHE_TTL:
+                return StreamingResponse(
+                    io.BytesIO(data),
+                    media_type="image/jpeg",
+                    headers={"Cache-Control": "no-cache"},
+                )
 
-        def _grab_frame():
-            cap = cv2.VideoCapture(source)
-            if not cap.isOpened():
-                return None
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
-            ret, frame = cap.read()
-            cap.release()
-            if not ret or frame is None:
-                return None
-            _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
-            return buf.tobytes()
+        # Get or create per-source lock
+        if source not in _preview_locks:
+            _preview_locks[source] = asyncio.Lock()
+        lock = _preview_locks[source]
 
-        jpeg_bytes = await loop.run_in_executor(None, _grab_frame)
-        if jpeg_bytes is None:
-            return JSONResponse({"ok": False, "error": "Camera not available"}, status_code=404)
-        return StreamingResponse(
-            io.BytesIO(jpeg_bytes),
-            media_type="image/jpeg",
-            headers={"Cache-Control": "no-cache"},
-        )
+        try:
+            async with asyncio.timeout(_PREVIEW_TIMEOUT):
+                async with lock:
+                    # Re-check cache after acquiring lock (another request may have filled it)
+                    cached = _preview_cache.get(source)
+                    if cached is not None:
+                        ts, data = cached
+                        if (_time.monotonic() - ts) < _PREVIEW_CACHE_TTL:
+                            return StreamingResponse(
+                                io.BytesIO(data),
+                                media_type="image/jpeg",
+                                headers={"Cache-Control": "no-cache"},
+                            )
+
+                    loop = asyncio.get_event_loop()
+
+                    def _grab_frame():
+                        cap = cv2.VideoCapture(source)
+                        if not cap.isOpened():
+                            return None
+                        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
+                        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
+                        ret, frame = cap.read()
+                        cap.release()
+                        if not ret or frame is None:
+                            return None
+                        _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+                        return buf.tobytes()
+
+                    jpeg_bytes = await loop.run_in_executor(None, _grab_frame)
+                    if jpeg_bytes is None:
+                        return JSONResponse({"ok": False, "error": "Camera not available"}, status_code=404)
+
+                    # Store in cache
+                    _preview_cache[source] = (_time.monotonic(), jpeg_bytes)
+
+                    return StreamingResponse(
+                        io.BytesIO(jpeg_bytes),
+                        media_type="image/jpeg",
+                        headers={"Cache-Control": "no-cache"},
+                    )
+        except TimeoutError:
+            return JSONResponse(
+                {"ok": False, "error": "Camera open timed out"},
+                status_code=504,
+            )
 
     @router.get("/video/motion")
     async def motion_feed() -> StreamingResponse:
