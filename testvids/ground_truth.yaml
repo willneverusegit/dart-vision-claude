@@ -20,9 +20,9 @@ videos:
   1.mp4:
     description: ""
     throws:
+      - {sector: 2, ring: "single", timestamp_s: 2}
       - {sector: 12, ring: "single", timestamp_s: 14}
       - {sector: 18, ring: "single", timestamp_s: 17}
-      - {sector: 2, ring: "single", timestamp_s: 2}
 
   2.mp4:
     description: ""

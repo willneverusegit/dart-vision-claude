@@ -3,6 +3,11 @@
 This test runs real video files through the full pipeline (calibration + detection)
 and compares detected throw counts against annotated ground truth.
 
+When a test fails, the output shows:
+- Each expected throw and whether it was detected
+- Each unexpected (false positive) detection
+- Summary statistics
+
 Skips automatically if testvids/ directory is absent (CI-friendly).
 Marked as slow — run with ``pytest -m slow`` or ``pytest tests/e2e/``.
 """
@@ -131,6 +136,66 @@ def _run_pipeline_on_video(video_path: str) -> list[dict]:
     return darts
 
 
+def _format_throw_report(
+    gt_throws: list[dict], darts: list[dict], fname: str,
+) -> str:
+    """Build a human-readable report comparing GT throws vs detections.
+
+    Shows each expected throw and whether a detection was found nearby,
+    plus any extra (false positive) detections.
+    """
+    lines = [f"\n{'='*60}", f"  THROW REPORT: {fname}", f"{'='*60}"]
+
+    non_miss = [t for t in gt_throws if t.get("ring") != "miss"]
+    matched_det_indices: set[int] = set()
+
+    for i, gt in enumerate(non_miss):
+        ts = gt.get("timestamp_s", "?")
+        sector = gt.get("sector", "?")
+        ring = gt.get("ring", "?")
+
+        # Try to find a matching detection (simple: by order)
+        det_idx = i if i < len(darts) else None
+        if det_idx is not None and det_idx not in matched_det_indices:
+            matched_det_indices.add(det_idx)
+            d = darts[det_idx]
+            d_sector = d.get("sector", "?")
+            d_ring = d.get("ring", "?")
+            d_score = d.get("score", "?")
+            match_str = "HIT" if (d_sector == sector and d_ring == ring) else "WRONG"
+            lines.append(
+                f"  GT #{i+1:2d} @{ts:>6}s  {ring:12s} {sector:>2} "
+                f"-> {match_str}: {d_ring} {d_sector} = {d_score}"
+            )
+        else:
+            lines.append(
+                f"  GT #{i+1:2d} @{ts:>6}s  {ring:12s} {sector:>2} "
+                f"-> MISSED"
+            )
+
+    # Extra detections (false positives)
+    extra = [
+        d for j, d in enumerate(darts) if j not in matched_det_indices
+    ]
+    if extra:
+        lines.append(f"\n  FALSE POSITIVES ({len(extra)}):")
+        for d in extra:
+            lines.append(
+                f"    {d.get('ring', '?')} {d.get('sector', '?')} "
+                f"= {d.get('score', '?')}"
+            )
+
+    detected = len(darts)
+    expected = len(non_miss)
+    lines.append(
+        f"\n  SUMMARY: {detected}/{expected} detected "
+        f"({detected/expected*100:.0f}%)" if expected else
+        f"\n  SUMMARY: {detected} detected, 0 expected"
+    )
+    lines.append(f"{'='*60}")
+    return "\n".join(lines)
+
+
 @pytest.mark.parametrize(
     "video_path,fname,gt_entry",
     _ANNOTATED,
@@ -140,8 +205,11 @@ def test_detection_count_within_range(video_path: str, fname: str, gt_entry: dic
     """Pipeline detects a reasonable number of throws compared to ground truth.
 
     This is a lenient test: we check that the pipeline detects at least 20% of
-    expected throws and does not produce more than 3x false positives.
+    expected throws and does not produce more than 4x false positives.
     These thresholds should be tightened as detection accuracy improves.
+
+    On failure, outputs a per-throw report showing which throws were
+    missed and which detections were false positives.
     """
 
     gt_throws = gt_entry.get("throws", [])
@@ -153,18 +221,8 @@ def test_detection_count_within_range(video_path: str, fname: str, gt_entry: dic
     darts = _run_pipeline_on_video(video_path)
     detected = len(darts)
 
-    logger.info(
-        "%s: expected=%d detected=%d (%.0f%%)",
-        fname, expected, detected,
-        detected / expected * 100 if expected else 0,
-    )
-
-    # Log each detection for debugging
-    for i, d in enumerate(darts):
-        logger.info(
-            "  dart %d: sector=%s ring=%s score=%s",
-            i + 1, d.get("sector", "?"), d.get("ring", "?"), d.get("score", "?"),
-        )
+    report = _format_throw_report(gt_throws, darts, fname)
+    logger.info(report)
 
     # Lenient thresholds — pipeline must detect *something*
     min_detections = max(1, int(expected * 0.2))
@@ -172,11 +230,11 @@ def test_detection_count_within_range(video_path: str, fname: str, gt_entry: dic
 
     assert detected >= min_detections, (
         f"{fname}: detected {detected} throws, expected at least {min_detections} "
-        f"(20% of {expected} ground-truth throws)"
+        f"(20% of {expected} ground-truth throws)\n{report}"
     )
     assert detected <= max_detections, (
         f"{fname}: detected {detected} throws, expected at most {max_detections} "
-        f"(4x of {expected} ground-truth throws — too many false positives)"
+        f"(4x of {expected} ground-truth throws — too many false positives)\n{report}"
     )
 
 
@@ -217,3 +275,17 @@ def test_calibration_succeeds(video_path: str, fname: str, gt_entry: dict) -> No
         pipeline.stop()
 
     assert calibrated, f"{fname}: ArUco calibration failed within 30 frames"
+
+
+def test_ground_truth_yaml_valid() -> None:
+    """Ground truth YAML passes structural validation."""
+    if not os.path.exists(GT_PATH):
+        pytest.skip("ground_truth.yaml not found")
+
+    from scripts.add_ground_truth import validate_ground_truth
+
+    errors = validate_ground_truth(GT_PATH)
+    assert not errors, (
+        f"ground_truth.yaml has {len(errors)} validation error(s):\n"
+        + "\n".join(f"  - {e}" for e in errors)
+    )

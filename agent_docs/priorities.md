@@ -1015,3 +1015,22 @@ Typische Arbeiten:
 - Timeout falls Kamera-Open haengt (aktuell blockiert der Endpunkt unbegrenzt)
 
 Warum sinnvoll: Verhindert Ressourcen-Konflikte und haengende Requests im Multi-User-Szenario.
+
+## Prioritaet 68: Timestamp-basiertes Detection Matching fuer Video-Replay-Tests (neu — entdeckt bei P39-Verbesserung)
+
+Kritikalitaet: MITTEL
+
+Ziel:
+
+- Die aktuelle Video-Replay-Testinfrastruktur vergleicht Detection-Counts (Anzahl erkannter Wuerfe vs. Ground Truth). Sie kann aber nicht zuordnen, WELCHER Wurf erkannt wurde, weil timestamp_s aus der Ground Truth nicht mit Pipeline-Frame-Indices korreliert wird.
+- Matching ueber Video-FPS: `expected_frame = timestamp_s * video_fps`, dann Detection-Frame innerhalb Toleranzfenster (z.B. +/- 30 Frames) zuordnen.
+- Damit koennen Tests pruefen: "Wurf #3 (S20 Triple @3.2s) wurde korrekt erkannt" statt nur "3 von 5 Wuerfen erkannt".
+
+Typische Arbeiten:
+
+- `_run_pipeline_on_video()` um Frame-Index pro Detection erweitern (bereits teilweise in `test_all_videos.py` vorhanden via `dart_frames`)
+- Matching-Logik: GT-Timestamps -> erwartete Frame-Indices, dann gegen tatsaechliche Detection-Frames matchen
+- `_format_throw_report()` mit echtem timestamp-basiertem Matching statt Index-Reihenfolge
+- AccuracyReport aus `tests/e2e/accuracy.py` fuer YAML-basierte Ground Truth wiederverwenden (aktuell nur JSON-Format)
+
+Warum sinnvoll: Ermoeglicht gezielte Regression-Tests pro Wurf und identifiziert systematische Schwaechen (z.B. "Pipeline verpasst immer den ersten Wurf nach Kalibrierung").
