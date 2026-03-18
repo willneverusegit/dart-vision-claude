@@ -8,6 +8,11 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 
+import cv2
+
+# Ensure OpenCV uses all available CPU cores (P63 #32)
+cv2.setNumThreads(0)
+
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 

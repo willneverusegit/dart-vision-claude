@@ -967,3 +967,16 @@ Typische Arbeiten:
 - Dateien: src/web/routes.py, static/js/app.js, static/css/style.css, templates/index.html
 
 Warum sinnvoll: P61 exponiert homography_age in der API, P51 liefert den Telemetrie-Status-Endpunkt — aber beides hat noch keine Frontend-Darstellung.
+
+## Prioritaet 63: Tier-5 Quick-Wins Dart Detection (#28/#29/#31/#32) (✅ ERLEDIGT 2026-03-18)
+
+Kritikalitaet: NIEDRIG (Quick-Wins)
+
+Umsetzung:
+
+- **#28 detectShadows=False** — bereits Standard in MotionDetector (detect_shadows=False default)
+- **#29 learningRate=0.002** — bereits Standard in MotionDetector (learning_rate=0.002 default)
+- **#32 cv2.setNumThreads(0)** — in src/main.py beim Import gesetzt, nutzt alle CPU-Kerne
+- **#31 Helle Flights Tipp** — Hinweis im Kalibrierungs-Modal in templates/index.html
+
+Geaenderte Dateien: src/main.py, templates/index.html, agent_docs/priorities.md
