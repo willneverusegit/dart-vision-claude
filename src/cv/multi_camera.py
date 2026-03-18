@@ -199,7 +199,8 @@ class MultiCameraPipeline:
         self._buffer_lock = threading.Lock()
         self._running = False
         self._fusion_thread: threading.Thread | None = None
-        self._camera_errors: dict[str, str] = {}  # camera_id -> error message
+        self._camera_errors: dict[str, dict] = {}  # camera_id -> {message, timestamp, level}
+        self._consecutive_frame_errors: dict[str, int] = {}  # camera_id -> count
         self._per_camera_fps: dict[str, int] = {}
         self._governors: dict[str, FPSGovernor] = {}
         self._tri_telemetry = TriangulationTelemetry()
@@ -301,8 +302,7 @@ class MultiCameraPipeline:
             pipeline.start()
         except Exception as e:
             logger.warning("Camera '%s' failed to start: %s", cam_id, e)
-            self._camera_errors[cam_id] = str(e)
-            self._notify_camera_errors()
+            self._set_camera_error(cam_id, str(e), level="error")
             return
 
         # Apply exposure/gain after camera is opened
@@ -332,8 +332,19 @@ class MultiCameraPipeline:
             t0 = time.monotonic()
             try:
                 pipeline.process_frame()
+                # Clear consecutive error counter on success
+                if self._consecutive_frame_errors.get(cam_id, 0) > 0:
+                    self._consecutive_frame_errors[cam_id] = 0
+                    if cam_id in self._camera_errors:
+                        self._clear_camera_error(cam_id)
             except Exception as e:
-                logger.debug("Frame error on '%s': %s", cam_id, e)
+                self._consecutive_frame_errors[cam_id] = self._consecutive_frame_errors.get(cam_id, 0) + 1
+                count = self._consecutive_frame_errors[cam_id]
+                logger.debug("Frame error on '%s': %s (consecutive=%d)", cam_id, e, count)
+                if count == 10:
+                    self._set_camera_error(cam_id, f"Wiederholte Frame-Fehler: {e}", level="warning")
+                elif count == 50:
+                    self._set_camera_error(cam_id, f"Kamera antwortet nicht: {e}", level="error")
             elapsed = time.monotonic() - t0
             if governor:
                 governor.record_frame_time(elapsed)
@@ -662,14 +673,29 @@ class MultiCameraPipeline:
         """Return per-camera FPS governor statistics."""
         return {cam_id: gov.get_stats() for cam_id, gov in self._governors.items()}
 
+    def _set_camera_error(self, cam_id: str, message: str, level: str = "error") -> None:
+        """Set an error for a camera and notify listeners."""
+        self._camera_errors[cam_id] = {
+            "message": message,
+            "timestamp": time.time(),
+            "level": level,  # "warning" or "error"
+        }
+        self._notify_camera_errors()
+
+    def _clear_camera_error(self, cam_id: str) -> None:
+        """Clear error for a camera and notify listeners."""
+        if cam_id in self._camera_errors:
+            del self._camera_errors[cam_id]
+            self._notify_camera_errors()
+
     def _notify_camera_errors(self) -> None:
         """Notify callback when camera errors change."""
         if self.on_camera_errors_changed:
             try:
-                self.on_camera_errors_changed(dict(self._camera_errors))
+                self.on_camera_errors_changed(self.get_camera_errors())
             except Exception as e:
                 logger.debug("on_camera_errors_changed callback failed: %s", e)
 
-    def get_camera_errors(self) -> dict[str, str]:
-        """Return dict of camera_id -> error message for cameras that failed to start."""
+    def get_camera_errors(self) -> dict[str, dict]:
+        """Return dict of camera_id -> {message, timestamp, level} for cameras with errors."""
         return dict(self._camera_errors)

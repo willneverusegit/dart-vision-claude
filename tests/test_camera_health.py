@@ -35,6 +35,32 @@ class TestCameraHealthMonitor:
     def test_error_is_red(self):
         configs = [{"camera_id": "cam_0"}]
         pipelines = {"cam_0": _make_pipeline_with_fps(25.0)}
+        mp = _make_multi_pipeline(
+            configs,
+            errors={"cam_0": {"message": "Disconnected", "timestamp": 1.0, "level": "error"}},
+            pipelines=pipelines,
+        )
+        monitor = CameraHealthMonitor()
+        result = monitor.check_health(mp)
+        assert result["cam_0"]["status"] == "red"
+        assert result["cam_0"]["error"] == "Disconnected"
+
+    def test_warning_is_yellow(self):
+        configs = [{"camera_id": "cam_0"}]
+        pipelines = {"cam_0": _make_pipeline_with_fps(25.0)}
+        mp = _make_multi_pipeline(
+            configs,
+            errors={"cam_0": {"message": "Wiederholte Frame-Fehler", "timestamp": 1.0, "level": "warning"}},
+            pipelines=pipelines,
+        )
+        monitor = CameraHealthMonitor()
+        result = monitor.check_health(mp)
+        assert result["cam_0"]["status"] == "yellow"
+
+    def test_old_string_error_format(self):
+        """Backward compatibility: string errors still work."""
+        configs = [{"camera_id": "cam_0"}]
+        pipelines = {"cam_0": _make_pipeline_with_fps(25.0)}
         mp = _make_multi_pipeline(configs, errors={"cam_0": "Disconnected"}, pipelines=pipelines)
         monitor = CameraHealthMonitor()
         result = monitor.check_health(mp)
@@ -60,7 +86,11 @@ class TestCameraHealthMonitor:
     def test_error_overrides_low_fps(self):
         configs = [{"camera_id": "cam_0"}]
         pipelines = {"cam_0": _make_pipeline_with_fps(5.0)}
-        mp = _make_multi_pipeline(configs, errors={"cam_0": "Timeout"}, pipelines=pipelines)
+        mp = _make_multi_pipeline(
+            configs,
+            errors={"cam_0": {"message": "Timeout", "timestamp": 1.0, "level": "error"}},
+            pipelines=pipelines,
+        )
         monitor = CameraHealthMonitor()
         result = monitor.check_health(mp)
         assert result["cam_0"]["status"] == "red"

@@ -294,6 +294,11 @@ class FrameDiffDetector:
 
     def _handle_idle(self, frame: np.ndarray, has_motion: bool) -> DartDetection | None:
         if has_motion:
+            # Warmup guard: if baseline was never set (e.g. after reset/seek),
+            # force-initialize it from this frame so subsequent diffs work.
+            if self._baseline is None:
+                self._baseline = frame.copy()
+                logger.debug("FrameDiff: Baseline warmup — forced from first frame")
             # Motion detected — freeze baseline at last stable frame, switch state
             self._state = _State.IN_MOTION
             self._settle_count = 0
@@ -312,7 +317,9 @@ class FrameDiffDetector:
         self._state = _State.SETTLING
         self._settle_count = 1
         logger.debug("FrameDiff: IN_MOTION → SETTLING (settle_count=1)")
-        return None
+        # Fall through to settling handler so the first calm frame
+        # already populates the diff cache and stability centroids.
+        return self._handle_settling(frame, has_motion)
 
     def _handle_settling(self, frame: np.ndarray, has_motion: bool) -> DartDetection | None:
         if has_motion:

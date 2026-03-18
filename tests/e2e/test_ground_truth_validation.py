@@ -92,10 +92,12 @@ def _run_pipeline_on_video(video_path: str) -> list[dict]:
         if hasattr(pipeline.camera, "capture"):
             pipeline.camera.capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
-        # Reset detectors
+        # Reset detectors and pipeline state
         pipeline.motion_detector.reset()
         pipeline.frame_diff_detector.reset()
         pipeline.dart_detector.reset()
+        pipeline._motion_filter.reset()
+        pipeline._frame_counter = 0
 
         # Phase 2: Process frames
         real_read = pipeline.camera.read
@@ -129,11 +131,11 @@ def _run_pipeline_on_video(video_path: str) -> list[dict]:
     return darts
 
 
-@pytest.mark.xfail(
-    reason="Pipeline detection on real videos not yet accurate enough — "
-           "baseline warmup and tuning needed (see P1/P11 priorities)",
-    strict=False,
-)
+# Videos where MOG2 motion sensitivity is too low for reliable detection
+# (short clips with subtle dart motion). Separate issue from baseline warmup.
+_MOTION_SENSITIVITY_XFAIL = {"1.mp4", "2.mp4"}
+
+
 @pytest.mark.parametrize(
     "video_path,fname,gt_entry",
     _ANNOTATED,
@@ -146,6 +148,12 @@ def test_detection_count_within_range(video_path: str, fname: str, gt_entry: dic
     expected throws and does not produce more than 3x false positives.
     These thresholds should be tightened as detection accuracy improves.
     """
+    if fname in _MOTION_SENSITIVITY_XFAIL:
+        pytest.xfail(
+            f"{fname}: MOG2 motion sensitivity too low for this video — "
+            "needs motion detector tuning (separate from baseline warmup fix)"
+        )
+
     gt_throws = gt_entry.get("throws", [])
     expected = len([t for t in gt_throws if t.get("ring") != "miss"])
 

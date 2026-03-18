@@ -175,6 +175,9 @@ class DartApp {
         this.ws.on("stereo_progress", (data) => this._updateStereoProgress(data));
         this.ws.on("stereo_result", (data) => this._showStereoResult(data));
 
+        // Camera error reporting via WebSocket (real-time)
+        this.ws.on("camera_errors", (data) => this._onCameraErrors(data));
+
         // Darts removed
         this.ws.on("darts_removed", () => {
             this.dartboard.clearHits();
@@ -1604,13 +1607,18 @@ class DartApp {
                         errTitle.textContent = "Kamera-Fehler:";
                         info.appendChild(errTitle);
                         errorIds.forEach(camId => {
+                            const errInfo = errors[camId];
+                            const msg = typeof errInfo === "object" ? errInfo.message : errInfo;
+                            const level = typeof errInfo === "object" ? (errInfo.level || "error") : "error";
                             info.appendChild(document.createElement("br"));
                             const errLine = document.createElement("span");
-                            errLine.style.color = "#ff4757";
-                            errLine.textContent = camId + ": " + errors[camId];
+                            errLine.style.color = level === "warning" ? "#ffa502" : "#ff4757";
+                            errLine.textContent = camId + ": " + (msg || "Unbekannter Fehler");
                             info.appendChild(errLine);
                         });
                     }
+                    // Update video grid badges from status data
+                    this._onCameraErrors(errors);
                     // Fetch and show readiness info
                     this._fetchReadiness(info);
                     this._refreshSetupGuide();
@@ -1657,6 +1665,42 @@ class DartApp {
                 }
             }
         } catch (e) { /* ignore */ }
+    }
+
+    _onCameraErrors(errors) {
+        if (!errors || typeof errors !== "object") return;
+        const errorIds = Object.keys(errors);
+
+        // Update status badges in video grid
+        this.activeCameraIds.forEach(camId => {
+            const badge = document.getElementById("cam-status-" + camId);
+            if (!badge) return;
+            const errInfo = errors[camId];
+            if (errInfo) {
+                const msg = typeof errInfo === "object" ? errInfo.message : errInfo;
+                const level = typeof errInfo === "object" ? errInfo.level : "error";
+                badge.className = "cam-status-badge cam-health-" + (level === "warning" ? "yellow" : "red");
+                badge.title = msg || "Fehler";
+                badge.textContent = level === "warning" ? "\u26A0" : "\u2716";
+            } else {
+                badge.className = "cam-status-badge cam-health-green";
+                badge.title = "OK";
+                badge.textContent = "\u2714";
+            }
+        });
+
+        // Show error notification for new errors
+        errorIds.forEach(camId => {
+            const errInfo = errors[camId];
+            const msg = typeof errInfo === "object" ? errInfo.message : errInfo;
+            const level = typeof errInfo === "object" ? errInfo.level : "error";
+            if (level === "error") {
+                this._showError("Kamera " + camId + ": " + msg);
+            }
+        });
+
+        // Also refresh the multi-cam status panel
+        this._refreshMultiCamStatus();
     }
 
     async _fetchReadiness(infoEl) {
@@ -1847,6 +1891,7 @@ class DartApp {
         this.activeCameraIds.forEach(camId => {
             const container = document.createElement("div");
             container.className = "video-container multi-video-cell";
+            container.style.position = "relative";
 
             const img = document.createElement("img");
             img.src = "/video/feed/" + encodeURIComponent(camId);
@@ -1856,6 +1901,15 @@ class DartApp {
             const label = document.createElement("div");
             label.className = "multi-video-label";
             label.textContent = camId;
+
+            // Per-camera status badge
+            const badge = document.createElement("span");
+            badge.id = "cam-status-" + camId;
+            badge.className = "cam-status-badge cam-health-green";
+            badge.title = "OK";
+            badge.textContent = "\u2714";
+            label.appendChild(document.createTextNode(" "));
+            label.appendChild(badge);
 
             container.appendChild(img);
             container.appendChild(label);

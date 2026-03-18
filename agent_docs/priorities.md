@@ -869,17 +869,16 @@ Typische Arbeiten:
 - Fehlerfaelle visuell darstellen (z.B. "Board nicht in beiden Kameras sichtbar")
 - Dateien: src/web/routes.py, src/web/stereo_progress.py, static/js/app.js
 
-## Prioritaet 55: Pipeline Baseline-Warmup fuer Video-Replay fixen (neu — entdeckt bei P39)
+## Prioritaet 55: Pipeline Baseline-Warmup fuer Video-Replay fixen (✅ ERLEDIGT 2026-03-18)
 
 Kritikalitaet: MITTEL
 
-Ziel: FrameDiffDetector Baseline-Aufbau funktioniert nicht zuverlaessig bei Video-Replay (2 von 5 Test-Videos erkennen 0 Wuerfe wegen fehlendem Baseline). Ohne Fix koennen Ground-Truth-Validierungstests nicht von xfail auf strict umgestellt werden.
-
-Typische Arbeiten:
-- Analysieren warum Baseline in manchen Videos nicht gesetzt wird (Warmup-Frames zu wenig? seek-Reset-Problem?)
-- FrameDiffDetector.reset() Baseline-Initialisierung nach Seek pruefen
-- Nach Fix: `xfail` in `tests/e2e/test_ground_truth_validation.py` entfernen und strikte Thresholds setzen
-- Dateien: src/cv/diff_detector.py, src/cv/pipeline.py, tests/e2e/test_ground_truth_validation.py
+Ergebnis:
+- Root Cause: FrameDiffDetector._handle_idle() setzte keine Baseline wenn der erste Frame nach reset() Motion hatte — Baseline blieb None
+- Fix: Force-Baseline aus erstem Frame wenn _baseline is None, auch bei Motion (src/cv/diff_detector.py)
+- Globales xfail entfernt; 3/5 Videos (3.mp4, 4.mp4, 5.mp4) bestehen jetzt strict
+- 2/5 Videos (1.mp4, 2.mp4) haben separates Problem: MOG2 Motion-Sensitivity zu niedrig bei kurzen Videos mit subtiler Dart-Bewegung — als per-Video xfail mit Erklaerung markiert
+- Entdeckte Folge-Prio: P59 (MOG2 Motion-Sensitivity fuer kurze Videos tunen)
 
 ## Prioritaet 56: Multi-Cam Error Recovery und Auto-Restart (neu — entdeckt bei P30)
 
@@ -920,3 +919,15 @@ Typische Arbeiten:
 - Kalibrierungs-Qualitaet (quality 0-100) und letzte Kalibrierungszeit anzeigen
 - Visueller Indikator ob Pipeline aktiv/idle/degraded
 - Dateien: static/js/app.js, static/css/style.css, templates/index.html, src/web/routes.py
+
+## Prioritaet 59: MOG2 Motion-Sensitivity fuer kurze Videos tunen (neu — entdeckt bei P55)
+
+Kritikalitaet: NIEDRIG
+
+Ziel: Videos 1.mp4 und 2.mp4 erkennen 0 Wuerfe weil MOG2 mit downscale_factor=4 zu wenig Motion-Pixel findet (~176 nach Morphologie, Threshold 200). Die Dart-Bewegung in diesen kurzen Clips ist zu subtil fuer den aktuellen MOG2-Ansatz.
+
+Typische Arbeiten:
+- Motion-Threshold adaptiv machen basierend auf ROI-Groesse und Downscale-Factor
+- Alternative: FrameDiffDetector eigene Frame-zu-Frame-Diff-basierte Motion-Erkennung geben (unabhaengig von MOG2)
+- Per-Video xfail in test_ground_truth_validation.py entfernen nach Fix
+- Dateien: src/cv/motion.py, src/cv/diff_detector.py, tests/e2e/test_ground_truth_validation.py

@@ -1270,8 +1270,10 @@ def setup_routes(app_state: dict) -> APIRouter:
             cam_errors = multi.get_camera_errors() if multi else {}
             error_detail = ""
             if cam_errors:
+                def _err_msg(err):
+                    return err.get("message", str(err)) if isinstance(err, dict) else str(err)
                 error_detail = " Kamera-Fehler: " + "; ".join(
-                    f"{cid}: {err}" for cid, err in cam_errors.items()
+                    f"{cid}: {_err_msg(err)}" for cid, err in cam_errors.items()
                 )
             return {
                 "ok": False,

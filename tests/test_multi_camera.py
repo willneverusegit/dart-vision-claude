@@ -271,3 +271,70 @@ class TestThreadSafety:
         assert errors == []
         # Buffer should have at most 3 entries (one per camera, latest wins)
         assert len(pipeline._detection_buffer) <= 3
+
+
+class TestCameraErrorReporting:
+    """Tests for P30: Camera error reporting."""
+
+    def test_set_camera_error(self):
+        """_set_camera_error stores error with timestamp and level."""
+        pipeline = MultiCameraPipeline(camera_configs=[], load_config_from_yaml=False)
+        pipeline._set_camera_error("cam_0", "Kamera nicht erreichbar", level="error")
+        errors = pipeline.get_camera_errors()
+        assert "cam_0" in errors
+        assert errors["cam_0"]["message"] == "Kamera nicht erreichbar"
+        assert errors["cam_0"]["level"] == "error"
+        assert "timestamp" in errors["cam_0"]
+
+    def test_set_camera_warning(self):
+        """Warning-level errors are stored correctly."""
+        pipeline = MultiCameraPipeline(camera_configs=[], load_config_from_yaml=False)
+        pipeline._set_camera_error("cam_0", "Frame-Fehler", level="warning")
+        errors = pipeline.get_camera_errors()
+        assert errors["cam_0"]["level"] == "warning"
+
+    def test_clear_camera_error(self):
+        """_clear_camera_error removes the error."""
+        pipeline = MultiCameraPipeline(camera_configs=[], load_config_from_yaml=False)
+        pipeline._set_camera_error("cam_0", "Fehler")
+        assert "cam_0" in pipeline.get_camera_errors()
+        pipeline._clear_camera_error("cam_0")
+        assert "cam_0" not in pipeline.get_camera_errors()
+
+    def test_clear_nonexistent_error_is_noop(self):
+        """Clearing a non-existent error should not crash."""
+        pipeline = MultiCameraPipeline(camera_configs=[], load_config_from_yaml=False)
+        pipeline._clear_camera_error("cam_99")  # should not raise
+
+    def test_error_callback_called(self):
+        """on_camera_errors_changed callback is invoked on error."""
+        cb = MagicMock()
+        pipeline = MultiCameraPipeline(
+            camera_configs=[], on_camera_errors_changed=cb, load_config_from_yaml=False
+        )
+        pipeline._set_camera_error("cam_0", "test error")
+        assert cb.called
+        args = cb.call_args[0][0]
+        assert "cam_0" in args
+        assert args["cam_0"]["message"] == "test error"
+
+    def test_callback_on_clear(self):
+        """on_camera_errors_changed callback is invoked when error is cleared."""
+        cb = MagicMock()
+        pipeline = MultiCameraPipeline(
+            camera_configs=[], on_camera_errors_changed=cb, load_config_from_yaml=False
+        )
+        pipeline._set_camera_error("cam_0", "test error")
+        cb.reset_mock()
+        pipeline._clear_camera_error("cam_0")
+        assert cb.called
+        args = cb.call_args[0][0]
+        assert "cam_0" not in args
+
+    def test_get_camera_errors_returns_copy(self):
+        """get_camera_errors returns a copy, not a reference."""
+        pipeline = MultiCameraPipeline(camera_configs=[], load_config_from_yaml=False)
+        pipeline._set_camera_error("cam_0", "test")
+        errors = pipeline.get_camera_errors()
+        errors.clear()
+        assert "cam_0" in pipeline.get_camera_errors()

@@ -1448,3 +1448,15 @@ a:focus-visible,
 .cam-health-green { background-color: var(--cam-health-green); }
 .cam-health-yellow { background-color: var(--cam-health-yellow); }
 .cam-health-red { background-color: var(--cam-health-red); }
+
+.cam-status-badge {
+    display: inline-block;
+    font-size: 0.85em;
+    font-weight: bold;
+    margin-left: 4px;
+    vertical-align: middle;
+    cursor: help;
+}
+.cam-status-badge.cam-health-green { color: var(--cam-health-green); }
+.cam-status-badge.cam-health-yellow { color: var(--cam-health-yellow); }
+.cam-status-badge.cam-health-red { color: var(--cam-health-red); }
