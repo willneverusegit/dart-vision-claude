@@ -121,5 +121,26 @@
     },
     "tags": ["python", "opencv", "tip-detection", "subpixel", "accuracy"],
     "status": "active"
+  },
+  {
+    "id": "2026-03-18-configurable-marker-params",
+    "timestamp": "2026-03-18T02:30:00+01:00",
+    "type": "architecture-decision",
+    "title": "Konfigurierbare ArUco-Marker-Parameter (marker_size_mm, marker_spacing_mm)",
+    "decision": "marker_size_mm und marker_spacing_mm als optionale Parameter in aruco_calibration() und DartPipeline-Konstruktor. Fallback-Kette: expliziter Arg > Config-YAML > Modul-Konstante (75mm/430mm). CLI-Args --marker-size und --marker-spacing.",
+    "rationale": "Testvideos nutzen andere Marker (100mm Kante, ~365mm Spacing) als der aktuelle Aufbau (75mm/430mm). Ohne Konfigurierbarkeit wuerde mm_per_px falsch berechnet, Scoring unbrauchbar. Beide Setups muessen mit derselben Codebasis funktionieren.",
+    "alternatives_considered": [
+      {
+        "option": "Separate Kalibrierungs-Config-Dateien pro Setup",
+        "rejected_because": "Overkill fuer zwei Parameter. Config-per-Camera existiert schon, marker_size_mm wird dort gespeichert."
+      }
+    ],
+    "impact": {
+      "files_affected": ["src/cv/calibration.py", "src/cv/board_calibration.py", "src/cv/pipeline.py", "config/calibration_config.yaml"],
+      "reversibility": "easy",
+      "dependencies": []
+    },
+    "tags": ["python", "opencv", "calibration", "aruco", "configuration"],
+    "status": "active"
   }
 ]

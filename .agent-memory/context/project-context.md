@@ -1,6 +1,6 @@
 # Project Context — DartVision
 
-*Last updated: 2026-03-18 (P38 Tier-1 Detection-Optimierungen, konsolidierter Optimierungsplan in priorities.md)*
+*Last updated: 2026-03-18 (P39 Video-Testinfra + Recording-Feature, P40-P43 in Prios aufgenommen)*
 
 ## Projektziel
 Lokales Dart-Scoring-System mit Computer Vision zur automatischen Treffererkennung auf einer Dartscheibe. CPU-only, Windows-Laptop, kein Cloud-Zwang.
@@ -13,7 +13,7 @@ Lokales Dart-Scoring-System mit Computer Vision zur automatischen Treffererkennu
 | Backend | FastAPI | — | REST + WebSocket |
 | CV | OpenCV + NumPy | — | CPU-only, keine GPU |
 | Frontend | Vanilla JS / HTML / CSS | — | Web Audio API |
-| Tests | pytest | — | 625 Tests, ~73% Coverage |
+| Tests | pytest | — | 634 Tests, ~73% Coverage |
 | Config | YAML | — | calibration_config.yaml |
 
 ## Architektur
@@ -57,7 +57,10 @@ ThreadedCamera
 | Diff-Diagnostics | neu | Speichert Diff-Masken/Konturen bei jedem Treffer (DARTVISION_DIAGNOSTICS_DIR) |
 | Live Tuning | stabil | CV-Parameter-API, Frontend-Slider, Diagnostics-Toggle, Tuning-Guide mit Latenz-Kapitel |
 | Light Theme | stabil | P23 — Toggle im Header, localStorage, prefers-color-scheme |
-| E2E echte Clips | offen | P11 — synthetisch OK, echte Clips fehlen |
+| Video Recording | stabil | P39 — VideoRecorder Klasse, API-Endpoints, UI Rec-Button, CLI-Script |
+| Video Replay Tests | stabil | P39 — 8 Testvideos (100mm Marker, 365mm Spacing), E2E-Tests, Batch-Script |
+| Configurable Markers | stabil | P39 — marker_size_mm + marker_spacing_mm konfigurierbar (CLI + Config) |
+| E2E echte Clips | in Arbeit | P11/P39 — Infra steht, Ground-Truth-Annotation der Videos ausstehend |
 
 ## Key Decisions (quick reference)
 
@@ -67,6 +70,9 @@ ThreadedCamera
 - **2026-03-18**: 3-Stufen-Morphologie (Opening→Closing→Elongated) — Board-Draehte filtern + groessere Shaft-Luecken schliessen (→ decisions.json#2026-03-18-three-stage-morphology)
 - **2026-03-18**: Sub-Pixel Tip Refinement via cornerSubPix — 0.1-0.5px Genauigkeit an Ring/Sektor-Grenzen (→ decisions.json#2026-03-18-subpixel-tip-refinement)
 - **2026-03-18**: Konsolidierter Detection-Optimierungsplan mit 33 Ideen in 5 Tiers in priorities.md
+- **2026-03-18**: Configurable ArUco marker_size_mm + marker_spacing_mm — Testvideos nutzen andere Marker (100mm/365mm vs. 75mm/430mm) (→ decisions.json#2026-03-18-configurable-marker-params)
+- **2026-03-18**: P39-P43 aus pipeline_patterns.md in Priorities aufgenommen (Video-Testinfra, Adaptive Thresholds, Edge Cache, Cooldown, Modulare Components)
+- **2026-03-18**: Webcam-Empfehlung: 2x Logitech C270 fuer Multi-Cam-Setup
 
 ## Known Limitations / Tech Debt
 
@@ -78,4 +84,6 @@ ThreadedCamera
 
 - ~~Wie verhalten sich diff_threshold=50 und settle_frames=5 am echten Board?~~ → Realtest 17.03: Erkennung funktioniert, aber Latenz zu hoch. motion_threshold ist Flaschenhals.
 - Multi-Cam: P29-P32 implementiert, Integration noch nicht live getestet
-- Kamera-Qualitaet: ID 0 (schlechte Cam) zeigt Latenz-Probleme — bessere Kamera testen
+- Kamera-Qualitaet: ID 0 (schlechte Cam) zeigt Latenz-Probleme — 2x Logitech C270 bestellt/geplant
+- Ground-Truth-Annotation der 8 Testvideos noch ausstehend (User annotiert manuell in testvids/ground_truth.yaml)
+- Testvideos: Marker-Spacing 365mm muss am Board verifiziert werden (Berechnung: 480mm - 100mm - ~15mm Rand)

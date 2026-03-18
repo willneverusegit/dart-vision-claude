@@ -48,6 +48,8 @@ app_state: dict = {
     "multi_pipeline_stop_event": None, # threading.Event for multi pipeline thread
     "pipeline_thread": None,           # threading.Thread handle
     "multi_pipeline_thread": None,     # threading.Thread handle
+    # Video recorder
+    "recorder": None,                  # VideoRecorder instance
 }
 
 
@@ -196,6 +198,11 @@ def _run_pipeline(state: dict, stop_event: threading.Event | None = None,
                 annotated = pipeline.get_annotated_frame()
                 if annotated is not None:
                     state["latest_frame"] = annotated
+                # Record raw frame if recording is active
+                recorder = state.get("recorder")
+                raw = pipeline.get_latest_raw_frame()
+                if recorder is not None and raw is not None:
+                    recorder.write(raw)
             except Exception as frame_err:
                 logger.debug("Frame processing error: %s", frame_err)
 
@@ -385,6 +392,10 @@ async def lifespan(app: FastAPI):
     app_state["shutdown_event"] = threading.Event()
     app_state["pending_hits_lock"] = threading.Lock()
     app_state["pipeline_lock"] = threading.Lock()  # A1: pipeline lifecycle guard
+
+    # Video recorder for capturing test clips
+    from src.cv.recorder import VideoRecorder
+    app_state["recorder"] = VideoRecorder()
 
     # Telemetry history
     telemetry = TelemetryHistory(max_samples=300, fps_alert_threshold=15.0, queue_alert_threshold=0.8)

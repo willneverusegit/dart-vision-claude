@@ -1,0 +1,51 @@
+# Ground Truth Annotation fuer Testvideos
+#
+# Setup: Winmau Blade 6, schwarzer Holzrahmen
+#   Rahmen innen: 480mm
+#   ArUco Marker: 100mm (DICT_4X4_50), IDs 0-3
+#   Marker Mitte-Mitte: ~365mm
+#   Marker Rand zum Rahmen: 5-10mm
+#
+# Fuer jedes Video die getroffenen Felder eintragen.
+# Format pro Wurf:
+#   - sector: Zahlensegment (1-20, 25 fuer Bull)
+#   - ring: "single", "double", "triple", "bull_inner", "bull_outer"
+#   - timestamp_s: ungefaehre Sekunde im Video (optional, hilft bei Zuordnung)
+#
+# Beispiel:
+#   - {sector: 20, ring: "triple", timestamp_s: 3.2}
+#   - {sector: 25, ring: "bull_inner", timestamp_s: 8.1}
+
+videos:
+  1.mp4:
+    description: ""
+    throws: []
+    #  - {sector: , ring: "", timestamp_s: }
+
+  2.mp4:
+    description: ""
+    throws: []
+
+  3.mp4:
+    description: ""
+    throws: []
+
+  4.mp4:
+    description: ""
+    throws: []
+
+  5.mp4:
+    description: ""
+    throws: []
+
+  6.mp4:
+    description: ""
+    throws: []
+
+  7.mp4:
+    description: ""
+    throws: []
+
+  8.mp4:
+    description: ""
+    throws: []

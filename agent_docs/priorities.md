@@ -665,3 +665,66 @@ Priorisiert nach **Nuetzlichkeit fuer unser Setup** (Single-Cam Hauptpfad, CPU-o
 6. **#28-33 Quick-Wins** — Schnell umsetzbar, kumulativer Effekt
 7. **#8 Camera Sharpness** — Automatische Kompensation fuer verschiedene Kameras
 8. **#16 Zweite Kamera** — Sprung auf 99%+ Genauigkeit
+
+---
+
+## Prioritaet 39: Video-Replay-Testinfrastruktur
+
+Ziel: Testvideos (`testvids/`) als Validierungsgrundlage fuer die Detection-Pipeline nutzen.
+
+Typische Arbeiten:
+- ArUco-Marker-Groesse konfigurierbar machen (nicht hardcoded 75mm)
+- Batch-Test-Script fuer alle Videos (`scripts/test_all_videos.py`)
+- E2E-pytest-Tests mit echten Videoaufnahmen
+- Testvideos nutzen 100mm (10x10cm) Marker, DICT_4X4_50
+
+Warum kritisch: Ohne echte Videovalidierung bleiben Algorithmus-Aenderungen ungetestet. Grundlage fuer P11 (E2E Tests mit echten Clips).
+
+**Status:** Infrastruktur implementiert (marker_size_mm konfigurierbar, Batch-Script, pytest). Noch ausstehend: Ground-Truth-Annotation der Videos.
+
+## Prioritaet 40: Adaptive Thresholds (Otsu-Bias + Search Mode)
+
+Quelle: `pipeline_patterns.md` Pattern #4
+
+Ziel: Helligkeitsadaptive Schwellwerte fuer robustere Erkennung bei wechselnden Lichtverhaeltnissen.
+
+Typische Arbeiten:
+- Otsu-Bias basierend auf Frame-Helligkeit
+- Search Mode: nach 90 Frames Stille aggressivere Threshold-Suche aktivieren
+- Optional: Dual-Threshold Fusion (zwei Schwellwerte parallel, Union der Ergebnisse)
+
+Warum wichtig: Aktuelle feste Thresholds funktionieren nur bei stabiler Beleuchtung. Adaptive Schwellwerte erhoehen Robustheit ohne CPU-Mehrkosten.
+
+## Prioritaet 41: Edge Cache (Canny-Reuse pro Frame)
+
+Quelle: `pipeline_patterns.md` Pattern #5
+
+Ziel: Canny-Edges einmal pro Frame berechnen und fuer alle Contour-Operationen wiederverwenden.
+
+Erwarteter Gewinn: 15-25% CPU-Einsparung bei der Contour-Analyse.
+
+Warum sinnvoll: Einfache Optimierung, komplementaer zu #13 (Downscaled Motion) und #33 (Frame-Skip).
+
+## Prioritaet 42: Cooldown Management (raeumlich + zeitlich)
+
+Quelle: `pipeline_patterns.md` Pattern #7
+
+Ziel: Anti-Duplikat-Erkennung nach bestatigtem Treffer.
+
+Typische Arbeiten:
+- 50px Exclusion Zone um bestaetigte Treffer
+- 30-Frame zeitlicher Lockout nach Treffer-Bestaetigung
+- Unterschied zu Tier-2 #14 (Temporal Lock): #14 ignoriert Hand-Motion nach Scoring, P42 verhindert Re-Detektion desselben Darts
+
+## Prioritaet 43: Modulare Detection Components
+
+Quelle: `pipeline_patterns.md` Pattern #10
+
+Ziel: Detection-Stages als eigenstaendige, testbare Klassen extrahieren.
+
+Typische Arbeiten:
+- `MotionFilter`, `TemporalGate`, `ShapeAnalyzer`, `ConfirmationTracker`, `CooldownManager`
+- Einheitliches Interface pro Stage
+- Erleichtert Unit-Tests und Austausch einzelner Algorithmen
+
+Prioritaet: Niedrig (Architektur-Refactoring, kein direkter Feature-Gewinn). Sinnvoll wenn Pipeline-Komplexitaet weiter waechst.

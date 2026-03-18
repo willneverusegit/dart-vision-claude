@@ -591,6 +591,18 @@ body {
     opacity: 1;
 }
 
+.btn--recording {
+    background: var(--accent-red, #e74c3c);
+    color: #fff;
+    opacity: 1;
+    animation: rec-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes rec-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
 /* Game Setup */
 .game-setup {
     padding: 16px;

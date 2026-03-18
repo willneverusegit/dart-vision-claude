@@ -60,12 +60,15 @@ class BoardCalibrationManager:
         expected_ids: list[int] | None = None,
         marker_spacing_mm: float | None = None,
         roi_size: tuple[int, int] | None = None,
+        marker_size_mm: float | None = None,
     ) -> dict:
         kwargs = {}
         if expected_ids is not None:
             kwargs["expected_ids"] = expected_ids
         if marker_spacing_mm is not None:
             kwargs["marker_spacing_mm"] = marker_spacing_mm
+        if marker_size_mm is not None:
+            kwargs["marker_size_mm"] = marker_size_mm
         size = roi_size or self.roi_size
         result = self._legacy.aruco_calibration(frame, roi_size=size, **kwargs)
         if result.get("ok"):

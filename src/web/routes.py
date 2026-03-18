@@ -492,6 +492,57 @@ def setup_routes(app_state: dict) -> APIRouter:
 
         return {"ok": True, "camera_id": cam_id, **config}
 
+    # --- Recording ---
+
+    @router.post("/api/recording/start")
+    async def start_recording(request: Request) -> dict:
+        """Start recording raw camera frames to .mp4 file.
+
+        Body (all optional): {"filename": "test.mp4", "fps": 30}
+        """
+        recorder = app_state.get("recorder")
+        if recorder is None:
+            return {"ok": False, "error": "Recorder nicht initialisiert"}
+        if recorder.is_recording:
+            return {"ok": False, "error": "Aufnahme laeuft bereits", **recorder.status()}
+
+        body = await request.json() if request.headers.get("content-type") == "application/json" else {}
+        filename = body.get("filename")
+        fps = body.get("fps", 30.0)
+
+        # Get frame size from pipeline
+        pipeline = app_state.get("pipeline")
+        frame_size = (640, 480)
+        if pipeline:
+            raw = pipeline.get_latest_raw_frame()
+            if raw is not None:
+                h, w = raw.shape[:2]
+                frame_size = (w, h)
+
+        try:
+            output_path = recorder.start(filename=filename, fps=fps, frame_size=frame_size)
+        except RuntimeError as e:
+            return {"ok": False, "error": str(e)}
+
+        return {"ok": True, "output_path": output_path, **recorder.status()}
+
+    @router.post("/api/recording/stop")
+    async def stop_recording() -> dict:
+        """Stop recording and finalize the video file."""
+        recorder = app_state.get("recorder")
+        if recorder is None:
+            return {"ok": False, "error": "Recorder nicht initialisiert"}
+        summary = recorder.stop()
+        return {"ok": summary.get("stopped", False), **summary}
+
+    @router.get("/api/recording/status")
+    async def recording_status() -> dict:
+        """Get current recording status."""
+        recorder = app_state.get("recorder")
+        if recorder is None:
+            return {"recording": False}
+        return recorder.status()
+
     # --- Calibration ---
 
     async def _run_manual_board_alignment(points: list[list[float]]) -> dict:

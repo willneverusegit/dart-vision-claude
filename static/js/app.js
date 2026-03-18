@@ -23,6 +23,7 @@ class DartApp {
         this._bindKeyboard();
         this._bindOverlayToggles();
         this._bindCaptureSettings();
+        this._bindRecording();
         this._bindMultiCam();
         this._bindCharucoBoardSelectors();
         this._syncCharucoBoardSelectors(this.charucoPreset);
@@ -1025,6 +1026,49 @@ class DartApp {
         // Single-cam switch button
         const btnSingle = document.getElementById("btn-switch-single");
         if (btnSingle) btnSingle.addEventListener("click", () => this._switchToSingle());
+    }
+
+    // --- Recording ---
+
+    _bindRecording() {
+        const btn = document.getElementById("btn-record");
+        if (!btn) return;
+        btn.addEventListener("click", () => this._toggleRecording(btn));
+    }
+
+    async _toggleRecording(btn) {
+        try {
+            const statusRes = await fetch("/api/recording/status");
+            if (!statusRes.ok) { this._showError("Recording-Status nicht verfuegbar"); return; }
+            const status = await statusRes.json();
+
+            if (status.recording) {
+                const res = await fetch("/api/recording/stop", { method: "POST" });
+                if (!res.ok) { this._showError(`Stop-Fehler: ${res.status}`); return; }
+                const data = await res.json();
+                btn.textContent = "Rec";
+                btn.classList.remove("btn--recording");
+                if (data.ok) {
+                    this._showError(`Aufnahme gespeichert: ${data.output_path} (${data.frame_count} Frames)`);
+                }
+            } else {
+                const res = await fetch("/api/recording/start", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({})
+                });
+                if (!res.ok) { this._showError(`Start-Fehler: ${res.status}`); return; }
+                const data = await res.json();
+                if (data.ok) {
+                    btn.textContent = "Stop";
+                    btn.classList.add("btn--recording");
+                } else {
+                    this._showError(data.error || "Aufnahme konnte nicht gestartet werden");
+                }
+            }
+        } catch (e) {
+            this._showError("Recording-Fehler: " + e.message);
+        }
     }
 
     async _loadCaptureConfig() {

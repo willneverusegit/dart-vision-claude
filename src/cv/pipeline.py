@@ -46,8 +46,12 @@ class DartPipeline:
         capture_width: int | None = None,
         capture_height: int | None = None,
         capture_fps: int | None = None,
+        marker_size_mm: float | None = None,
+        marker_spacing_mm: float | None = None,
     ) -> None:
         self.camera_src = camera_src
+        self.marker_size_mm = marker_size_mm
+        self.marker_spacing_mm = marker_spacing_mm
         self.on_dart_detected = on_dart_detected
         self.on_dart_removed = on_dart_removed
         self.debug = debug
@@ -478,6 +482,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Dart Vision CV Pipeline")
     parser.add_argument("--source", default=0, help="Camera source index or replay video path")
     parser.add_argument("--debug", action="store_true", help="Show debug windows")
+    parser.add_argument("--marker-size", type=float, default=None,
+                        help="ArUco marker edge length in mm (default: from config or 75)")
+    parser.add_argument("--marker-spacing", type=float, default=None,
+                        help="ArUco marker center-to-center distance in mm (default: 430)")
     args = parser.parse_args()
 
     source: int | str
@@ -495,7 +503,9 @@ def main() -> None:
         mult = score["multiplier"]
         logger.info("SCORE: %s %d (sector=%d, x%d)", ring, points, sector, mult)
 
-    pipeline = DartPipeline(camera_src=source, on_dart_detected=on_dart, debug=args.debug)
+    pipeline = DartPipeline(camera_src=source, on_dart_detected=on_dart, debug=args.debug,
+                            marker_size_mm=args.marker_size,
+                            marker_spacing_mm=args.marker_spacing)
     try:
         pipeline.start()
         logger.info("Pipeline running. Press Ctrl+C to stop.")

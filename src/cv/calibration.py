@@ -187,7 +187,8 @@ class CalibrationManager:
     def aruco_calibration(self, frame: np.ndarray,
                           expected_ids: list[int] | None = None,
                           marker_spacing_mm: float = MARKER_SPACING_MM,
-                          roi_size: tuple[int, int] = (400, 400)) -> dict:
+                          roi_size: tuple[int, int] = (400, 400),
+                          marker_size_mm: float | None = None) -> dict:
         """
         Detect ArUco markers (4x4_50 dict) and derive calibration.
 
@@ -199,10 +200,16 @@ class CalibrationManager:
             expected_ids: Marker IDs to look for (default: [0,1,2,3]).
             marker_spacing_mm: Physical distance between marker centers (mm).
             roi_size: Target ROI size for warped output.
+            marker_size_mm: ArUco marker edge length in mm (default: config or 75).
 
         Returns:
             {"ok": True, "homography": list, "mm_per_px": float, "corners_px": list}
         """
+        # Resolve marker size: explicit arg > config > module default
+        if marker_size_mm is None:
+            marker_size_mm = float(self._config.get(
+                "aruco_marker_size_mm", ARUCO_MARKER_SIZE_MM))
+
         if expected_ids is None:
             expected_ids = ARUCO_EXPECTED_IDS
 
@@ -334,7 +341,7 @@ class CalibrationManager:
             if abs(det) < 1e-6:
                 return {"ok": False, "error": "Degenerate homography"}
 
-            # Compute mm/px from ArUco marker edge length (75mm).
+            # Compute mm/px from ArUco marker edge length.
             # Each marker has 4 corners — average the edge lengths of all
             # detected markers for a robust per-pixel scale.
             edge_lengths_px = []
@@ -344,7 +351,7 @@ class CalibrationManager:
                     edge = float(np.linalg.norm(mc[(i + 1) % 4] - mc[i]))
                     edge_lengths_px.append(edge)
             avg_edge_px = float(np.mean(edge_lengths_px)) if edge_lengths_px else 1.0
-            mm_per_px = ARUCO_MARKER_SIZE_MM / avg_edge_px
+            mm_per_px = marker_size_mm / avg_edge_px
 
             # A3: Plausibility check on mm/px ratio
             if not (MM_PER_PX_MIN <= mm_per_px <= MM_PER_PX_MAX):
@@ -379,6 +386,7 @@ class CalibrationManager:
                 "marker_spacing_mm": marker_spacing_mm,
                 "board_crop_mm": crop_mm,
                 "marker_corners_px": ordered,
+                "aruco_marker_size_mm": marker_size_mm,
                 "last_update_utc": datetime.now(timezone.utc).isoformat(),
                 "valid": True,
                 "method": "aruco",
