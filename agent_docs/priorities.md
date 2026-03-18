@@ -1075,3 +1075,20 @@ Typische Arbeiten:
 - Alle Stellen in `src/cv/` und `src/game/` pruefen wo Ring-Strings verwendet werden
 - Ground-Truth-Validierung und E2E-Accuracy-Tests verwenden dann konsistente Namen
 - Annotierte Videos 6-8.mp4 in ground_truth.yaml nachtragen (aktuell leere throws-Listen)
+
+## Prioritaet 70: Synchrone Sleeps in async Route-Handlern durch asyncio.sleep ersetzen (neu — entdeckt bei P64)
+
+Kritikalitaet: MITTEL
+
+Ziel:
+
+- Mehrere async Route-Handler in routes.py verwenden `_time.sleep()` (synchrones time.sleep), was den gesamten asyncio Event-Loop blockiert. Betroffen sind `/api/single/start`, `/api/multi/start`, `/api/multi/stop` und `/api/calibration/charuco`. Waehrend der Sleep-Phasen (0.1-0.5s pro Iteration, bis zu 3s insgesamt) werden keine anderen HTTP-Requests oder WebSocket-Messages verarbeitet.
+
+Typische Arbeiten:
+
+- `_time.sleep(0.5)` durch `await asyncio.sleep(0.5)` ersetzen in allen async Handlern
+- Polling-Loops (`for _ in range(30): _time.sleep(0.1)`) durch async-Varianten ersetzen
+- Synchrone Operationen wie `stop_pipeline_thread()` und `start_single_pipeline()` ggf. in `run_in_executor()` wrappen
+- Tests anpassen (async sleeps lassen sich einfacher mocken)
+
+Warum sinnvoll: Blockierende Sleeps in async Handlern verhindern, dass der Server waehrend Pipeline-Start/Stop auf andere Clients reagieren kann. Bei Multi-Cam-Start sind das bis zu 4 Sekunden Event-Loop-Blockade.
