@@ -23,6 +23,18 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
+# Ground-truth YAML uses "bull_inner"/"bull_outer" while the backend pipeline
+# produces "inner_bull"/"outer_bull".  Normalise GT ring names to backend form.
+_GT_RING_ALIASES: dict[str, str] = {
+    "bull_inner": "inner_bull",
+    "bull_outer": "outer_bull",
+}
+
+
+def _normalize_ring(ring: str) -> str:
+    """Translate ground-truth ring names to backend ring names."""
+    return _GT_RING_ALIASES.get(ring, ring)
+
 TESTVIDS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "testvids")
 GT_PATH = os.path.join(TESTVIDS_DIR, "ground_truth.yaml")
 
@@ -152,7 +164,7 @@ def _format_throw_report(
     for i, gt in enumerate(non_miss):
         ts = gt.get("timestamp_s", "?")
         sector = gt.get("sector", "?")
-        ring = gt.get("ring", "?")
+        ring = _normalize_ring(gt.get("ring", "?"))
 
         # Try to find a matching detection (simple: by order)
         det_idx = i if i < len(darts) else None
@@ -213,7 +225,7 @@ def test_detection_count_within_range(video_path: str, fname: str, gt_entry: dic
     """
 
     gt_throws = gt_entry.get("throws", [])
-    expected = len([t for t in gt_throws if t.get("ring") != "miss"])
+    expected = len([t for t in gt_throws if _normalize_ring(t.get("ring", "miss")) != "miss"])
 
     if expected == 0:
         pytest.skip(f"{fname}: no non-miss throws annotated")

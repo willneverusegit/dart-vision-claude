@@ -1064,7 +1064,7 @@ Typische Arbeiten:
 
 Warum sinnvoll: Ermoeglicht gezielte Regression-Tests pro Wurf und identifiziert systematische Schwaechen (z.B. "Pipeline verpasst immer den ersten Wurf nach Kalibrierung").
 
-## Prioritaet 69: Ring-Naming-Konsistenz zwischen Ground-Truth und Backend vereinheitlichen (neu — entdeckt bei P11)
+## Prioritaet 69: Ring-Naming-Konsistenz zwischen Ground-Truth und Backend vereinheitlichen (✅ ERLEDIGT 2026-03-18)
 
 Kritikalitaet: MITTEL
 
@@ -1079,6 +1079,8 @@ Typische Arbeiten:
 - Alle Stellen in `src/cv/` und `src/game/` pruefen wo Ring-Strings verwendet werden
 - Ground-Truth-Validierung und E2E-Accuracy-Tests verwenden dann konsistente Namen
 - Annotierte Videos 6-8.mp4 in ground_truth.yaml nachtragen (aktuell leere throws-Listen)
+
+**Umsetzung:** Backend behaelt `inner_bull`/`outer_bull` (geometry.py, routes.py, game/). Ground-Truth YAML und calibration.py behalten `bull_inner`/`bull_outer` (physische Ring-Radien). Mapping-Layer `normalize_gt_ring()` in `tests/e2e/accuracy.py` und `_normalize_ring()` in `tests/e2e/test_ground_truth_validation.py` uebersetzen GT-Ringnamen auf Backend-Form bei Vergleichen. Geaenderte Dateien: `tests/e2e/accuracy.py`, `tests/e2e/test_ground_truth_validation.py`, `agent_docs/priorities.md`.
 
 ## Prioritaet 70: Synchrone Sleeps in async Route-Handlern durch asyncio.sleep ersetzen (neu — entdeckt bei P64)
 
@@ -1130,3 +1132,19 @@ Typische Arbeiten:
 - Separate Metriken fuer stable vs. unstable Wuerfe im Report
 
 Warum sinnvoll: Verhindert Regressionen bei CV-Aenderungen, ohne dass alle Wuerfe (inkl. schwieriger Edge Cases) gruen sein muessen.
+
+## Prioritaet 75: test_checkout.py ImportError fixen (_STANDARD_CHECKOUTS) (neu — entdeckt bei P69)
+
+Kritikalitaet: HOCH
+
+Ziel:
+
+- `tests/test_checkout.py::TestStandardCheckouts::test_all_standard_scores_valid` schlaegt fehl mit `ImportError: cannot import name '_STANDARD_CHECKOUTS' from 'src.game.checkout'`. Entweder wurde das Symbol umbenannt/entfernt oder der Test ist veraltet.
+
+Typische Arbeiten:
+
+- Pruefen ob `_STANDARD_CHECKOUTS` in checkout.py existiert oder umbenannt wurde
+- Test anpassen oder fehlende Datenstruktur wiederherstellen
+- Dateien: `src/game/checkout.py`, `tests/test_checkout.py`
+
+Warum sinnvoll: Bricht die gesamte Test-Suite mit `-x` ab, blockiert CI.
