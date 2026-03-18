@@ -728,3 +728,33 @@ Typische Arbeiten:
 - Erleichtert Unit-Tests und Austausch einzelner Algorithmen
 
 Prioritaet: Niedrig (Architektur-Refactoring, kein direkter Feature-Gewinn). Sinnvoll wenn Pipeline-Komplexitaet weiter waechst.
+
+## Prioritaet 44: Multi-Cam Integration Phase 1 — Camera Profiles & Detection Quality
+
+Quelle: Multi-Cam-Integrationsplan (Session 2026-03-18)
+
+Ziel: Heterogene Kameras (verschiedene Aufloesungen, FPS, Sensoren) korrekt handhaben und Detection-Quality-Metriken einfuehren.
+
+Typische Arbeiten:
+- Per-Camera Capture-Profile in `config/multi_cam.yaml` (resolution, fps, exposure, diff_threshold, priority)
+- Per-Camera `target_fps` in `multi_camera.py` statt globalem `_TARGET_FPS=30`
+- `set_exposure()`/`set_gain()` in `capture.py`
+- `quality`-Feld in `DartDetection`, berechnet aus Contour-Elongation, Area, Tip-Erfolg
+- `viewing_angle_quality` aus Homography-Determinante in `board_calibration.py`
+
+Plan-Datei: `.claude/plans/shimmying-knitting-corbato.md` (Phasen 1+2)
+
+## Prioritaet 45: Multi-Cam Integration Phase 2 — Sync, Governors, Multi-Pair Triangulation
+
+Quelle: Multi-Cam-Integrationsplan (Session 2026-03-18)
+
+Ziel: Konfigurierbare Sync-Fenster, adaptive FPS-Reduktion, und Multi-Pair-Triangulation fuer 3+ Kameras.
+
+Typische Arbeiten:
+- 2-Tier Sync-Logik (sync_wait_ms=300, max_time_diff_ms=150)
+- Adaptive Z-Toleranz (auto-expand bei hoher Rejection-Rate)
+- `FPSGovernor`-Klasse fuer CPU-Last-Management
+- `triangulate_multi_pair()` mit Outlier-Rejection und gewichtetem Durchschnitt
+- Reproj-Error-Normalisierung nach Bilddiagonale
+
+Plan-Datei: `.claude/plans/shimmying-knitting-corbato.md` (Phasen 3-5)

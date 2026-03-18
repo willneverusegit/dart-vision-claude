@@ -48,7 +48,7 @@ class TestCameraFailureFallback:
             "camera_id": "cam_left",
             "score_result": {"score": 20, "ring": "single", "sector": 20, "multiplier": 1, "total_score": 20},
             "detection": FakeDetection(confidence=0.85),
-            "timestamp": time.time() - MAX_DETECTION_TIME_DIFF_S - 0.05,
+            "timestamp": time.time() - 0.5,  # older than sync_wait_s (0.3s default)
         }
 
         pipeline._try_fuse()
@@ -109,7 +109,7 @@ class TestZBehindBoard:
                 valid=False,  # Z < 0 → invalid
             )
 
-        monkeypatch.setattr("src.cv.multi_camera.triangulate_point", fake_triangulate)
+        monkeypatch.setattr("src.cv.stereo_utils.triangulate_point", fake_triangulate)
 
         now = time.time()
         pipeline._detection_buffer["cam_left"] = {
@@ -150,7 +150,7 @@ class TestZBehindBoard:
                 valid=True,
             )
 
-        monkeypatch.setattr("src.cv.multi_camera.triangulate_point", fake_triangulate)
+        monkeypatch.setattr("src.cv.stereo_utils.triangulate_point", fake_triangulate)
 
         now = time.time()
         pipeline._detection_buffer["cam_left"] = {

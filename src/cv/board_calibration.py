@@ -91,6 +91,24 @@ class BoardCalibrationManager:
         self._legacy._atomic_save()
         logger.info("Board optical center persisted: (%.2f, %.2f)", optical_center[0], optical_center[1])
 
+    def get_viewing_angle_quality(self) -> float:
+        """Compute viewing angle quality from homography determinant.
+
+        Frontal view = 1.0, steep angle = 0.3-0.7.
+        Returns 0.0 if no valid calibration.
+        """
+        import math
+        H = self.get_homography()
+        if H is None:
+            return 0.0
+        det = abs(np.linalg.det(H))
+        if det <= 0:
+            return 0.0
+        log_det = math.log10(det)
+        # Map log_det from [-2, 2] to [0.3, 1.0]
+        quality = 0.3 + 0.7 * max(0.0, min(1.0, (log_det + 2.0) / 4.0))
+        return round(quality, 3)
+
     def has_valid_intrinsics(self) -> bool:
         """Check if this camera has valid lens intrinsics (camera_matrix)."""
         from src.cv.camera_calibration import CameraCalibrationManager

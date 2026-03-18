@@ -28,6 +28,67 @@ class CameraCalibrationManager:
     def get_config(self) -> dict:
         return self._config_io.get_config()
 
+    def validate_intrinsics(self, current_image_size: tuple[int, int] | None = None, max_age_days: int = 30) -> dict:
+        """Validate that lens intrinsics are present, accurate, and current.
+
+        Args:
+            current_image_size: (width, height) of current capture. If provided, checks match.
+            max_age_days: Maximum age of calibration in days.
+
+        Returns:
+            dict with 'valid' (bool), 'errors' (list[str]), 'warnings' (list[str])
+        """
+        errors: list[str] = []
+        warnings: list[str] = []
+
+        cfg = self._config_io.get_config()
+
+        # Check intrinsics exist
+        if not cfg.get("lens_valid", False):
+            errors.append("Keine Lens-Kalibrierung vorhanden")
+            return {"valid": False, "errors": errors, "warnings": warnings}
+
+        if not cfg.get("camera_matrix") or not cfg.get("dist_coeffs"):
+            errors.append("camera_matrix oder dist_coeffs fehlen")
+            return {"valid": False, "errors": errors, "warnings": warnings}
+
+        # Check camera_matrix shape
+        try:
+            cm = np.array(cfg["camera_matrix"])
+            if cm.shape != (3, 3):
+                errors.append(f"camera_matrix hat falsche Shape: {cm.shape}, erwartet (3, 3)")
+        except Exception:
+            errors.append("camera_matrix nicht als Array lesbar")
+
+        # Check reprojection error
+        rms = cfg.get("lens_reprojection_error")
+        if rms is not None and rms > 1.0:
+            warnings.append(f"Reprojection Error hoch: {rms:.3f} (Empfehlung: < 1.0)")
+
+        # Check image size match
+        if current_image_size is not None:
+            stored_size = cfg.get("lens_image_size")
+            if stored_size is not None:
+                if list(current_image_size) != list(stored_size):
+                    errors.append(
+                        f"Kalibrierung fuer {stored_size[0]}x{stored_size[1]}, "
+                        f"aktuelle Aufloesung {current_image_size[0]}x{current_image_size[1]}"
+                    )
+
+        # Check age
+        last_update = cfg.get("lens_last_update_utc")
+        if last_update:
+            try:
+                cal_time = datetime.fromisoformat(last_update)
+                age_days = (datetime.now(timezone.utc) - cal_time).days
+                if age_days > max_age_days:
+                    warnings.append(f"Kalibrierung ist {age_days} Tage alt (Empfehlung: < {max_age_days})")
+            except Exception:
+                warnings.append("Kalibrierungsdatum nicht lesbar")
+
+        valid = len(errors) == 0
+        return {"valid": valid, "errors": errors, "warnings": warnings}
+
     def has_intrinsics(self) -> bool:
         cfg = self._config_io.get_config()
         return bool(cfg.get("lens_valid", False) and cfg.get("camera_matrix") and cfg.get("dist_coeffs"))

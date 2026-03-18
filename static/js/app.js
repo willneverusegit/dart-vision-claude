@@ -1750,6 +1750,9 @@ class DartApp {
                 this._addSetupStep(checklist, false,
                     "Stereo fehlt — Voting-Fallback wird verwendet", null);
             }
+
+            // Fetch detailed calibration validation
+            this._fetchCalibrationDetails(checklist);
         } catch (e) {
             // Non-fatal
         }
@@ -1779,6 +1782,39 @@ class DartApp {
         }
 
         container.appendChild(step);
+    }
+
+    async _fetchCalibrationDetails(checklist) {
+        try {
+            const resp = await fetch("/api/multi-cam/calibration/status");
+            if (!resp.ok) return;
+            const data = await resp.json();
+
+            for (const [camId, status] of Object.entries(data.cameras || {})) {
+                // Show warnings for intrinsics issues
+                if (status.intrinsics_warnings && status.intrinsics_warnings.length > 0) {
+                    status.intrinsics_warnings.forEach(w => {
+                        this._addSetupStep(checklist, false, camId + ": " + w, null);
+                    });
+                }
+                // Show viewing angle quality
+                if (status.viewing_angle_quality !== null && status.viewing_angle_quality !== undefined) {
+                    const q = status.viewing_angle_quality;
+                    const pct = Math.round(q * 100);
+                    const good = q >= 0.5;
+                    this._addSetupStep(checklist, good,
+                        camId + ": Blickwinkel-Qualitaet " + pct + "%",
+                        good ? null : "Kamera frontaler zum Board ausrichten");
+                }
+            }
+
+            // Overall readiness
+            if (data.ready_for_multi) {
+                this._addSetupStep(checklist, true, "Multi-Cam bereit", null);
+            }
+        } catch (e) {
+            // Non-fatal — API may not be available
+        }
     }
 
     _updateMultiCamUI() {

@@ -130,3 +130,119 @@ def transform_to_board_frame(
         Z ≈ 0 is the board face; X/Y are horizontal/vertical offsets in meters.
     """
     return R_cb @ point_3d + t_cb.reshape(3)
+
+
+def triangulate_multi_pair(
+    detections: list[dict],
+    camera_params: dict[str, CameraParams],
+    board_transforms: dict[str, dict],
+    depth_tolerance_m: float = 0.015,
+) -> dict | None:
+    """Triangulate using all valid camera pairs, with outlier rejection.
+
+    Args:
+        detections: List of dicts with keys 'camera_id', 'detection' (DartDetection).
+        camera_params: camera_id -> CameraParams mapping.
+        board_transforms: camera_id -> {'R_cb': 3x3, 't_cb': (3,)} mapping.
+        depth_tolerance_m: Max Z-depth for board-plane plausibility.
+
+    Returns:
+        Dict with 'board_x_mm', 'board_y_mm', 'reprojection_error', 'pairs_used', 'source'
+        or None if no valid triangulation.
+    """
+    results = []
+    z_rejected_count = 0
+    pairs_attempted = 0
+
+    for i in range(len(detections)):
+        for j in range(i + 1, len(detections)):
+            cam_a = detections[i]["camera_id"]
+            cam_b = detections[j]["camera_id"]
+
+            p1 = camera_params.get(cam_a)
+            p2 = camera_params.get(cam_b)
+            if p1 is None or p2 is None:
+                continue
+
+            det1 = detections[i]["detection"]
+            det2 = detections[j]["detection"]
+            if det1 is None or det2 is None:
+                continue
+
+            tri = triangulate_point(det1.center, det2.center, p1, p2)
+            if not tri.valid:
+                continue
+
+            bt = board_transforms.get(cam_a)
+            if bt is None:
+                continue
+
+            p_board = transform_to_board_frame(tri.point_3d, bt["R_cb"], bt["t_cb"])
+
+            pairs_attempted += 1
+            if abs(p_board[2]) > depth_tolerance_m:
+                z_rejected_count += 1
+                continue
+
+            board_x_mm, board_y_mm = point_3d_to_board_2d(p_board)
+            results.append({
+                "board_x_mm": board_x_mm,
+                "board_y_mm": board_y_mm,
+                "reprojection_error": tri.reprojection_error,
+                "pair": (cam_a, cam_b),
+                "z_depth": float(p_board[2]),
+            })
+
+    if not results:
+        return {"failed": True, "z_rejected": z_rejected_count, "pairs_attempted": pairs_attempted}
+
+    if len(results) == 1:
+        r = results[0]
+        return {
+            "board_x_mm": r["board_x_mm"],
+            "board_y_mm": r["board_y_mm"],
+            "reprojection_error": r["reprojection_error"],
+            "pairs_used": 1,
+            "source": "triangulation",
+        }
+
+    # Outlier rejection for 3+ results: remove points > 2x median distance from centroid
+    if len(results) >= 3:
+        results = _reject_outliers(results)
+
+    # Weighted average (weight = 1 / reproj_error)
+    epsilon = 1e-6
+    total_weight = 0.0
+    wx, wy = 0.0, 0.0
+    for r in results:
+        w = 1.0 / (r["reprojection_error"] + epsilon)
+        wx += r["board_x_mm"] * w
+        wy += r["board_y_mm"] * w
+        total_weight += w
+
+    avg_reproj = sum(r["reprojection_error"] for r in results) / len(results)
+
+    return {
+        "board_x_mm": wx / total_weight,
+        "board_y_mm": wy / total_weight,
+        "reprojection_error": avg_reproj,
+        "pairs_used": len(results),
+        "source": "triangulation",
+    }
+
+
+def _reject_outliers(results: list[dict]) -> list[dict]:
+    """Remove outlier triangulation results (>2x median distance from centroid)."""
+    import math
+
+    cx = sum(r["board_x_mm"] for r in results) / len(results)
+    cy = sum(r["board_y_mm"] for r in results) / len(results)
+
+    distances = [math.hypot(r["board_x_mm"] - cx, r["board_y_mm"] - cy) for r in results]
+    sorted_dists = sorted(distances)
+    median_dist = sorted_dists[len(sorted_dists) // 2]
+
+    threshold = max(median_dist * 2.0, 1.0)  # at least 1mm to avoid rejecting tight clusters
+
+    filtered = [r for r, d in zip(results, distances) if d <= threshold]
+    return filtered if len(filtered) >= 1 else results  # never reject all

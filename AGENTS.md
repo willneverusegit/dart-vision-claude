@@ -211,3 +211,21 @@ Diese Hinweise sind besonders fuer Codex relevant:
 - `agent_docs/priorities.md` - priorisierte Weiterentwicklungsziele
 - `agent_docs/weakness_log.md` - offene und erledigte Schwaechen unterhalb der Prioritaetsebene
 - `agent_docs/decision_log.md` - wichtige Projekt- und Agent-Entscheidungen
+
+## Domain-Skills
+
+Jede Domain hat einen Skill-Ordner unter `.claude/skills/<domain>/` mit:
+- `SKILL.md` — Arbeitsanweisung: wann nutzen, Schluesselregeln, Pitfalls, offene Todos
+- `REFERENCE.md` — Datei-Map, Schluesselfunktionen, Architekturnotizen
+
+| Skill | Wann aktivieren | Dateien |
+|-------|-----------------|---------|
+| `vision` | CV-Arbeit: Dart-Erkennung, Tip-Detection, Kalibrierung, Pipeline | `src/cv/` (ohne multi_camera.py) |
+| `game-scoring` | Spiellogik, Score-Berechnung, Checkout-Tabelle | `src/game/` |
+| `web-ui` | API-Endpoints, WebSocket, Frontend-JS/CSS, MJPEG | `src/web/`, `static/`, `templates/` |
+| `multi-cam` | Stereo-Triangulation, Multi-Cam-Fusion, Stereo-Kalibrierung | `src/cv/multi_camera.py`, `src/cv/stereo_*` |
+| `stats-telemetry` | Performance-Monitoring, FPS/Queue-Alerts, Session-Logging | `src/utils/telemetry.py`, `logger.py`, `fps.py` |
+| `meta-infra` | App-Lifecycle, Config-Validierung, Kamera-Reconnect, Tests, CI | `src/main.py`, `src/utils/config.py`, `src/cv/capture.py`, `tests/` |
+
+**Fuer Claude Code:** Skills sind per `/vision`, `/game-scoring` etc. aufrufbar.
+**Fuer alle Agents:** SKILL.md direkt lesen bevor in der jeweiligen Domain gearbeitet wird.

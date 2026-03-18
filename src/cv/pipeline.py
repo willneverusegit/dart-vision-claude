@@ -48,6 +48,7 @@ class DartPipeline:
         capture_fps: int | None = None,
         marker_size_mm: float | None = None,
         marker_spacing_mm: float | None = None,
+        diff_threshold: int | None = None,
     ) -> None:
         self.camera_src = camera_src
         self.marker_size_mm = marker_size_mm
@@ -66,7 +67,7 @@ class DartPipeline:
         self.dart_detector = DartImpactDetector(confirmation_frames=3)
         self.frame_diff_detector = FrameDiffDetector(
             settle_frames=5,
-            diff_threshold=50,
+            diff_threshold=diff_threshold if diff_threshold is not None else 50,
             min_diff_area=30,
             max_diff_area=8000,
             diagnostics_dir=os.environ.get("DARTVISION_DIAGNOSTICS_DIR"),

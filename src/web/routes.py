@@ -1472,6 +1472,35 @@ def setup_routes(app_state: dict) -> APIRouter:
             return {"ok": False, "error": "Triangulations-Telemetrie nicht verfuegbar"}
         return {"ok": True, **multi.get_triangulation_telemetry()}
 
+    # --- Multi-Cam Error Reporting & Telemetry API ---
+
+    @router.get("/api/multi-cam/errors")
+    async def multi_cam_errors() -> dict:
+        """Return camera errors from multi-camera pipeline."""
+        multi = app_state.get("multi_pipeline")
+        if multi is None:
+            return {"errors": {}, "message": "Multi-Cam-Pipeline nicht aktiv"}
+        return {"errors": multi.get_camera_errors()}
+
+    @router.get("/api/multi-cam/telemetry")
+    async def multi_cam_telemetry() -> dict:
+        """Return triangulation and fusion telemetry."""
+        multi = app_state.get("multi_pipeline")
+        if multi is None:
+            return {"active": False, "message": "Multi-Cam-Pipeline nicht aktiv"}
+
+        result = {
+            "active": True,
+            "triangulation": multi.get_triangulation_telemetry(),
+            "fusion_config": multi.get_fusion_config(),
+        }
+
+        # Add governor stats if available
+        if hasattr(multi, "get_governor_stats"):
+            result["governors"] = multi.get_governor_stats()
+
+        return result
+
     # --- Stats ---
 
     @router.get("/api/stats")
@@ -1630,5 +1659,66 @@ def setup_routes(app_state: dict) -> APIRouter:
         except Exception as e:
             logger.error("WebSocket error: %s", e)
             await em.disconnect(websocket)
+
+    # --- Stereo Calibration Wizard API ---
+
+    @router.get("/api/multi-cam/calibration/status")
+    async def multi_cam_calibration_status() -> dict:
+        """Check calibration readiness for each configured camera."""
+        from src.cv.camera_calibration import CameraCalibrationManager
+        from src.cv.board_calibration import BoardCalibrationManager
+        from src.utils.config import load_multi_cam_config
+
+        multi_cfg = load_multi_cam_config()
+        cameras = multi_cfg.get("last_cameras", [])
+
+        status = {}
+        for cam in cameras:
+            cam_id = cam.get("camera_id", "unknown")
+            cam_cal = CameraCalibrationManager(camera_id=cam_id)
+            board_cal = BoardCalibrationManager(camera_id=cam_id)
+
+            intrinsics_result = cam_cal.validate_intrinsics()
+
+            status[cam_id] = {
+                "has_intrinsics": cam_cal.has_intrinsics(),
+                "intrinsics_valid": intrinsics_result["valid"],
+                "intrinsics_errors": intrinsics_result.get("errors", []),
+                "intrinsics_warnings": intrinsics_result.get("warnings", []),
+                "has_board_pose": board_cal.is_valid(),
+                "viewing_angle_quality": board_cal.get_viewing_angle_quality(),
+            }
+
+        # Check stereo pairs
+        pairs = multi_cfg.get("pairs", {})
+        pair_status = {}
+        for pair_key, pair_data in pairs.items():
+            pair_status[pair_key] = {
+                "has_extrinsics": True,
+                "reprojection_error": pair_data.get("reprojection_error"),
+            }
+
+        return {
+            "cameras": status,
+            "pairs": pair_status,
+            "ready_for_multi": all(
+                s["has_intrinsics"] and s["has_board_pose"]
+                for s in status.values()
+            ) and len(pairs) > 0,
+        }
+
+    @router.post("/api/multi-cam/calibration/validate")
+    async def multi_cam_calibration_validate(request: Request) -> dict:
+        """Validate stereo calibration prerequisites for a camera pair."""
+        body = await request.json()
+        cam_a = body.get("cam_a")
+        cam_b = body.get("cam_b")
+
+        if not cam_a or not cam_b:
+            return JSONResponse({"error": "cam_a und cam_b erforderlich"}, status_code=400)
+
+        from src.cv.stereo_calibration import validate_stereo_prerequisites
+        result = validate_stereo_prerequisites(cam_a, cam_b)
+        return result
 
     return router

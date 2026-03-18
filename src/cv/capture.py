@@ -199,6 +199,16 @@ class ThreadedCamera:
             "src": self.src,
         }
 
+    def set_exposure(self, value: int) -> None:
+        """Set camera exposure via OpenCV property."""
+        self.capture.set(cv2.CAP_PROP_EXPOSURE, value)
+        logger.info("Camera %s: exposure set to %d", self.src, value)
+
+    def set_gain(self, value: int) -> None:
+        """Set camera gain via OpenCV property."""
+        self.capture.set(cv2.CAP_PROP_GAIN, value)
+        logger.info("Camera %s: gain set to %d", self.src, value)
+
     def on_state_change(self, callback: callable) -> None:
         """Register a callback for state changes: callback(src, old_state, new_state)."""
         self._on_state_change.append(callback)

@@ -12,6 +12,7 @@ import numpy as np
 from src.cv.pipeline import DartPipeline
 from src.cv.stereo_utils import (
     CameraParams,
+    triangulate_multi_pair,
     triangulate_point,
     point_3d_to_board_2d,
     transform_to_board_frame,
@@ -37,6 +38,74 @@ _FRAME_INTERVAL_S = 1.0 / _TARGET_FPS  # ~0.0333 s
 BOARD_DEPTH_TOLERANCE_M = 0.015  # 15 mm
 
 
+class FPSGovernor:
+    """Adaptive FPS control based on processing time.
+
+    Tracks moving average of frame processing time and reduces
+    target FPS when the pipeline can't keep up.
+    """
+
+    def __init__(self, target_fps: int = 30, min_fps: int = 10, is_primary: bool = True) -> None:
+        self._target_fps = target_fps
+        self._min_fps = min_fps
+        self._is_primary = is_primary
+        self._effective_fps = float(target_fps)
+        self._processing_times: list[float] = []  # ring buffer
+        self._max_samples = 30
+        self._overload_count = 0
+        self._overload_threshold = 10  # consecutive overloaded frames before reducing
+
+    def record_frame_time(self, elapsed_s: float) -> None:
+        """Record processing time for one frame."""
+        self._processing_times.append(elapsed_s)
+        if len(self._processing_times) > self._max_samples:
+            self._processing_times.pop(0)
+
+        frame_budget = 1.0 / self._effective_fps
+        if elapsed_s > 0.8 * frame_budget:
+            self._overload_count += 1
+        else:
+            self._overload_count = max(0, self._overload_count - 1)
+
+        # Reduce FPS if consistently overloaded (but not for primary camera)
+        if self._overload_count >= self._overload_threshold and not self._is_primary:
+            new_fps = max(self._min_fps, self._effective_fps * 0.8)
+            if new_fps < self._effective_fps:
+                logger.info("FPSGovernor: reducing FPS %.0f → %.0f (overloaded)", self._effective_fps, new_fps)
+                self._effective_fps = new_fps
+                self._overload_count = 0
+
+        # Recovery: if avg processing time is well under budget, try increasing
+        if len(self._processing_times) >= self._max_samples:
+            avg = sum(self._processing_times) / len(self._processing_times)
+            target_budget = 1.0 / self._target_fps
+            if avg < 0.5 * target_budget and self._effective_fps < self._target_fps:
+                new_fps = min(self._target_fps, self._effective_fps * 1.1)
+                if new_fps > self._effective_fps:
+                    logger.info("FPSGovernor: recovering FPS %.0f → %.0f", self._effective_fps, new_fps)
+                    self._effective_fps = new_fps
+
+    @property
+    def frame_interval_s(self) -> float:
+        """Current frame interval based on effective FPS."""
+        return 1.0 / self._effective_fps
+
+    @property
+    def effective_fps(self) -> float:
+        return round(self._effective_fps, 1)
+
+    def get_stats(self) -> dict:
+        """Return governor statistics."""
+        avg_time = sum(self._processing_times) / len(self._processing_times) if self._processing_times else 0.0
+        return {
+            "target_fps": self._target_fps,
+            "effective_fps": self.effective_fps,
+            "is_primary": self._is_primary,
+            "avg_processing_ms": round(avg_time * 1000, 1),
+            "overload_count": self._overload_count,
+        }
+
+
 class MultiCameraPipeline:
     """Orchestrate multiple DartPipeline instances and fuse detections."""
 
@@ -45,6 +114,10 @@ class MultiCameraPipeline:
         camera_configs: list[dict],
         on_multi_dart_detected: Callable[[dict], None] | None = None,
         debug: bool = False,
+        sync_wait_s: float = 0.3,
+        max_time_diff_s: float = MAX_DETECTION_TIME_DIFF_S,
+        depth_tolerance_m: float = BOARD_DEPTH_TOLERANCE_M,
+        depth_auto_adapt: bool = True,
     ) -> None:
         """
         Args:
@@ -53,10 +126,19 @@ class MultiCameraPipeline:
                 - src (int | str): Camera source index or video path
             on_multi_dart_detected: Callback with fused score dict.
             debug: Enable debug visualization.
+            sync_wait_s: Max wait time for 2nd camera after 1st detection.
+            max_time_diff_s: Max allowed time diff between detections for sync.
+            depth_tolerance_m: Z-plausibility tolerance for board depth.
+            depth_auto_adapt: Auto-widen depth tolerance on high rejection rate.
         """
         self.camera_configs = camera_configs
         self.on_multi_dart_detected = on_multi_dart_detected
         self.debug = debug
+        self._sync_wait_s = sync_wait_s
+        self._max_time_diff_s = max_time_diff_s
+        self._depth_tolerance_m = depth_tolerance_m
+        self._depth_auto_adapt = depth_auto_adapt
+        self._effective_depth_tolerance_m = depth_tolerance_m
 
         self._pipelines: dict[str, DartPipeline] = {}
         self._threads: dict[str, threading.Thread] = {}
@@ -65,7 +147,10 @@ class MultiCameraPipeline:
         self._running = False
         self._fusion_thread: threading.Thread | None = None
         self._camera_errors: dict[str, str] = {}  # camera_id -> error message
+        self._per_camera_fps: dict[str, int] = {}
+        self._governors: dict[str, FPSGovernor] = {}
         self._tri_telemetry = TriangulationTelemetry()
+        self._viewing_angle_qualities: dict[str, float] = {}
 
         # Loaded from config at start() / reload_stereo_params()
         self._stereo_params: dict[str, CameraParams] = {}   # camera_id -> CameraParams
@@ -79,13 +164,24 @@ class MultiCameraPipeline:
             cam_id = cfg["camera_id"]
             src = cfg.get("src", 0)
 
+            per_fps = cfg.get("capture_fps", _TARGET_FPS)
+            self._per_camera_fps[cam_id] = per_fps
+
+            is_primary = cfg.get("priority", "primary") == "primary"
+            self._governors[cam_id] = FPSGovernor(
+                target_fps=per_fps,
+                min_fps=10,
+                is_primary=is_primary,
+            )
+
             pipeline = DartPipeline(
                 camera_src=src,
                 on_dart_detected=lambda score, det, _id=cam_id: self._on_single_detection(_id, score, det),
                 debug=self.debug,
                 capture_width=cfg.get("capture_width"),
                 capture_height=cfg.get("capture_height"),
-                capture_fps=cfg.get("capture_fps"),
+                capture_fps=per_fps,
+                diff_threshold=cfg.get("diff_threshold"),
             )
 
             # Configure pipeline with camera-specific calibration
@@ -98,7 +194,9 @@ class MultiCameraPipeline:
                 camera_id=cam_id,
             )
 
+            # Store per-camera exposure/gain config for application after start
             self._pipelines[cam_id] = pipeline
+            self._apply_camera_profile(cam_id, cfg)
 
             thread = threading.Thread(
                 target=self._run_pipeline_loop,
@@ -118,6 +216,15 @@ class MultiCameraPipeline:
         )
         self._fusion_thread.start()
 
+        # Compute viewing angle quality for each camera
+        for cfg in self.camera_configs:
+            cam_id = cfg["camera_id"]
+            pipeline = self._pipelines.get(cam_id)
+            if pipeline:
+                vaq = pipeline.board_calibration.get_viewing_angle_quality()
+                self._viewing_angle_qualities[cam_id] = vaq
+                logger.info("Camera '%s' viewing_angle_quality=%.3f", cam_id, vaq)
+
         # Load stereo extrinsics and board transforms from config
         self._load_extrinsics()
 
@@ -133,13 +240,28 @@ class MultiCameraPipeline:
             self._fusion_thread.join(timeout=5.0)
 
     def _run_pipeline_loop(self, cam_id: str, pipeline: DartPipeline) -> None:
-        """Frame processing loop for a single camera, rate-limited to _TARGET_FPS."""
+        """Frame processing loop for a single camera, rate-limited per-camera FPS."""
         try:
             pipeline.start()
         except Exception as e:
             logger.warning("Camera '%s' failed to start: %s", cam_id, e)
             self._camera_errors[cam_id] = str(e)
             return
+
+        # Apply exposure/gain after camera is opened
+        for cfg in self.camera_configs:
+            if cfg["camera_id"] == cam_id:
+                cam = getattr(pipeline, "camera", None)
+                if cam is not None and hasattr(cam, "set_exposure"):
+                    exposure = cfg.get("exposure")
+                    if exposure is not None:
+                        cam.set_exposure(exposure)
+                    gain = cfg.get("gain")
+                    if gain is not None:
+                        cam.set_gain(gain)
+                break
+
+        governor = self._governors.get(cam_id)
 
         while self._running:
             t0 = time.monotonic()
@@ -148,9 +270,20 @@ class MultiCameraPipeline:
             except Exception as e:
                 logger.debug("Frame error on '%s': %s", cam_id, e)
             elapsed = time.monotonic() - t0
-            sleep_s = max(0.0, _FRAME_INTERVAL_S - elapsed)
+            if governor:
+                governor.record_frame_time(elapsed)
+                sleep_s = max(0.0, governor.frame_interval_s - elapsed)
+            else:
+                sleep_s = max(0.0, _FRAME_INTERVAL_S - elapsed)
             if sleep_s > 0:
                 time.sleep(sleep_s)
+
+    def _apply_camera_profile(self, cam_id: str, cfg: dict) -> None:
+        """Log per-camera profile settings (exposure/gain applied after start)."""
+        profile_keys = ("exposure", "gain", "diff_threshold", "capture_fps")
+        active = {k: cfg[k] for k in profile_keys if k in cfg}
+        if active:
+            logger.info("Camera '%s' profile: %s", cam_id, active)
 
     def _load_extrinsics(self) -> None:
         """Load stereo pair extrinsics and board transforms from config files.
@@ -248,7 +381,7 @@ class MultiCameraPipeline:
                 if len(self._detection_buffer) == 1:
                     entry = list(self._detection_buffer.values())[0]
                     age = time.time() - entry["timestamp"]
-                    if age > MAX_DETECTION_TIME_DIFF_S:
+                    if age > self._sync_wait_s:
                         # Detection is old enough that the other camera won't
                         # catch up -> use single-camera result as fallback
                         result = dict(entry["score_result"])
@@ -263,7 +396,7 @@ class MultiCameraPipeline:
             # Check if detections are temporally close enough
             entries = list(self._detection_buffer.values())
             timestamps = [e["timestamp"] for e in entries]
-            if max(timestamps) - min(timestamps) > MAX_DETECTION_TIME_DIFF_S:
+            if max(timestamps) - min(timestamps) > self._max_time_diff_s:
                 # Too far apart — use the most recent single detection
                 latest = max(entries, key=lambda e: e["timestamp"])
                 result = dict(latest["score_result"])
@@ -278,81 +411,68 @@ class MultiCameraPipeline:
             # Use self._stereo_params (populated by _load_extrinsics at startup)
             cam_params = self._stereo_params
 
-            # Try triangulation for first pair with valid CameraParams
+            # Multi-pair triangulation with outlier rejection
             triangulated = False
-            for i in range(len(entries)):
-                for j in range(i + 1, len(entries)):
-                    p1 = cam_params.get(entries[i]["camera_id"])
-                    p2 = cam_params.get(entries[j]["camera_id"])
-                    if p1 is None or p2 is None:
-                        continue
+            tri_result = triangulate_multi_pair(
+                detections=[{"camera_id": e["camera_id"], "detection": e["detection"]} for e in entries],
+                camera_params=cam_params,
+                board_transforms=self._board_transforms,
+                depth_tolerance_m=self._effective_depth_tolerance_m,
+            )
 
-                    det1 = entries[i]["detection"]
-                    det2 = entries[j]["detection"]
-                    if det1 is None or det2 is None:
-                        continue
-
-                    tri = triangulate_point(
-                        det1.center, det2.center, p1, p2,
-                    )
-                    if not tri.valid:
-                        continue
-
-                    # Transform from camera-1 frame to board frame.
-                    # Without this, point_3d[2] is the distance to the camera
-                    # lens — not the dart's depth into the board.
-                    bt = self._board_transforms.get(entries[i]["camera_id"])
-                    if bt is None:
-                        logger.debug(
-                            "No board_transform for camera '%s' — skipping triangulation",
-                            entries[i]["camera_id"],
-                        )
-                        continue
-
-                    p_board = transform_to_board_frame(
-                        tri.point_3d, bt["R_cb"], bt["t_cb"]
-                    )
-
-                    # Z plausibility in board frame: dart tip must be within
-                    # BOARD_DEPTH_TOLERANCE_M of the board face (Z = 0).
-                    if abs(p_board[2]) > BOARD_DEPTH_TOLERANCE_M:
-                        logger.info(
-                            "Triangulation Z implausible in board frame "
-                            "(Z=%.4f m) for cameras '%s','%s' — voting fallback",
-                            p_board[2],
-                            entries[i]["camera_id"],
-                            entries[j]["camera_id"],
-                        )
-                        self._tri_telemetry.record_attempt("z_rejected", tri.reprojection_error, float(p_board[2]))
-                        continue
-
-                    board_x_mm, board_y_mm = point_3d_to_board_2d(p_board)
-                    # Convert mm to board score via geometry of first camera
-                    pipeline_1 = self._pipelines.get(entries[i]["camera_id"])
-                    if pipeline_1 and pipeline_1.geometry:
-                        geo = pipeline_1.geometry
-                        radius_px = geo.double_outer_radius_px
-                        mm_per_px = BOARD_RADIUS_MM / radius_px if radius_px > 0 else 1.0
-                        ox, oy = geo.optical_center_px
-                        roi_x = ox + board_x_mm / mm_per_px
-                        roi_y = oy + board_y_mm / mm_per_px
-                        hit = geo.point_to_score(roi_x, roi_y)
-                        result = geo.hit_to_dict(hit)
-                        result["source"] = "triangulation"
-                        result["reprojection_error"] = tri.reprojection_error
-                        logger.info(
-                            "Triangulation: cameras='%s','%s' reproj=%.2f Z_board=%.4f",
-                            entries[i]["camera_id"], entries[j]["camera_id"],
-                            tri.reprojection_error, p_board[2],
-                        )
-                        self._tri_telemetry.record_attempt("triangulation", tri.reprojection_error, float(p_board[2]))
-                        self._emit(result)
-                        triangulated = True
+            if tri_result is not None and not tri_result.get("failed"):
+                # Convert mm to board score via geometry of first camera
+                board_x_mm = tri_result["board_x_mm"]
+                board_y_mm = tri_result["board_y_mm"]
+                # Find first pipeline with geometry
+                pipeline_1 = None
+                for e in entries:
+                    p = self._pipelines.get(e["camera_id"])
+                    if p and p.geometry:
+                        pipeline_1 = p
                         break
-                if triangulated:
-                    break
+
+                if pipeline_1:
+                    geo = pipeline_1.geometry
+                    radius_px = geo.double_outer_radius_px
+                    mm_per_px = BOARD_RADIUS_MM / radius_px if radius_px > 0 else 1.0
+                    ox, oy = geo.optical_center_px
+                    roi_x = ox + board_x_mm / mm_per_px
+                    roi_y = oy + board_y_mm / mm_per_px
+                    hit = geo.point_to_score(roi_x, roi_y)
+                    result = geo.hit_to_dict(hit)
+                    result["source"] = "triangulation"
+                    result["reprojection_error"] = tri_result["reprojection_error"]
+                    result["pairs_used"] = tri_result["pairs_used"]
+                    logger.info(
+                        "Triangulation: pairs=%d reproj=%.2f",
+                        tri_result["pairs_used"], tri_result["reprojection_error"],
+                    )
+                    self._tri_telemetry.record_attempt("triangulation", tri_result["reprojection_error"])
+                    self._emit(result)
+                    triangulated = True
 
             if not triangulated:
+                # Track Z-rejections for auto-adapt
+                if tri_result and tri_result.get("failed"):
+                    z_rej = tri_result.get("z_rejected", 0)
+                    for _ in range(z_rej):
+                        self._tri_telemetry.record_attempt("z_rejected")
+
+                    # Depth auto-adapt: widen tolerance on high rejection rate
+                    if self._depth_auto_adapt:
+                        stats = self._tri_telemetry.get_summary()
+                        total = stats.get("total_attempts", 0)
+                        z_total = stats.get("z_rejected", 0)
+                        if total >= 20 and z_total / total > 0.5:
+                            widened = min(self._depth_tolerance_m * 1.67, 0.025)
+                            if self._effective_depth_tolerance_m < widened:
+                                self._effective_depth_tolerance_m = widened
+                                logger.warning(
+                                    "Depth auto-adapt: widened Z-tolerance to %.1fmm (rejection rate %.0f%%)",
+                                    widened * 1000, z_total / total * 100,
+                                )
+
                 # Voting fallback: use best single-camera result
                 self._tri_telemetry.record_attempt("voting_fallback")
                 result = self._voting_fallback(entries)
@@ -367,12 +487,14 @@ class MultiCameraPipeline:
         - For ≥3 cameras, uses median of total_score instead of mean.
         - Falls back to highest-confidence single result for non-numeric scores.
         """
-        # Extract confidences
+        # Extract confidences weighted by quality and viewing angle
         confidences = []
         for e in entries:
             det = e.get("detection")
             conf = getattr(det, "confidence", 0.0) if det else 0.0
-            confidences.append(conf)
+            quality = getattr(det, "quality", 0.0) if det else 0.0
+            vaq = self._viewing_angle_qualities.get(e["camera_id"], 1.0)
+            confidences.append(conf * max(quality, 0.1) * vaq)
 
         # Try confidence-weighted scoring
         total_conf = sum(confidences)
@@ -455,6 +577,20 @@ class MultiCameraPipeline:
     def get_triangulation_telemetry(self) -> dict:
         """Return triangulation telemetry summary."""
         return self._tri_telemetry.get_summary()
+
+    def get_fusion_config(self) -> dict:
+        """Return current fusion parameters."""
+        return {
+            "sync_wait_s": self._sync_wait_s,
+            "max_time_diff_s": self._max_time_diff_s,
+            "depth_tolerance_m": self._depth_tolerance_m,
+            "effective_depth_tolerance_m": self._effective_depth_tolerance_m,
+            "depth_auto_adapt": self._depth_auto_adapt,
+        }
+
+    def get_governor_stats(self) -> dict[str, dict]:
+        """Return per-camera FPS governor statistics."""
+        return {cam_id: gov.get_stats() for cam_id, gov in self._governors.items()}
 
     def get_camera_errors(self) -> dict[str, str]:
         """Return dict of camera_id -> error message for cameras that failed to start."""

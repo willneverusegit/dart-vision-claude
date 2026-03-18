@@ -1,6 +1,6 @@
 # Current State
 
-Stand dieser Zusammenfassung: 2026-03-17 (P7, P8, P10, P13-P20 erledigt)
+Stand dieser Zusammenfassung: 2026-03-18 (P7, P8, P10, P13-P20 erledigt)
 
 ## Technischer Kern
 
@@ -65,8 +65,8 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 
 ## Verifizierte Kennzahlen
 
-- `540` Tests bestanden (Stand 2026-03-17)
-- Gesamt-Coverage ~73%
+- `645` Tests bestanden (Stand 2026-03-18)
+- Gesamt-Coverage ~77%
 - Wichtige Module: main.py 78%, routes.py 66%, pipeline.py 68%, multi_camera.py 62%, capture.py 72%
 - synthetische Pipeline-Benchmarks fuer `1`, `2` und `3` Kameras innerhalb der definierten KPI-Grenzen
 - E2E-Replay-Tests: 90% Hit Rate, 100% Score Accuracy auf synthetischen Clips (6 Tests)
@@ -99,3 +99,4 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 
 - `SESSION_2026-03-17.md` — ausfuehrliche Session-Doku aller Aenderungen
 - `PROJEKTSTAND_2026-03-16.md` — vorige technische Einordnung
+- `.claude/plans/shimmying-knitting-corbato.md` — 9-Phasen Multi-Cam-Integrationsplan (2026-03-18)

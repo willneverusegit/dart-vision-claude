@@ -154,7 +154,7 @@ class TestTryFuse:
             "camera_id": "cam_left",
             "score_result": {"score": 20, "ring": "single"},
             "detection": FakeDetection(),
-            "timestamp": time.time() - MAX_DETECTION_TIME_DIFF_S - 0.1,
+            "timestamp": time.time() - 0.5,  # older than sync_wait_s (0.3s default)
         }
 
         pipeline._try_fuse()

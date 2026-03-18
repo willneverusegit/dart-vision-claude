@@ -1,6 +1,6 @@
 # Project Context — DartVision
 
-*Last updated: 2026-03-18 (P39 Video-Testinfra + Recording-Feature, P40-P43 in Prios aufgenommen)*
+*Last updated: 2026-03-18 (Multi-Cam 9-Phasen-Integrationsplan erstellt, P44-P45 in Prios)*
 
 ## Projektziel
 Lokales Dart-Scoring-System mit Computer Vision zur automatischen Treffererkennung auf einer Dartscheibe. CPU-only, Windows-Laptop, kein Cloud-Zwang.
@@ -13,7 +13,7 @@ Lokales Dart-Scoring-System mit Computer Vision zur automatischen Treffererkennu
 | Backend | FastAPI | — | REST + WebSocket |
 | CV | OpenCV + NumPy | — | CPU-only, keine GPU |
 | Frontend | Vanilla JS / HTML / CSS | — | Web Audio API |
-| Tests | pytest | — | 634 Tests, ~73% Coverage |
+| Tests | pytest | — | 645 Tests, ~77% Coverage |
 | Config | YAML | — | calibration_config.yaml |
 
 ## Architektur
@@ -49,7 +49,7 @@ ThreadedCamera
 | Board-Geometrie | stabil | ArUco 4-stufig, Qualitaetsmetrik |
 | Kamera-Reconnect | stabil | Exp. Backoff, Health-API |
 | Telemetrie | stabil | FPS, Drops, Queue, RAM, Chart, Alerting |
-| Multi-Camera | experimentell | P29-P32 implementiert: Intrinsics-Validation, Triangulation-Telemetry, Camera-Health, Stereo-Progress |
+| Multi-Camera | experimentell | P44-P45 implementiert: Camera Profiles, Detection Quality, 2-Tier Sync, FPS Governor, Multi-Pair Triangulation, Depth Auto-Adapt, Calibration Validation, Wizard UI |
 | Tip-Detection | stabil | P20 erledigt — minAreaRect + Kontur-Halbierung, 18/18 validiert |
 | Tip vs Centroid Scoring | validiert | P25 — 22 Tests beweisen Tip > Centroid bei Segmentgrenzen |
 | Kontur-Robustheit | stabil | P21+P38 — Elongation-Filter + 3-Stufen-Morphologie (Opening→Closing→Elongated) |
@@ -73,6 +73,7 @@ ThreadedCamera
 - **2026-03-18**: Configurable ArUco marker_size_mm + marker_spacing_mm — Testvideos nutzen andere Marker (100mm/365mm vs. 75mm/430mm) (→ decisions.json#2026-03-18-configurable-marker-params)
 - **2026-03-18**: P39-P43 aus pipeline_patterns.md in Priorities aufgenommen (Video-Testinfra, Adaptive Thresholds, Edge Cache, Cooldown, Modulare Components)
 - **2026-03-18**: Webcam-Empfehlung: 2x Logitech C270 fuer Multi-Cam-Setup
+- **2026-03-18**: 9-Phasen Multi-Cam-Integrationsplan — Heterogenitaet, Detection Quality, Multi-Pair Triangulation, FPS Governors, Stereo Wizard (→ decisions.json#2026-03-18-multi-cam-9-phase-plan)
 
 ## Known Limitations / Tech Debt
 

@@ -286,6 +286,7 @@ class FrameDiffDetector:
             logger.info("FrameDiff: Tip-Detection fehlgeschlagen, Fallback auf Centroid (%d, %d) area=%.0f", cx, cy, area)
 
         confidence = min(area / 500.0, 1.0)
+        quality = self._compute_quality(largest, area, tip, (cx, cy))
 
         # Diagnostics: save diff mask, contour overlay, and metadata
         if self._diagnostics_dir is not None:
@@ -298,8 +299,45 @@ class FrameDiffDetector:
 
         return DartDetection(
             center=(dart_x, dart_y), area=area, confidence=confidence,
-            frame_count=self.settle_frames, tip=tip,
+            frame_count=self.settle_frames, quality=quality, tip=tip,
         )
+
+    # ------------------------------------------------------------------
+    # Quality scoring
+    # ------------------------------------------------------------------
+
+    def _compute_quality(self, contour: np.ndarray, area: float, tip: tuple[int, int] | None, centroid: tuple[int, int]) -> float:
+        """Compute detection quality score (0.0-1.0) from contour characteristics."""
+        import math
+        score = 0.0
+
+        # Elongation quality: darts are elongated (>2.0 is good)
+        rect = cv2.minAreaRect(contour)
+        rect_w, rect_h = rect[1]
+        if rect_w > 0 and rect_h > 0:
+            aspect = max(rect_w, rect_h) / min(rect_w, rect_h)
+            if aspect >= 2.0:
+                score += 0.3
+            elif aspect >= 1.5:
+                score += 0.15
+
+        # Area quality: expected range 100-3000 px²
+        if 100 <= area <= 3000:
+            score += 0.2
+        elif 30 <= area <= 5000:
+            score += 0.1
+
+        # Tip detection success
+        if tip is not None:
+            score += 0.3
+            # Distance tip to centroid (larger = more dart-like)
+            dist = math.hypot(tip[0] - centroid[0], tip[1] - centroid[1])
+            if dist > 10:
+                score += 0.2
+            elif dist > 5:
+                score += 0.1
+
+        return min(score, 1.0)
 
     # ------------------------------------------------------------------
     # Diagnostics (P20 data collection)

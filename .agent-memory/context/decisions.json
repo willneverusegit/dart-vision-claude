@@ -142,5 +142,30 @@
     },
     "tags": ["python", "opencv", "calibration", "aruco", "configuration"],
     "status": "active"
+  },
+  {
+    "id": "2026-03-18-multi-cam-9-phase-plan",
+    "timestamp": "2026-03-18T15:00:00+01:00",
+    "type": "architecture-decision",
+    "title": "9-Phasen Multi-Cam-Integrationsplan: Heterogenitaet, Quality Metrics, Multi-Pair Triangulation",
+    "decision": "Multi-Cam-Integration in 9 Phasen: (1) Camera Profiles & heterogene Config, (2) Detection Quality Metrics mit viewing_angle_quality, (3) 2-Tier Sync + adaptive Z-Toleranz, (4) FPS Governors, (5) Multi-Pair Triangulation mit Outlier-Rejection, (6) Calibration Validation, (7) Stereo Wizard UI, (8) Error/Telemetry API, (9) Hardware E2E Test.",
+    "rationale": "Homography absorbiert Aufloesungsunterschiede automatisch — kein Normalisierungs-Layer noetig. 2-Tier Sync (sync_wait=300ms, max_diff=150ms) verhindert unnoetige Single-Fallbacks bei asymmetrischer Settle-Phase. Multi-Pair Triangulation mit gewichtetem Durchschnitt (1/reproj_error) und Outlier-Rejection (>2x Median) nutzt alle verfuegbaren Stereo-Paare. Viewing-Angle-Quality aus Homography-Determinante bevorzugt automatisch die geometrisch bessere Kamera.",
+    "alternatives_considered": [
+      {
+        "option": "Alle Kameras auf gleiche Aufloesung/FPS normalisieren",
+        "rejected_because": "Unnoetig — Homography auf 400x400 ROI normalisiert bereits. Verschiedene Aufloesungen ergeben verschiedene Homography-Praezisionen, was gewuenscht ist."
+      },
+      {
+        "option": "Einfache Best-of-N Kameraauswahl statt Fusion",
+        "rejected_because": "Verschenkt Triangulations-Genauigkeit. Stereo-Geometrie liefert 3D-Position mit <5mm Fehler, deutlich besser als jede Einzelkamera."
+      }
+    ],
+    "impact": {
+      "files_affected": ["src/cv/multi_camera.py", "src/cv/stereo_utils.py", "src/cv/detector.py", "src/cv/diff_detector.py", "src/cv/pipeline.py", "src/cv/capture.py", "src/cv/board_calibration.py", "config/multi_cam.yaml", "src/utils/triangulation_telemetry.py", "src/web/routes.py"],
+      "reversibility": "moderate",
+      "dependencies": []
+    },
+    "tags": ["python", "opencv", "multi-camera", "triangulation", "stereo", "fusion", "architecture"],
+    "status": "active"
   }
 ]

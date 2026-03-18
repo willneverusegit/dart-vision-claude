@@ -162,6 +162,35 @@ def resolve_charuco_board_spec(
     )
 
 
+def validate_stereo_prerequisites(
+    cam_a_id: str,
+    cam_b_id: str,
+    config_path: str = "config/calibration_config.yaml",
+) -> dict:
+    """Check that both cameras have valid intrinsics before stereo calibration.
+
+    Returns:
+        dict with 'ready' (bool), 'errors' (list[str]), 'warnings' (list[str])
+    """
+    from src.cv.camera_calibration import CameraCalibrationManager
+
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    for cam_id in [cam_a_id, cam_b_id]:
+        mgr = CameraCalibrationManager(config_path=config_path, camera_id=cam_id)
+        result = mgr.validate_intrinsics()
+        if not result["valid"]:
+            errors.append(f"Kamera '{cam_id}': " + "; ".join(result["errors"]))
+        warnings.extend(f"Kamera '{cam_id}': {w}" for w in result.get("warnings", []))
+
+    return {
+        "ready": len(errors) == 0,
+        "errors": errors,
+        "warnings": warnings,
+    }
+
+
 class StereoResult(NamedTuple):
     ok: bool
     R: np.ndarray | None           # 3x3 rotation matrix

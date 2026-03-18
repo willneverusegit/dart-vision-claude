@@ -29,6 +29,8 @@ python -m pytest -q                    # Tests ausfuehren
 python -m pytest --cov=src -q          # Tests mit Coverage
 ruff check src/ tests/                 # Linting
 scripts/pre_commit_check.sh            # Pre-Commit Quality Gate
+python scripts/record_camera.py --duration 30 --show  # Kamera-Aufnahme fuer Testvideos
+python scripts/test_all_videos.py --marker-size 100 --marker-spacing 365  # Batch-Video-Test
 ```
 
 ## Wichtige Repo-Regeln
@@ -39,6 +41,8 @@ scripts/pre_commit_check.sh            # Pre-Commit Quality Gate
 - Halte Hardwarelast konservativ
 - Kalibrierungsdateien nicht leichtfertig aendern
 - Tests fuer betroffene Bereiche immer mitdenken
+- `testvids/*.mp4` sind gross (~676MB) — nicht committen, nur `ground_truth.yaml` tracken
+- Frontend-Benachrichtigungen: nur `_showError()` in app.js verfuegbar, kein `_showToast`
 
 ## Wie Claude Code hier arbeiten soll
 
