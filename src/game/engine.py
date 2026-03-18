@@ -15,7 +15,7 @@ class GameEngine:
         self._max_undo = 20
 
     def new_game(self, mode: str = "x01", players: list[str] | None = None,
-                 starting_score: int = 501) -> None:
+                 starting_score: int = 501, double_in: bool = False) -> None:
         """Start a new game."""
         if not isinstance(starting_score, int) or starting_score <= 0 or starting_score > 10000:
             raise ValueError(f"starting_score must be int 1-10000, got {starting_score!r}")
@@ -46,6 +46,7 @@ class GameEngine:
             current_player_index=0,
             round_number=1,
             starting_score=starting_score,
+            double_in=double_in,
         )
         self._undo_stack.clear()
         logger.info("New game: mode=%s, players=%s, start=%d", mode, players, starting_score)
@@ -99,6 +100,18 @@ class GameEngine:
 
     def _score_x01(self, player: PlayerState, throw: ThrowResult) -> None:
         """X01 scoring: subtract from remaining. Bust if below 0 or no double finish."""
+        # Double-In: if player hasn't scored yet, first scoring throw must be a double
+        if self.state.double_in and player.score == self.state.starting_score:
+            # Check if player already doubled-in earlier this turn
+            doubled_in = any(
+                t.multiplier == 2 or t.ring == "inner_bull"
+                for t in player.current_turn
+            )
+            if not doubled_in:
+                if throw.multiplier != 2 and throw.ring != "inner_bull":
+                    # Non-double throw before doubling in — doesn't count
+                    return
+
         new_score = player.score - throw.score
 
         if new_score < 0:

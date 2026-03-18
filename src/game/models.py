@@ -45,6 +45,7 @@ class GameState(BaseModel):
     current_player_index: int = 0
     round_number: int = 1
     starting_score: int = 501
+    double_in: bool = False
     winner: str | None = None
 
     @property
@@ -109,4 +110,5 @@ class GameState(BaseModel):
             "round": self.round_number,
             "winner": self.winner,
             "checkout": self._get_checkout_suggestion(),
+            "double_in": self.double_in,
         }

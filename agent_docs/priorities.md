@@ -290,7 +290,9 @@ Typische Arbeiten:
 
 Warum kritisch: Korrupte Kalibrierungsdaten werden aktuell still geladen und fuehren erst zur Laufzeit zu kryptischen Fehlern.
 
-## Prioritaet 18: Checkout-Tabelle erweitern und Spielvarianten (neu — entdeckt bei Arbeit an P7)
+## Prioritaet 18: Checkout-Tabelle erweitern und Spielvarianten (✅ ERLEDIGT 2026-03-18)
+
+**Umsetzung:** Checkout-Tabelle mit PDC/BDO-Standard-Checkouts fuer alle Scores 2-170 (ausser 7 unmoeglich: 159,162,163,165,166,168,169). Bevorzugte Pfade (z.B. 170=T20 T20 D25) als erste Vorschlaege. Double-In-Variante fuer X01 implementiert (Konstruktor-Parameter `double_in=True`). Checkout-Vorschlag passt sich automatisch an verbleibende Darts an (war bereits via `darts_remaining` implementiert). 18 neue Tests. Geaenderte Dateien: `src/game/checkout.py`, `src/game/engine.py`, `src/game/models.py`, `tests/test_checkout_extended.py`.
 
 Ziel:
 
@@ -758,3 +760,16 @@ Typische Arbeiten:
 - Reproj-Error-Normalisierung nach Bilddiagonale
 
 Plan-Datei: `.claude/plans/shimmying-knitting-corbato.md` (Phasen 3-5)
+
+## Prioritaet 46: Dark/Light Theme Toggle — Verbleibende Arbeiten (NIEDRIG)
+
+Quelle: Verbleibende Punkte aus P10/P23
+
+Ziel: Theme-Umschaltung robuster und vollstaendiger machen.
+
+Typische Arbeiten:
+- WCAG AA Kontrast-Pruefung aller UI-Elemente in beiden Themes
+- Theme-Wechsel-Animation (sanfter Uebergang statt hartem Umschalten)
+- Sicherstellen, dass alle Modals, Tooltips und dynamisch erzeugte Elemente die Theme-Variablen nutzen
+- High-Contrast-Mode als dritte Option fuer Barrierefreiheit
+- Theme-Vorschau in Settings vor dem Umschalten

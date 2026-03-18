@@ -44,7 +44,8 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 - Audio-Feedback bei bestaetigtem Treffer (Web Audio API)
 - Wurf-Badges im Scoreboard statt Klartext
 - Pulsierender Glow-Effekt fuer aktiven Spieler
-- X01-Checkout-Vorschlaege (Scores 2-170) mit Backend-Lookup
+- X01-Checkout-Vorschlaege (Scores 2-170) mit PDC/BDO-Standard-Checkouts und Backend-Lookup
+- Double-In-Variante fuer X01 (`double_in=True`)
 - Performance-Monitoring: TelemetryHistory mit Ring-Buffer (300 Samples), FPS/Queue-Alerts
 - Telemetrie-API (`/api/telemetry/history`) mit History, Alerts, Summary
 - Frontend Performance-Monitor-Panel mit Canvas-Chart und Alert-Banner
