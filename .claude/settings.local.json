@@ -142,7 +142,16 @@
       "Bash(.venv/Scripts/python.exe -m pytest tests/test_routes_extra.py::TestRoutesCoverage::test_stereo_calibration_endpoint_accepts_charuco_override -q)",
       "Bash(.venv/Scripts/python.exe -m pytest tests/test_routes_extra.py::TestRoutesCoverage::test_stereo_calibration_endpoint_accepts_charuco_override -q -s)",
       "Bash(.venv/Scripts/python.exe -m pytest tests/test_routes_extra.py::TestRoutesCoverage::test_stereo_calibration_endpoint_accepts_charuco_override tests/ -k \"stereo or multi_cam or intrinsic\" -q)",
-      "Bash(.venv/Scripts/python.exe -m ruff check tests/test_routes_extra.py)"
+      "Bash(.venv/Scripts/python.exe -m ruff check tests/test_routes_extra.py)",
+      "Bash(find /c/Users/domes/OneDrive/Desktop/dart-vision-claude -iname *multi* -type f)",
+      "Bash(find /c/Users/domes/OneDrive/Desktop/dart-vision-claude -type f \\\\\\(-name priorities.md -o -name *calibr* \\\\\\))",
+      "Bash(find /c/Users/domes/OneDrive/Desktop/dart-vision-claude -type f \\\\\\(-name *.npz -o -name *.pkl \\\\\\))",
+      "Bash(grep -r \"save.*calibration\\\\|save.*stereo\\\\|save.*npz\\\\|pickle\" /c/Users/domes/OneDrive/Desktop/dart-vision-claude/src --include=*.py -n)",
+      "Bash(ls -la /c/Users/domes/OneDrive/Desktop/dart-vision-claude/tests/test_multi*.py)",
+      "Bash(grep -rn \"mode.*single\\\\|mode.*multi\\\\|startup.*mode\" /c/Users/domes/OneDrive/Desktop/dart-vision-claude/src --include=*.py)",
+      "Bash(grep -n \"CalibrationManager\\\\|get_calibration\" /c/Users/domes/OneDrive/Desktop/dart-vision-claude/src/cv/*.py)",
+      "Bash(grep -rn \"calibration.*fail\\\\|partial.*calibr\\\\|rollback\\\\|cleanup\\\\|exception.*calibr\" /c/Users/domes/OneDrive/Desktop/dart-vision-claude/src --include=*.py)",
+      "Bash(ls -la /c/Users/domes/OneDrive/Desktop/dart-vision-claude/tests/test_calibr*.py)"
     ]
   },
   "hooks": {

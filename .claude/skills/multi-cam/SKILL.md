@@ -11,6 +11,8 @@ type: domain
 - Multi-Cam-Threading und Buffer-Management
 - Kamera-Switching Single↔Multi
 - Multi-Cam-Readiness-Diagnose
+- Error Recovery und Reconnect (P56)
+- Stereo-Kalibrierung Fortschritt und UX (P54)
 
 ## Pflichtlektüre vor Arbeit
 
@@ -18,7 +20,7 @@ type: domain
 2. `MULTI_CAM_INSTRUCTIONS.md` — Deep-Dive Multi-Cam
 3. `MULTI_CAM_WORKFLOW.md` — Entwicklungsworkflow
 4. `agent_docs/pitfalls.md` → Abschnitt "Threading & Lifecycle"
-5. `agent_docs/priorities.md` → P29-P36 (Multi-Cam-Prioritäten)
+5. `agent_docs/priorities.md` → P29-P36, P44-P45, P50, P54, P56 (Multi-Cam-Prioritäten)
 
 ## Schlüsselregeln
 
@@ -32,19 +34,25 @@ type: domain
 8. **Voting-Fallback**: Wenn Triangulation fehlschlägt → Voting-Fallback aktivieren, kein Silent-Fail.
 9. **P29-P36 vor neuen Features**: Grundlegende Multi-Cam-Probleme (Wizard, Error-Reporting, Intrinsics-Validation) vor weiteren Features angehen.
 
+## Erledigte Multi-Cam P-Items
+
+P30 (Error Reporting), P31 (Intrinsics Validation), P32 (Triangulation Telemetrie), P35 (Sync-Window), P44-P45 (Camera Profiles, Multi-Pair Triangulation), P54 (Stereo Progress Feedback), P56 (Error Recovery + Auto-Reconnect)
+
 ## Offene Todos (aktive P-Items)
 
 | P-Nr | Titel | Kritikalität |
 |------|-------|-------------|
 | P29 | Stereo Calibration UI Wizard | KRITISCH |
-| P30 | Camera Error Reporting to UI | KRITISCH |
-| P31 | Intrinsics Validation vor Stereo-Kalibrierung | KRITISCH |
-| P32 | Triangulation Telemetrie | KRITISCH |
 | P33 | Multi-Cam FPS/Buffer Governors (i5-Laptop CPU-Schutz) | HOCH |
 | P34 | 3+ Camera Fusion | HOCH |
-| P35 | Konfigurierbares Sync-Window und Depth Tolerance | HOCH |
 | P36 | Multi-Cam Hardware E2E Test | MITTEL |
+| P50 | Auto-Exposure-Kompensation pro Kamera | MITTEL |
 | P9 | Multi-Cam UX Verbesserungen | NIEDRIG |
+
+## Neue Features seit letztem Update
+
+- **Error Recovery (P56)**: Auto-Reconnect nach 50 Frame-Fehlern, exp. Backoff (2-30s), graceful Degradation, API: `POST /api/multi/camera/{id}/reconnect`, `GET /api/multi/degraded`
+- **Stereo Progress (P54)**: `frame_progress()` liefert `both_detected`, `valid_pairs`, deutsche Fehlermeldungen, Frontend-Fehleranzeige
 
 ## Risiko-Einschätzung
 

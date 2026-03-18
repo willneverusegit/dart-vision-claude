@@ -1082,20 +1082,11 @@ Typische Arbeiten:
 
 **Umsetzung:** Backend behaelt `inner_bull`/`outer_bull` (geometry.py, routes.py, game/). Ground-Truth YAML und calibration.py behalten `bull_inner`/`bull_outer` (physische Ring-Radien). Mapping-Layer `normalize_gt_ring()` in `tests/e2e/accuracy.py` und `_normalize_ring()` in `tests/e2e/test_ground_truth_validation.py` uebersetzen GT-Ringnamen auf Backend-Form bei Vergleichen. Geaenderte Dateien: `tests/e2e/accuracy.py`, `tests/e2e/test_ground_truth_validation.py`, `agent_docs/priorities.md`.
 
-## Prioritaet 70: Synchrone Sleeps in async Route-Handlern durch asyncio.sleep ersetzen (neu — entdeckt bei P64)
+## Prioritaet 70: Synchrone Sleeps in async Route-Handlern durch asyncio.sleep ersetzen (✅ ERLEDIGT 2026-03-18)
+
+**Umsetzung:** Alle 8 `_time.sleep()` Aufrufe in async Route-Handlern durch `await asyncio.sleep()` ersetzt. Betroffene Endpunkte: `/api/single/start` (2 Stellen: 0.5s Camera-Release-Delay + 30x0.1s Polling-Loop), `/api/multi/start` (2 Stellen: gleiche Struktur), `/api/multi/stop` (2 Stellen: Camera-Release + Polling bei Single-Restart), `/api/calibration/charuco` (1 Stelle: Frame-Capture-Loop), Stereo-Kalibrierung (1 Stelle: Capture-Delay). `_time` Import beibehalten fuer `_time.monotonic()` im Preview-Cache. Geaenderte Dateien: `src/web/routes.py`.
 
 Kritikalitaet: MITTEL
-
-Ziel:
-
-- Mehrere async Route-Handler in routes.py verwenden `_time.sleep()` (synchrones time.sleep), was den gesamten asyncio Event-Loop blockiert. Betroffen sind `/api/single/start`, `/api/multi/start`, `/api/multi/stop` und `/api/calibration/charuco`. Waehrend der Sleep-Phasen (0.1-0.5s pro Iteration, bis zu 3s insgesamt) werden keine anderen HTTP-Requests oder WebSocket-Messages verarbeitet.
-
-Typische Arbeiten:
-
-- `_time.sleep(0.5)` durch `await asyncio.sleep(0.5)` ersetzen in allen async Handlern
-- Polling-Loops (`for _ in range(30): _time.sleep(0.1)`) durch async-Varianten ersetzen
-- Synchrone Operationen wie `stop_pipeline_thread()` und `start_single_pipeline()` ggf. in `run_in_executor()` wrappen
-- Tests anpassen (async sleeps lassen sich einfacher mocken)
 
 Warum sinnvoll: Blockierende Sleeps in async Handlern verhindern, dass der Server waehrend Pipeline-Start/Stop auf andere Clients reagieren kann. Bei Multi-Cam-Start sind das bis zu 4 Sekunden Event-Loop-Blockade.
 
@@ -1148,3 +1139,21 @@ Typische Arbeiten:
 - Dateien: `src/game/checkout.py`, `tests/test_checkout.py`
 
 Warum sinnvoll: Bricht die gesamte Test-Suite mit `-x` ab, blockiert CI.
+
+## Prioritaet 76: Blocking stop_pipeline_thread/start_single_pipeline in run_in_executor wrappen (neu — entdeckt bei P70)
+
+Kritikalitaet: MITTEL
+
+Ziel:
+
+- P70 hat die `_time.sleep()` Aufrufe durch `await asyncio.sleep()` ersetzt, aber die synchronen Funktionen `stop_pipeline_thread()` (bis zu 5s Timeout) und `start_single_pipeline()` blockieren weiterhin den Event-Loop. Diese Aufrufe sollten in `asyncio.get_event_loop().run_in_executor(None, ...)` gewrappt werden.
+
+Typische Arbeiten:
+
+- `stop_pipeline_thread(app_state, "single", timeout=5.0)` in `await loop.run_in_executor(None, stop_pipeline_thread, ...)` wrappen
+- `start_single_pipeline(app_state, camera_src=...)` ebenso
+- Pipeline-Lock-Handling (`with _pl`) muss im gleichen Thread bleiben — ganzen Lock-Block in Executor verschieben
+- Tests fuer korrekte async Ausfuehrung schreiben
+- Dateien: src/web/routes.py
+
+Warum sinnvoll: Die Sleep-Phasen sind jetzt non-blocking (P70), aber die eigentlichen Pipeline-Operationen (Thread-Join mit 5s Timeout, Kamera-Open) blockieren den Event-Loop weiterhin. Komplettiert die async-Umstellung der Pipeline-Management-Endpunkte.

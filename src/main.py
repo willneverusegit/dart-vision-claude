@@ -61,6 +61,50 @@ app_state: dict = {
 }
 
 
+def _wait_for_camera_release(srcs: list, max_wait: float = 3.0) -> None:
+    """Wait until camera sources are available after release (Windows USB).
+
+    Opens and immediately closes each camera to verify it's not held by
+    another process. Retries with 0.3s backoff up to *max_wait* seconds.
+    """
+    deadline = time.time() + max_wait
+    for src in srcs:
+        if isinstance(src, str) and not src.isdigit():
+            continue  # skip file/RTSP sources — only USB indices need wait
+        while time.time() < deadline:
+            cap = cv2.VideoCapture(int(src) if isinstance(src, str) else src)
+            opened = cap.isOpened()
+            cap.release()
+            if opened:
+                break
+            time.sleep(0.3)
+        else:
+            logger.warning("Camera %s not available after %.1fs", src, max_wait)
+
+
+def _full_state_reset(state: dict) -> None:
+    """Reset all transient detection state for a clean mode switch.
+
+    INVARIANT: This MUST be called on every mode transition (single->multi,
+    multi->single, restart) to prevent stale state from poisoning the new
+    pipeline.  See agent_docs/pitfalls.md 'Mode-Switch State Cleanup'.
+    """
+    # Clear pending hit candidates (may reference wrong pipeline)
+    lock = state.get("pending_hits_lock")
+    if lock:
+        with lock:
+            state["pending_hits"].clear()
+    else:
+        state["pending_hits"] = {}
+    # Clear frame buffers
+    state["latest_frame"] = None
+    state["multi_latest_frames"] = {}
+    # Clear detection ring buffer
+    state["recent_detections"] = []
+    state["detection_timestamps"] = []
+    logger.debug("Full state reset completed (mode switch)")
+
+
 def _compute_quality_score(detection, score_result: dict) -> int:
     """Compute a quality score (0-100) for a hit candidate.
 
@@ -316,10 +360,13 @@ def _run_multi_pipeline(state: dict, camera_configs: list[dict],
         )
 
         state["multi_pipeline"] = multi
-        state["multi_pipeline_running"] = True
-        state["active_camera_ids"] = [c["camera_id"] for c in camera_configs]
 
         multi.start()
+
+        # Only set running=True AFTER start() succeeds — prevents the polling
+        # loop in routes.py from returning ok=True for a crashed pipeline.
+        state["multi_pipeline_running"] = True
+        state["active_camera_ids"] = [c["camera_id"] for c in camera_configs]
         logger.info("Multi-camera pipeline started with %d cameras", len(camera_configs))
 
         def _should_stop() -> bool:
@@ -350,6 +397,7 @@ def _run_multi_pipeline(state: dict, camera_configs: list[dict],
             except Exception:
                 pass
         state["multi_pipeline"] = None
+        _full_state_reset(state)
         logger.info("Multi-camera pipeline stopped")
 
 
@@ -373,7 +421,17 @@ def stop_pipeline_thread(state: dict, kind: str = "single", timeout: float = 5.0
     if thread is not None and thread.is_alive():
         thread.join(timeout=timeout)
         if thread.is_alive():
-            logger.warning("%s pipeline thread did not exit within %.1fs", kind, timeout)
+            logger.warning("%s pipeline thread did not exit within %.1fs — force-releasing camera", kind, timeout)
+            # Force-release camera so the next pipeline can open it
+            pipeline = state.get("pipeline" if kind == "single" else "multi_pipeline")
+            if pipeline is not None:
+                try:
+                    if hasattr(pipeline, "camera") and pipeline.camera is not None:
+                        pipeline.camera.stop()
+                    elif hasattr(pipeline, "stop"):
+                        pipeline.stop()
+                except Exception:
+                    pass
 
     # Clear handles
     if kind == "single":

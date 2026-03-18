@@ -217,79 +217,103 @@ class MultiCameraPipeline:
         self._board_transforms: dict[str, dict] = {}          # camera_id -> {R_cb, t_cb}
 
     def start(self) -> None:
-        """Start all camera pipelines in separate threads."""
+        """Start all camera pipelines in separate threads.
+
+        Atomic: if any camera fails to initialize, all already-started
+        pipelines are stopped and the exception propagates.
+        """
         self._running = True
+        started_ids: list[str] = []
 
-        for cfg in self.camera_configs:
-            cam_id = cfg["camera_id"]
-            src = cfg.get("src", 0)
+        try:
+            for cfg in self.camera_configs:
+                cam_id = cfg["camera_id"]
+                src = cfg.get("src", 0)
 
-            per_fps = cfg.get("capture_fps", _TARGET_FPS)
-            self._per_camera_fps[cam_id] = per_fps
+                per_fps = cfg.get("capture_fps", _TARGET_FPS)
+                self._per_camera_fps[cam_id] = per_fps
 
-            is_primary = cfg.get("priority", "primary") == "primary"
-            gov_cfg = self._governor_config
-            target = per_fps if is_primary else min(per_fps, gov_cfg["secondary_target_fps"])
-            self._governors[cam_id] = FPSGovernor(
-                target_fps=target,
-                min_fps=gov_cfg["min_fps"],
-                is_primary=is_primary,
-                buffer_max_depth=gov_cfg["buffer_max_depth"],
-            )
+                is_primary = cfg.get("priority", "primary") == "primary"
+                gov_cfg = self._governor_config
+                target = per_fps if is_primary else min(per_fps, gov_cfg["secondary_target_fps"])
+                self._governors[cam_id] = FPSGovernor(
+                    target_fps=target,
+                    min_fps=gov_cfg["min_fps"],
+                    is_primary=is_primary,
+                    buffer_max_depth=gov_cfg["buffer_max_depth"],
+                )
 
-            pipeline = DartPipeline(
-                camera_src=src,
-                on_dart_detected=lambda score, det, _id=cam_id: self._on_single_detection(_id, score, det),
-                debug=self.debug,
-                capture_width=cfg.get("capture_width"),
-                capture_height=cfg.get("capture_height"),
-                capture_fps=per_fps,
-                diff_threshold=cfg.get("diff_threshold"),
-            )
+                pipeline = DartPipeline(
+                    camera_src=src,
+                    on_dart_detected=lambda score, det, _id=cam_id: self._on_single_detection(_id, score, det),
+                    debug=self.debug,
+                    capture_width=cfg.get("capture_width"),
+                    capture_height=cfg.get("capture_height"),
+                    capture_fps=per_fps,
+                    diff_threshold=cfg.get("diff_threshold"),
+                )
 
-            # Configure pipeline with camera-specific calibration
-            from src.cv.board_calibration import BoardCalibrationManager
-            from src.cv.camera_calibration import CameraCalibrationManager
-            pipeline.board_calibration = BoardCalibrationManager(
-                camera_id=cam_id,
-            )
-            pipeline.camera_calibration = CameraCalibrationManager(
-                camera_id=cam_id,
-            )
+                # Configure pipeline with camera-specific calibration
+                from src.cv.board_calibration import BoardCalibrationManager
+                from src.cv.camera_calibration import CameraCalibrationManager
+                pipeline.board_calibration = BoardCalibrationManager(
+                    camera_id=cam_id,
+                )
+                pipeline.camera_calibration = CameraCalibrationManager(
+                    camera_id=cam_id,
+                )
 
-            # Store per-camera exposure/gain config for application after start
-            self._pipelines[cam_id] = pipeline
-            self._apply_camera_profile(cam_id, cfg)
+                # Store per-camera exposure/gain config for application after start
+                self._pipelines[cam_id] = pipeline
+                self._apply_camera_profile(cam_id, cfg)
 
-            thread = threading.Thread(
-                target=self._run_pipeline_loop,
-                args=(cam_id, pipeline),
+                thread = threading.Thread(
+                    target=self._run_pipeline_loop,
+                    args=(cam_id, pipeline),
+                    daemon=True,
+                    name=f"cv-pipeline-{cam_id}",
+                )
+                self._threads[cam_id] = thread
+                thread.start()
+                started_ids.append(cam_id)
+                logger.info("Pipeline started for camera '%s' (src=%s)", cam_id, src)
+
+            # Start fusion thread
+            self._fusion_thread = threading.Thread(
+                target=self._fusion_loop,
                 daemon=True,
-                name=f"cv-pipeline-{cam_id}",
+                name="cv-fusion",
             )
-            self._threads[cam_id] = thread
-            thread.start()
-            logger.info("Pipeline started for camera '%s' (src=%s)", cam_id, src)
+            self._fusion_thread.start()
 
-        # Start fusion thread
-        self._fusion_thread = threading.Thread(
-            target=self._fusion_loop,
-            daemon=True,
-            name="cv-fusion",
-        )
-        self._fusion_thread.start()
+            # Compute viewing angle quality for each camera
+            for cfg in self.camera_configs:
+                cam_id = cfg["camera_id"]
+                pipeline = self._pipelines.get(cam_id)
+                if pipeline:
+                    vaq = pipeline.board_calibration.get_viewing_angle_quality()
+                    self._viewing_angle_qualities[cam_id] = vaq
+                    logger.info("Camera '%s' viewing_angle_quality=%.3f", cam_id, vaq)
 
-        # Compute viewing angle quality for each camera
-        for cfg in self.camera_configs:
-            cam_id = cfg["camera_id"]
-            pipeline = self._pipelines.get(cam_id)
-            if pipeline:
-                vaq = pipeline.board_calibration.get_viewing_angle_quality()
-                self._viewing_angle_qualities[cam_id] = vaq
-                logger.info("Camera '%s' viewing_angle_quality=%.3f", cam_id, vaq)
+            # Load stereo extrinsics and board transforms from config
+            self._load_extrinsics()
 
-        # Load stereo extrinsics and board transforms from config
-        self._load_extrinsics()
+        except Exception:
+            # Rollback: stop all already-started pipelines so no threads leak
+            logger.error("Multi-cam start() failed after starting %d cameras — rolling back", len(started_ids))
+            self._running = False
+            for cid in started_ids:
+                try:
+                    self._pipelines[cid].stop()
+                except Exception:
+                    pass
+            for cid in started_ids:
+                t = self._threads.get(cid)
+                if t is not None:
+                    t.join(timeout=3.0)
+            if self._fusion_thread is not None:
+                self._fusion_thread.join(timeout=2.0)
+            raise
 
     def stop(self) -> None:
         """Stop all pipelines."""
