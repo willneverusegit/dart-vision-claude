@@ -391,6 +391,7 @@ async def lifespan(app: FastAPI):
     logger.info("Dart-Vision starting up... (session=%s)", SESSION_ID)
 
     # Initialize game engine and event manager
+    app_state["session_id"] = SESSION_ID
     app_state["game_engine"] = GameEngine()
     em = EventManager()
     em.set_loop(asyncio.get_running_loop())

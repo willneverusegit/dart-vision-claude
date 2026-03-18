@@ -565,12 +565,15 @@ class TestTelemetryExport:
         with TestClient(app) as client:
             # Replace after startup so app_state is already initialized
             app_state["telemetry"] = self._make_telemetry()
+            app_state["session_id"] = "test-session-42"
             resp = client.get("/api/telemetry/export")
             assert resp.status_code == 200
             assert "attachment" in resp.headers.get("content-disposition", "")
             data = resp.json()
             assert "history" in data
             assert "summary" in data
+            assert "session_id" in data
+            assert data["session_id"] == "test-session-42"
             assert len(data["history"]) == 2
 
     def test_export_csv(self):

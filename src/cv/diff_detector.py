@@ -21,6 +21,7 @@ import numpy as np
 
 from src.cv.detector import DartDetection, compute_dart_confidence
 from src.cv.light_monitor import LightStabilityMonitor
+from src.cv.sharpness import SharpnessTracker, adjusted_diff_threshold, compute_wire_filter_kernel_size
 from src.cv.tip_detection import find_dart_tip
 
 logger = logging.getLogger(__name__)
@@ -100,6 +101,10 @@ class FrameDiffDetector:
 
         self._no_detect_count: int = 0
 
+        # Sharpness tracking for per-camera quality compensation
+        self._sharpness_tracker = SharpnessTracker(ema_alpha=0.1, sample_interval=10)
+        self._sharpness_adjust_enabled: bool = True
+
         # Light stability monitor
         self._light_monitor = LightStabilityMonitor(
             variance_threshold=light_variance_threshold,
@@ -164,11 +169,20 @@ class FrameDiffDetector:
         Frames müssen single-channel (Grayscale) sein.
         """
         self._frame_id += 1
+        # Update sharpness tracker
+        self._sharpness_tracker.update(frame)
+
         # Update light stability monitor and adjust threshold
         self._light_monitor.update(frame)
         if self._light_monitor.is_light_unstable():
             # Raise threshold by 50% during unstable lighting
             self.diff_threshold = min(int(self._base_diff_threshold * 1.5), 254)
+        elif self._sharpness_adjust_enabled and self._sharpness_tracker.sharpness > 0:
+            # Sharpness-based threshold adjustment
+            self.diff_threshold = adjusted_diff_threshold(
+                self._base_diff_threshold,
+                self._sharpness_tracker.sharpness,
+            )
         else:
             self.diff_threshold = self._base_diff_threshold
 
@@ -213,6 +227,8 @@ class FrameDiffDetector:
             "no_detect_count": self._no_detect_count,
             "light_unstable": self._light_monitor.is_light_unstable(),
             "light_variance": round(self._light_monitor.get_variance(), 2),
+            "sharpness": round(self._sharpness_tracker.sharpness, 1),
+            "sharpness_quality": self._sharpness_tracker.get_quality_report().get("quality_label", "unknown"),
         }
 
     def set_params(self, **kwargs) -> dict:
@@ -442,7 +458,14 @@ class FrameDiffDetector:
         _, thresh = cv2.threshold(diff, effective_threshold, 255, cv2.THRESH_BINARY)
 
         # 1) Opening: entfernt dünne Board-Draht-Artefakte aus dem Diff
-        thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, self._opening_kernel)
+        # Use sharpness-adaptive kernel: sharper cameras need larger opening
+        sharpness = self._sharpness_tracker.sharpness
+        if self._sharpness_adjust_enabled and sharpness > 200:
+            wire_ksize = compute_wire_filter_kernel_size(sharpness)
+            wire_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (wire_ksize, wire_ksize))
+            thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, wire_kernel)
+        else:
+            thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, self._opening_kernel)
         # 2) Closing: schließt kleine Konturlücken
         thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, self._closing_kernel)
         # 3) Elongated closing: verbindet Dart-Schaft-Fragmente entlang der Längsachse
@@ -611,6 +634,7 @@ class FrameDiffDetector:
                     "angle": round(rect_angle, 1),
                 },
                 "contour_points": len(contour),
+                "camera_quality": self._sharpness_tracker.get_quality_report(),
                 "settings": {
                     "settle_frames": self.settle_frames,
                     "diff_threshold": self.diff_threshold,

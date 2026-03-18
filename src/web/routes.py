@@ -801,6 +801,7 @@ def setup_routes(app_state: dict) -> APIRouter:
         from src.cv.stereo_calibration import detect_charuco_corners
         import cv2
 
+        valid_pairs_count = 0
         for i in range(num_pairs):
             raw_a = pipe_a.get_latest_raw_frame()
             raw_b = pipe_b.get_latest_raw_frame()
@@ -815,12 +816,28 @@ def setup_routes(app_state: dict) -> APIRouter:
                 corners_b, _ = detect_charuco_corners(gray_b)
                 detected_a = corners_a is not None
                 detected_b = corners_b is not None
+                if detected_a and detected_b:
+                    valid_pairs_count += 1
 
-            progress = StereoProgressTracker.frame_progress(i, num_pairs, detected_a, detected_b)
+            progress = StereoProgressTracker.frame_progress(
+                i, num_pairs, detected_a, detected_b,
+                valid_pairs=valid_pairs_count, phase="capture",
+            )
             em = app_state.get("event_manager")
             if em and hasattr(em, 'broadcast_sync'):
                 em.broadcast_sync("stereo_progress", progress)
             _time.sleep(capture_delay)
+
+        # Broadcast computing phase
+        em = app_state.get("event_manager")
+        if em and hasattr(em, 'broadcast_sync'):
+            em.broadcast_sync("stereo_progress", {
+                "type": "stereo_progress",
+                "phase": "computing",
+                "percent": 100,
+                "valid_pairs": valid_pairs_count,
+                "total": num_pairs,
+            })
 
         if len(frames_a) < 5:
             return {"ok": False, "error": f"Only captured {len(frames_a)} pairs, need at least 5"}
@@ -1496,8 +1513,9 @@ def setup_routes(app_state: dict) -> APIRouter:
             )
 
         import json as _json
+        session_id = app_state.get("session_id", "unknown")
         payload = _json.dumps(
-            {"history": history, "summary": summary},
+            {"session_id": session_id, "history": history, "summary": summary},
             separators=(",", ":"),
         )
         return StreamingResponse(

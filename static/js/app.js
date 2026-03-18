@@ -1302,10 +1302,19 @@ class DartApp {
         const container = document.getElementById('stereo-progress-container');
         if (container) container.style.display = 'block';
         if (bar) bar.style.width = data.percent + '%';
+        if (data.phase === 'computing') {
+            if (text) text.textContent = 'Berechne Stereo-Kalibrierung... (' + (data.valid_pairs || 0) + ' gueltige Paare)';
+            if (bar) bar.style.background = 'var(--accent-color-secondary, #2196f3)';
+            return;
+        }
+        if (bar) bar.style.background = 'var(--accent-color, #4caf50)';
         if (text) {
             const iA = data.detected_a ? '\u2713' : '\u2717';
             const iB = data.detected_b ? '\u2713' : '\u2717';
-            text.textContent = 'Frame ' + (data.frame_idx + 1) + '/' + data.total + ' \u2014 Cam A: ' + iA + '  Cam B: ' + iB;
+            const valid = data.valid_pairs != null ? data.valid_pairs : '?';
+            text.textContent = 'Frame ' + (data.frame_idx + 1) + '/' + data.total +
+                ' | Gueltige Paare: ' + valid +
+                ' | Cam A: ' + iA + '  Cam B: ' + iB;
         }
     }
 
@@ -1957,6 +1966,8 @@ class DartApp {
             if (resultEl) resultEl.textContent = "\u274C Verbindungsfehler";
         } finally {
             if (btn) btn.disabled = false;
+            const pc = document.getElementById('stereo-progress-container');
+            if (pc) pc.style.display = 'none';
         }
     }
     // --- Telemetry ---
@@ -1984,6 +1995,15 @@ class DartApp {
                 const a = document.createElement("a");
                 a.href = "/api/telemetry/export";
                 a.download = "telemetry.json";
+                a.click();
+            });
+        }
+        const exportCsvBtn = document.getElementById("btn-export-telemetry-csv");
+        if (exportCsvBtn) {
+            exportCsvBtn.addEventListener("click", () => {
+                const a = document.createElement("a");
+                a.href = "/api/telemetry/export?format=csv";
+                a.download = "telemetry.csv";
                 a.click();
             });
         }
