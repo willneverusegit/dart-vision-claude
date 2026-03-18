@@ -240,6 +240,8 @@ class FrameDiffDetector:
             "light_variance": round(self._light_monitor.get_variance(), 2),
             "sharpness": round(self._sharpness_tracker.sharpness, 1),
             "sharpness_quality": self._sharpness_tracker.get_quality_report().get("quality_label", "unknown"),
+            "brightness": round(self._sharpness_tracker.brightness, 1),
+            "brightness_label": self._sharpness_tracker.get_quality_report().get("brightness_label", "unknown"),
         }
 
     def set_params(self, **kwargs) -> dict:

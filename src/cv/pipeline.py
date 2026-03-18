@@ -256,6 +256,12 @@ class DartPipeline:
 
         # 2) Grayscale + local contrast enhancement
         gray = cv2.cvtColor(roi_source, cv2.COLOR_BGR2GRAY) if len(roi_source.shape) == 3 else roi_source
+        # P50: Adjust CLAHE clipLimit based on brightness
+        brightness = self.frame_diff_detector._sharpness_tracker.brightness
+        if brightness > 0:
+            from src.cv.sharpness import adjusted_clahe_clip_limit
+            clip = adjusted_clahe_clip_limit(brightness)
+            self.clahe = cv2.createCLAHE(clipLimit=clip, tileGridSize=(8, 8))
         enhanced = self.clahe.apply(gray)
         self._last_roi = enhanced
 
