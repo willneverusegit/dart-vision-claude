@@ -1015,3 +1015,19 @@ Typische Arbeiten:
 - Timeout falls Kamera-Open haengt (aktuell blockiert der Endpunkt unbegrenzt)
 
 Warum sinnvoll: Verhindert Ressourcen-Konflikte und haengende Requests im Multi-User-Szenario.
+
+## Prioritaet 69: Ring-Naming-Konsistenz zwischen Ground-Truth und Backend vereinheitlichen (neu — entdeckt bei P11)
+
+Kritikalitaet: MITTEL
+
+Ziel:
+
+- ground_truth.yaml verwendet `bull_inner`/`bull_outer`, routes.py verwendet `inner_bull`/`outer_bull`. Diese Inkonsistenz fuehrt zu Fehlern wenn E2E-Tests die erkannten Werte gegen Ground-Truth vergleichen.
+
+Typische Arbeiten:
+
+- Entscheiden welches Namensschema kanonisch ist (empfohlen: `bull_inner`/`bull_outer` wie im GT)
+- `VALID_RINGS` in routes.py anpassen oder Mapping-Layer einbauen
+- Alle Stellen in `src/cv/` und `src/game/` pruefen wo Ring-Strings verwendet werden
+- Ground-Truth-Validierung und E2E-Accuracy-Tests verwenden dann konsistente Namen
+- Annotierte Videos 6-8.mp4 in ground_truth.yaml nachtragen (aktuell leere throws-Listen)
