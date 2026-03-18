@@ -429,6 +429,23 @@ async def lifespan(app: FastAPI):
     jsonl_writer = TelemetryJSONLWriter.from_env(session_id=SESSION_ID)
     if jsonl_writer:
         telemetry.attach_jsonl_writer(jsonl_writer)
+        app_state["telemetry_jsonl_writer"] = jsonl_writer
+
+    # Background scheduler: daily telemetry cleanup
+    async def _telemetry_cleanup_scheduler():
+        """Run cleanup_old_files() once daily. Non-blocking, crash-safe."""
+        while not app_state["shutdown_event"].is_set():
+            await asyncio.sleep(86400)  # 24h
+            writer = app_state.get("telemetry_jsonl_writer")
+            if writer is not None:
+                try:
+                    deleted = writer.cleanup_old_files()
+                    if deleted > 0:
+                        logger.info("Telemetry cleanup: deleted %d old files", deleted)
+                except Exception:
+                    logger.warning("Telemetry cleanup failed", exc_info=True)
+
+    cleanup_task = asyncio.create_task(_telemetry_cleanup_scheduler())
 
     # Start telemetry collection background task
     async def _collect_telemetry():
@@ -537,8 +554,13 @@ async def lifespan(app: FastAPI):
     logger.info("Dart-Vision shutting down...")
     app_state["shutdown_event"].set()
     telemetry_task.cancel()
+    cleanup_task.cancel()
     try:
         await telemetry_task
+    except asyncio.CancelledError:
+        pass
+    try:
+        await cleanup_task
     except asyncio.CancelledError:
         pass
     stop_pipeline_thread(app_state, "single", timeout=5.0)
