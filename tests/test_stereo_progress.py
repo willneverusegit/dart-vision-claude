@@ -62,6 +62,46 @@ class TestFrameProgress:
         assert r["percent"] == 100
 
 
+class TestFrameProgressErrorMessages:
+    """Tests for P54: error messages and new fields in frame_progress."""
+
+    def test_both_detected_no_error(self):
+        r = StereoProgressTracker.frame_progress(0, 10, True, True)
+        assert r["both_detected"] is True
+        assert r["error"] is None
+
+    def test_neither_detected_error(self):
+        r = StereoProgressTracker.frame_progress(0, 10, False, False)
+        assert r["both_detected"] is False
+        assert r["error"] == "Board in keiner Kamera erkannt"
+
+    def test_only_a_detected_error(self):
+        r = StereoProgressTracker.frame_progress(0, 10, True, False)
+        assert r["both_detected"] is False
+        assert r["error"] == "Board nicht in Kamera B erkannt"
+
+    def test_only_b_detected_error(self):
+        r = StereoProgressTracker.frame_progress(0, 10, False, True)
+        assert r["both_detected"] is False
+        assert r["error"] == "Board nicht in Kamera A erkannt"
+
+    def test_valid_pairs_kwarg(self):
+        r = StereoProgressTracker.frame_progress(5, 10, True, True, valid_pairs=3)
+        assert r["valid_pairs"] == 3
+
+    def test_phase_kwarg(self):
+        r = StereoProgressTracker.frame_progress(0, 10, True, True, phase="computing")
+        assert r["phase"] == "computing"
+
+    def test_default_phase_is_capture(self):
+        r = StereoProgressTracker.frame_progress(0, 10, True, True)
+        assert r["phase"] == "capture"
+
+    def test_default_valid_pairs_is_zero(self):
+        r = StereoProgressTracker.frame_progress(0, 10, True, True)
+        assert r["valid_pairs"] == 0
+
+
 class TestCalibrationResult:
     def test_basic(self):
         r = StereoProgressTracker.calibration_result(0.75, 12, "cam0", "cam1")

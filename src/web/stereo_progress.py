@@ -17,13 +17,45 @@ class StereoProgressTracker:
             return {"quality": "poor", "label": "Schlecht", "recommendation": "Kalibrierung wiederholen. Board muss in beiden Kameras gut sichtbar sein."}
 
     @staticmethod
-    def frame_progress(frame_idx: int, total: int, detected_a: bool, detected_b: bool) -> dict:
+    def frame_progress(
+        frame_idx: int,
+        total: int,
+        detected_a: bool,
+        detected_b: bool,
+        *,
+        valid_pairs: int = 0,
+        phase: str = "capture",
+    ) -> dict:
+        """Build a progress event dict for stereo calibration frame capture.
+
+        Args:
+            frame_idx: Current frame index (0-based).
+            total: Total frames to capture.
+            detected_a: Whether ChArUco board was detected in camera A.
+            detected_b: Whether ChArUco board was detected in camera B.
+            valid_pairs: Number of frame pairs where both cameras detected the board.
+            phase: Current phase ('capture' or 'computing').
+        """
+        both_detected = detected_a and detected_b
+        if not detected_a and not detected_b:
+            error = "Board in keiner Kamera erkannt"
+        elif not detected_a:
+            error = "Board nicht in Kamera A erkannt"
+        elif not detected_b:
+            error = "Board nicht in Kamera B erkannt"
+        else:
+            error = None
+
         return {
             "type": "stereo_progress",
             "frame_idx": frame_idx,
             "total": total,
             "detected_a": detected_a,
             "detected_b": detected_b,
+            "both_detected": both_detected,
+            "valid_pairs": valid_pairs,
+            "phase": phase,
+            "error": error,
             "percent": round((frame_idx + 1) / total * 100),
         }
 

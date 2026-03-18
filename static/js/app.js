@@ -1312,14 +1312,24 @@ class DartApp {
             if (bar) bar.style.background = 'var(--accent-color-secondary, #2196f3)';
             return;
         }
-        if (bar) bar.style.background = 'var(--accent-color, #4caf50)';
+        // Color bar based on detection status
+        if (data.both_detected) {
+            if (bar) bar.style.background = 'var(--accent-color, #4caf50)';
+        } else {
+            if (bar) bar.style.background = '#ff9800';
+        }
         if (text) {
             const iA = data.detected_a ? '\u2713' : '\u2717';
             const iB = data.detected_b ? '\u2713' : '\u2717';
             const valid = data.valid_pairs != null ? data.valid_pairs : '?';
-            text.textContent = 'Frame ' + (data.frame_idx + 1) + '/' + data.total +
+            var line = 'Frame ' + (data.frame_idx + 1) + '/' + data.total +
                 ' | Gueltige Paare: ' + valid +
                 ' | Cam A: ' + iA + '  Cam B: ' + iB;
+            if (data.error) {
+                line += ' | ' + data.error;
+            }
+            text.textContent = line;
+            text.style.color = data.error ? '#ff9800' : 'var(--text-secondary, #aaa)';
         }
     }
 
