@@ -1,6 +1,6 @@
 # Current State
 
-Stand dieser Zusammenfassung: 2026-03-18 (P7, P8, P10, P13-P20 erledigt)
+Stand dieser Zusammenfassung: 2026-03-18 (Welle 1-4 Session: P22, P27, P28, P40-P42, P46-P48, Tier-2 #5-#7, #10-#14, P30-P33, P35 erledigt)
 
 ## Technischer Kern
 
@@ -54,6 +54,15 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 - Loading-Spinner beim Pipeline-Start
 - Keyboard-Shortcut-Hints (Enter/Del/U)
 - Kamera-Feed mit korrektem Aspektverhaeltnis (object-fit:contain)
+- Telemetrie-Export als JSONL (DARTVISION_TELEMETRY_FILE) und /api/telemetry/export (JSON/CSV)
+- Temporal Safety Bundle: Stability Gating (3-Frame), Scoring Lock (0.5s), Cooldown (50px Zone)
+- Bounce-Out Detection (Post-Frame vs Baseline Vergleich)
+- HoughLinesP + fitLine als alternative Tip-Detection mit Confidence-Orchestrierung
+- Downscaled Motion Detection (4x) und Frame-Skip im Idle
+- Adaptive Thresholds (Otsu-Bias + Search Mode nach 90 Frames Stille)
+- Contour Shape Confidence Score (gewichtet: Aspect-Ratio, Solidity, Area)
+- Light Stability Monitor (automatische Threshold-Erhoehung bei instabilem Licht)
+- Kalibrierung: dynamischer BOARD_CROP_MM, center_px als ROI-Mitte, cornerSubPix-Fix
 
 ## Was heute als fortgeschritten, aber noch sensibel gilt
 
@@ -65,16 +74,18 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 
 ## Verifizierte Kennzahlen
 
-- `645` Tests bestanden (Stand 2026-03-18)
+- `831` Tests bestanden (Stand 2026-03-18, +186 neue Tests)
 - Gesamt-Coverage ~77%
 - Wichtige Module: main.py 78%, routes.py 66%, pipeline.py 68%, multi_camera.py 62%, capture.py 72%
 - synthetische Pipeline-Benchmarks fuer `1`, `2` und `3` Kameras innerhalb der definierten KPI-Grenzen
 - E2E-Replay-Tests: 90% Hit Rate, 100% Score Accuracy auf synthetischen Clips (6 Tests)
+- Echte Video-Validierung: ~55% Hit Rate, 64% Sektor-Accuracy auf 2 echten Videos (rec_094311, rec_094521)
+- Ground-Truth fuer 52 Wuerfe in 5 Videos annotiert (testvids/ground_truth.yaml)
 
 ## Wichtige Projektfakten
 
 - `config/calibration_config.yaml` enthaelt eine gueltige Kalibrierung fuer `default`
-- `config/multi_cam.yaml` speichert jetzt auch `last_cameras` fuer schnellen Multi-Cam-Neustart
+- `config/multi_cam.yaml` speichert last_cameras, sync_depth Presets (tight/standard/loose), governor Config
 - Telemetrie-Endpunkt `/api/stats` liefert FPS, Dropped Frames, Queue-Druck, RAM
 - Telemetrie-Historie-Endpunkt `/api/telemetry/history` liefert zeitliche Verlaeufe und Alerts
 - `/api/multi/readiness` liefert pro-Kamera-Diagnose fuer Multi-Cam-Setup
@@ -100,3 +111,4 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 - `SESSION_2026-03-17.md` — ausfuehrliche Session-Doku aller Aenderungen
 - `PROJEKTSTAND_2026-03-16.md` — vorige technische Einordnung
 - `.claude/plans/shimmying-knitting-corbato.md` — 9-Phasen Multi-Cam-Integrationsplan (2026-03-18)
+- `.claude/plans/lovely-munching-rabin.md` — Welle 1-5 Parallelisierungsplan (2026-03-18)
