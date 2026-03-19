@@ -60,6 +60,12 @@ Vor Arbeit an Code: `agent_docs/current_state.md` lesen fuer den aktuellen Stand
 - `/agentic-os:status` — System-Health und Memory-Status anzeigen
 - `/agentic-os:sync` — Learnings zwischen Projekt und Global synchronisieren
 
+## Session-Start Prioritaet
+
+Bei jedem Session-Start ZUERST `agentic-os:heartbeat` ausfuehren — noch vor anderen Skill-Checks.
+Dies hat Vorrang vor dem superpowers:using-superpowers Hook.
+Danach den normalen superpowers-Workflow befolgen.
+
 ## Prozess-Regeln
 
 Alle Prozess-Regeln (Iteration-Logging, Fortschrittsdoku, Session-Start/-Ende) stehen in `agent_docs/agent_workflow.md`.
