@@ -1152,7 +1152,9 @@ Typische Arbeiten:
 
 Warum sinnvoll: Bricht die gesamte Test-Suite mit `-x` ab, blockiert CI.
 
-## Prioritaet 76: Blocking stop_pipeline_thread/start_single_pipeline in run_in_executor wrappen (neu — entdeckt bei P70)
+## Prioritaet 76: Blocking stop_pipeline_thread/start_single_pipeline in run_in_executor wrappen (✅ ERLEDIGT 2026-03-19)
+
+**Umsetzung:** Alle blocking Pipeline-Operationen (stop_pipeline_thread, start_single_pipeline, _wait_for_camera_release) in 4 Route-Handlern via `_run_blocking()` Helper in `asyncio.run_in_executor()` gewrappt. Lock-Handling bleibt im gleichen Thread wie die blockierenden Aufrufe. Betrifft: single_start, single_stop, multi_start (stop-Phase), multi_stop. 134 Route-Tests gruen. Geaenderte Dateien: `src/web/routes.py`.
 
 Kritikalitaet: MITTEL
 
