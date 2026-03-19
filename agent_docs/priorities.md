@@ -802,7 +802,9 @@ Warum sinnvoll: Ohne Retention wachsen JSONL-Dateien bei Dauerbetrieb unbegrenzt
 
 **Umsetzung:** 16 Integration-Tests in `tests/test_detection_integration.py`. Abgedeckte Szenarien: 3-Dart-Sequenz mit Cooldown + Exclusion Zones, Bounce-Out waehrend Cooldown (Motion suppressed + Exclusion Zone), Shape-Reject gefolgt von gueltigem Dart, dynamische Area-Skalierung (P12) mit DartImpactDetector.scale_area_to_roi, MotionFilter Scoring-Lock + Idle-Tracking im Pipeline-Kontext, DartImpactDetector register_confirmed + Cooldown-Zyklus, Performance-Benchmarks (ShapeAnalyzer <2ms/call, CooldownManager <100us/iteration).
 
-## Prioritaet 50: Auto-Exposure-Kompensation pro Kamera (neu — entdeckt bei P26)
+## Prioritaet 50: Auto-Exposure-Kompensation pro Kamera (✅ ERLEDIGT 2026-03-18)
+
+**Umsetzung:** Bereits implementiert (laut current_state.md): Brightness-Tracking (EMA), adaptive CLAHE clipLimit, /api/camera/quality Endpoint. Markierung nachgeholt bei Agent-Run 2026-03-19.
 
 Ziel:
 
@@ -1172,19 +1174,24 @@ Typische Arbeiten:
 
 Warum sinnvoll: Die Sleep-Phasen sind jetzt non-blocking (P70), aber die eigentlichen Pipeline-Operationen (Thread-Join mit 5s Timeout, Kamera-Open) blockieren den Event-Loop weiterhin. Komplettiert die async-Umstellung der Pipeline-Management-Endpunkte.
 
-## Prioritaet 77: Game-Engine Cricket Sektor-Validierung (neu — entdeckt bei Agent-Run)
+## Prioritaet 77: Game-Engine Cricket Sektor-Validierung (✅ ERLEDIGT 2026-03-19)
+
+**Umsetzung:** Bereits korrekt implementiert: `_score_cricket()` prueft `if target not in player.cricket_marks: return` (Zeile 151-152 in engine.py). Nicht-Cricket-Sektoren werden ignoriert. Test `test_non_cricket_number_ignored` in test_game_engine.py existiert. Zusaetzlich 4 Edge-Case-Tests ergaenzt. Geaenderte Dateien: `tests/test_game_engine.py`.
+
+Kritikalitaet: MITTEL
+
+## Prioritaet 78: Game-Engine Undo bei Cricket mit Scoring rueckgaengig machen (neu — entdeckt bei Agent-Run)
 
 Kritikalitaet: MITTEL
 
 Ziel:
 
-- Cricket erlaubt nur Sektoren 15-20 und 25 (Bull). Aktuell wird jeder Sektor akzeptiert ohne Pruefung.
+- Undo im Cricket-Modus macht zwar den Wurf rueckgaengig, aber es ist unklar ob Cricket-Marks und -Scoring korrekt restauriert werden wenn Punkte aus uebermaessigen Marks (>3) geschossen wurden.
 
 Typische Arbeiten:
 
-- `register_throw()` im Cricket-Modus: Sektor gegen erlaubte Liste pruefen
-- Ungueltige Sektoren ignorieren oder mit Warnung zurueckgeben
-- Tests fuer Edge Cases (Sektor 14, 21, 0)
+- Test-Szenario: Spieler schliesst 20 (3 Marks) und scored danach Extrapunkte, dann Undo — Marks und Score muessen korrekt zurueckgesetzt werden
+- Undo-Stack-Snapshot pruefen ob cricket_marks korrekt erfasst werden
 - Dateien: `src/game/engine.py`, `tests/test_game_engine.py`
 
-Warum sinnvoll: P14 hat allgemeine Robustheit verbessert, aber Cricket-spezifische Sektorvalidierung fehlt noch.
+Warum sinnvoll: Undo ist implementiert via _push_undo (vollstaendiger State-Snapshot), sollte funktionieren, aber ohne Tests ist unklar ob der Snapshot alle Cricket-State korrekt erfasst.
