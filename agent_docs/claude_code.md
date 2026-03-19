@@ -62,9 +62,8 @@ Nach jeder erledigten Aufgabe oder Prioritaet aktualisiere direkt im selben Arbe
 
 Zusaetzlich:
 
-- Pflege Rueckverlinkungen zwischen Prioritaeten, `weakness_log.md`, `decision_log.md` und Session-Reports
-- Fuer jede erledigte Prioritaet MUSS mindestens eine neue Prioritaet am Ende von `priorities.md` ergaenzt werden
-- Nenne in der Abschlussmeldung, welche neuen Punkte auf die Liste gekommen sind
+- Pflege Rueckverlinkungen zwischen Prioritaeten, `decisions.md` und Session-Reports
+- Wenn neue Schwachstellen entdeckt werden: als neue Prioritaet(en) anhaengen
 
 ## Gute Abschlussform fuer Claude Code
 

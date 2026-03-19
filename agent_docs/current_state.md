@@ -1,6 +1,6 @@
 # Current State
 
-Stand dieser Zusammenfassung: 2026-03-19 (Welle 1-4 + Auto-Agents: P22, P26, P27, P28, P30-P31, P33, P39-P43, P46-P49, P50-P56, P60-P65, Tier-2 #5-#7, #10-#14, P32, P35 erledigt, Multi-Cam-Kalibriermodus repariert)
+Stand dieser Zusammenfassung: 2026-03-19 (Welle 1-4 + Auto-Agents: P22, P26, P27, P28, P30-P31, P33, P39-P43, P46-P49, P50-P56, P60-P65, Tier-2 #5-#7, #10-#14, P32, P35, P73, P75-P77 erledigt, Multi-Cam-Kalibriermodus repariert)
 
 ## Technischer Kern
 
@@ -109,7 +109,7 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 
 ## Verifizierte Kennzahlen
 
-- `1203` Tests bestanden (Stand 2026-03-18, +558 neue Tests)
+- `1348` Tests bestanden (Stand 2026-03-19, ohne e2e/scripts)
 - Gesamt-Coverage ~77%
 - Wichtige Module: main.py 78%, routes.py 74%, pipeline.py 68%, multi_camera.py 62%, capture.py 72%
 - Zusatzverifikation 2026-03-19: 256 fokussierte Tests gruen (Multi-Cam-Kalibrierung, Route-Coverage, Web/Hardening, Multi-Cam-Config); kein Vollsuite-Lauf
@@ -145,7 +145,6 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 
 ## Referenzdokumente
 
-- `SESSION_2026-03-17.md` — ausfuehrliche Session-Doku aller Aenderungen
-- `PROJEKTSTAND_2026-03-16.md` — vorige technische Einordnung
-- `.claude/plans/shimmying-knitting-corbato.md` — 9-Phasen Multi-Cam-Integrationsplan (2026-03-18)
-- `.claude/plans/lovely-munching-rabin.md` — Welle 1-5 Parallelisierungsplan (2026-03-18)
+- `agent_docs/priorities.md` — offene Weiterentwicklungsziele
+- `agent_docs/priorities_done.md` — abgeschlossene Prioritaeten (Archiv)
+- `agent_docs/decisions.md` — Architektur-Entscheidungen

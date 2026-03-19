@@ -125,7 +125,7 @@ Fuer `agent_docs/priorities.md` gilt:
 
 - schreibe kurz hinein, **wie** die Prioritaet umgesetzt wurde, nicht nur dass sie bearbeitet wurde
 - markiere eine abgeschlossene Prioritaet explizit als `erledigt`
-- pflege pro Prioritaet `Verknuepfte Weaknesses:` und `Verknuepfte Entscheidungen:` mit IDs oder `keine`
+- pflege pro Prioritaet `Verknuepfte Entscheidungen:` mit ADR-IDs oder `keine`
 - behalte bestehende Prioritaetsnummern unveraendert bei
 - haenge neu entdeckte Schwachstellen oder Folgearbeiten hinten mit der naechsten freien Nummer an
 - loesche erledigte Prioritaeten nicht einfach aus der Liste, solange sie fuer den Verlauf relevant bleiben
@@ -140,7 +140,7 @@ Wenn waehrend der Arbeit neue Schwachstellen, Restluecken oder Folgearbeiten sic
 
 - entscheide, ob sie nur Restrisiko der aktuellen Aufgabe sind oder eine eigene Folgeprioritaet verdienen
 - fuege eigenstaendige Folgeprioritaeten in `agent_docs/priorities.md` mit neuer fortlaufender Nummer hinzu
-- pflege Rueckverlinkungen zwischen Prioritaeten, `weakness_log.md`, `decision_log.md` und Session-Reports
+- pflege Rueckverlinkungen zwischen Prioritaeten, `decisions.md` und Session-Reports
 - nenne in der Abschlussmeldung, welche neuen Punkte auf die Liste gekommen sind
 
 ## Aenderungsregeln nach Bereich
@@ -199,18 +199,20 @@ Diese Hinweise sind besonders fuer Codex relevant:
 
 ## Dokumentenkarte
 
-- `CLAUDE.md` - kompakter Einstieg fuer Claude-kompatible Agents
-- `agent_docs/codex.md` - Codex-spezifische Arbeitsweise
-- `agent_docs/claude_code.md` - Claude-Code-spezifische Arbeitsweise
-- `AGEND.md` - Kompatibilitaetsalias auf diese Anweisungen
-- `agent_docs/INDEX.md` - Einstieg und Lesepfade
-- `agent_docs/current_state.md` - aktueller fachlicher und technischer Stand
-- `agent_docs/architecture.md` - Systemaufbau und Dateikarte
-- `agent_docs/hardware_constraints.md` - Designgrenzen fuer das Zielgeraet
-- `agent_docs/development_workflow.md` - Arbeitsregeln, Testmatrix, Change-Checkliste
-- `agent_docs/priorities.md` - priorisierte Weiterentwicklungsziele
-- `agent_docs/weakness_log.md` - offene und erledigte Schwaechen unterhalb der Prioritaetsebene
-- `agent_docs/decision_log.md` - wichtige Projekt- und Agent-Entscheidungen
+- `CLAUDE.md` — kompakter Einstieg fuer Claude Code
+- `AGENTS.md` — kanonische Arbeitsanweisung fuer alle Agents
+- `agent_docs/INDEX.md` — Einstieg und Lesepfade
+- `agent_docs/current_state.md` — aktueller fachlicher und technischer Stand
+- `agent_docs/architecture.md` — Systemaufbau und Dateikarte
+- `agent_docs/hardware_constraints.md` — Designgrenzen fuer das Zielgeraet
+- `agent_docs/development_workflow.md` — Arbeitsregeln, Testmatrix, Change-Checkliste
+- `agent_docs/priorities.md` — offene Weiterentwicklungsziele
+- `agent_docs/priorities_done.md` — abgeschlossene Prioritaeten (Archiv)
+- `agent_docs/decisions.md` — Architektur-Entscheidungen (ADRs)
+- `agent_docs/pitfalls.md` — bekannte Stolpersteine
+- `agent_docs/agent_workflow.md` — Prozess-Regeln (Session-Start/-Ende, Logging)
+- `agent_docs/claude_code.md` — Claude-Code-spezifische Arbeitsweise
+- `agent_docs/codex.md` — Codex-spezifische Arbeitsweise
 
 ## Domain-Skills
 

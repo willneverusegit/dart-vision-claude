@@ -105,11 +105,6 @@ Nach jeder Aufgabe aktiv pruefen:
 - Gibt es Folgethemen die logisch auf diese Arbeit aufbauen?
 - Falls ja: als neue Prioritaet(en) hinten an `priorities.md` anhaengen
 
-### 4. Mindestens eine neue Prioritaet pro erledigter Prioritaet
+### 4. Neue Schwachstellen als Prioritaeten erfassen (wenn vorhanden)
 
-Fuer jede als erledigt markierte Prioritaet MUSS mindestens eine neue Prioritaet am Ende von `priorities.md` ergaenzt werden. Die Prioritaetenliste schrumpft nie auf null offene Eintraege.
-
-### 5. Kontext in .agent-memory aktualisieren
-
-- Aktiviere `self-improving-agent:context-keeper` um Architektur-Entscheidungen und Statusaenderungen in `.agent-memory/` festzuhalten
-- Besonders bei: Stack-Aenderungen, neuen Constraints, Architektur-Entscheidungen, Modul-Statuswechseln
+Wenn bei der Arbeit neue Schwachstellen oder Folgethemen entdeckt werden, als neue Prioritaeten hinten an `priorities.md` anhaengen. Kein kuenstliches Aufblaehen — nur echte Funde eintragen.

@@ -782,3 +782,23 @@ Typische Arbeiten:
 - Dateien: `src/game/checkout.py`, `tests/test_checkout.py`
 
 Warum sinnvoll: Bricht die gesamte Test-Suite mit `-x` ab, blockiert CI.
+
+## P39: Video-Replay-Testinfrastruktur (✅ 2026-03-18)
+
+**Umsetzung:** marker_size_mm konfigurierbar, `scripts/test_all_videos.py` Batch-Script, `testvids/ground_truth.yaml` mit 5 annotierten Videos, no-crash und Ground-Truth-Validierung pytest-Tests. Detection-Count-Tests teilweise xfail wegen Baseline-Warmup-Problem.
+
+## P46: Dark/Light Theme Toggle — Verbleibende Arbeiten (✅ 2026-03-18)
+
+**Umsetzung:** 3-Wege-Theme-Zyklus (Dark->Light->High-Contrast), CSS-Transition (0.3s ease), High-Contrast-Theme mit WCAG-AAA-Kontrasten. Dateien: `static/css/style.css`, `static/js/app.js`.
+
+## P65: Camera Preview Endpoint absichern gegen gleichzeitige Zugriffe (✅ 2026-03-18)
+
+**Umsetzung:** Per-Source asyncio.Lock, TTL-Cache (2.5s), asyncio.timeout(5s), 504-Response bei Timeout. Dateien: `src/web/routes.py`, `tests/test_camera_preview_lock.py`.
+
+## P73: Jinja2Templates-Instanz in setup_routes Factory verschieben (✅ 2026-03-19)
+
+**Umsetzung:** `templates = Jinja2Templates(directory="templates")` von module-level in `setup_routes()` verschoben. Kein module-level Seiteneffekt mehr. Dateien: `src/web/routes.py`.
+
+## P76: Blocking stop_pipeline_thread/start_single_pipeline in run_in_executor wrappen (✅ 2026-03-19)
+
+**Umsetzung:** Alle blocking Pipeline-Operationen in 4 Route-Handlern via `_run_blocking()` Helper in `asyncio.run_in_executor()` gewrappt. Dateien: `src/web/routes.py`.
