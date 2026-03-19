@@ -1074,13 +1074,13 @@ def setup_routes(app_state: dict) -> APIRouter:
         if em and hasattr(em, 'broadcast_sync'):
             em.broadcast_sync("stereo_result", result_event)
 
-        from src.cv.calibration_overlay import draw_stereo_epipolar_overlay, encode_result_image as _encode_result_image
+        from src.cv.calibration_overlay import draw_stereo_epipolar_overlay, encode_result_image
         result_image = None
         frame_a_last = pipe_a.get_latest_raw_frame() if hasattr(pipe_a, "get_latest_raw_frame") else None
         frame_b_last = pipe_b.get_latest_raw_frame() if hasattr(pipe_b, "get_latest_raw_frame") else None
         if frame_a_last is not None and frame_b_last is not None:
             overlay = draw_stereo_epipolar_overlay(frame_a_last, frame_b_last)
-            result_image = _encode_result_image(overlay)
+            result_image = encode_result_image(overlay)
 
         rpe = result.reprojection_error
         if rpe < 0.5:
