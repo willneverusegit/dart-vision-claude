@@ -1092,6 +1092,16 @@ class DartApp {
     }
 
     async _startArucoCalibration() {
+        if (this.multiCamRunning) {
+            var cameraId = this._getCalibrationCameraId();
+            var stepper = document.getElementById('wizard-stepper');
+            if (stepper) stepper.style.display = 'block';
+            this._wizardState.currentCamera = cameraId;
+            this._wizardAdvance('board_running');
+            await this._runWizardBoardCalibration(cameraId);
+            return;
+        }
+
         this._showCalStep("cal-step-auto");
         this._setCalibrationAutoStatus(
             this._getCalibrationTargetLabel() + ": Board-ArUco Alignment wird gestartet..."
@@ -1126,7 +1136,49 @@ class DartApp {
         }
     }
 
+    async _runWizardBoardCalibration(cameraId) {
+        try {
+            var body = {};
+            if (cameraId) body.camera_id = cameraId;
+            var resp = await fetch('/api/calibration/board/aruco', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(body),
+            });
+            if (!resp.ok) {
+                this._wizardState.step = 'board_result';
+                this._showWizardResult({ok: false, error: 'Board-ArUco HTTP ' + resp.status});
+                this._updateStepperVisuals();
+                return;
+            }
+            var data = await resp.json();
+            this._wizardState.step = 'board_result';
+            this._wizardState.lastResult = data;
+            if (data.ok) {
+                this._setCalibrationState(cameraId, {board_valid: true});
+            }
+            this._showWizardResult(data);
+            this._updateStepperVisuals();
+        } catch (e) {
+            this._wizardState.step = 'board_result';
+            this._showWizardResult({ok: false, error: 'Fehler: ' + e.message});
+            this._updateStepperVisuals();
+        }
+    }
+
     async _startLensCalibration() {
+        if (this.multiCamRunning) {
+            var cameraId = this._getCalibrationCameraId();
+            var stepper = document.getElementById('wizard-stepper');
+            if (stepper) stepper.style.display = 'block';
+            this._wizardState.currentCamera = cameraId;
+            this._wizardAdvance('lens_running');
+            fetch('/api/calibration/charuco-start/' + encodeURIComponent(cameraId || ''), {method: 'POST'})
+                .catch(function() {});
+            this._startCharucoGuidance(cameraId, 'lens');
+            return;
+        }
+
         this._showCalStep("cal-step-auto");
         const preset = this._getSelectedCharucoPreset();
         this._setCalibrationAutoStatus(
@@ -2916,6 +2968,49 @@ class DartApp {
         if (btnNext) btnNext.addEventListener('click', function() { self._wizardNext(); });
         if (btnRetry) btnRetry.addEventListener('click', function() { self._wizardRetry(); });
         if (btnCancel) btnCancel.addEventListener('click', function() { self._wizardCancel(); });
+
+        var btnCharucoCalibrate = document.getElementById('charuco-calibrate-btn');
+        if (btnCharucoCalibrate) {
+            btnCharucoCalibrate.addEventListener('click', function() {
+                self._stopCharucoGuidance();
+                self._wizardAdvance('lens_running');
+                self._runWizardLensCalibration(self._wizardState.currentCamera);
+            });
+        }
+    }
+
+    async _runWizardLensCalibration(cameraId) {
+        var preset = this._getSelectedCharucoPreset();
+        try {
+            var body = {preset: preset};
+            if (cameraId) body.camera_id = cameraId;
+            var resp = await fetch('/api/calibration/lens-setup', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(body),
+            });
+            if (!resp.ok) {
+                this._wizardState.step = 'lens_result';
+                this._showWizardResult({ok: false, error: 'Lens-Kalibrierung HTTP ' + resp.status});
+                this._updateStepperVisuals();
+                return;
+            }
+            var data = await resp.json();
+            this._wizardState.step = 'lens_result';
+            this._wizardState.lastResult = data;
+            if (data.ok) {
+                this._setCalibrationState(cameraId, {lens_valid: true});
+                if (data.charuco_board && data.charuco_board.preset) {
+                    this._syncCharucoBoardSelectors(data.charuco_board.preset);
+                }
+            }
+            this._showWizardResult(data);
+            this._updateStepperVisuals();
+        } catch (e) {
+            this._wizardState.step = 'lens_result';
+            this._showWizardResult({ok: false, error: 'Fehler: ' + e.message});
+            this._updateStepperVisuals();
+        }
     }
 
     _wizardAdvance(nextStep) {
@@ -3027,10 +3122,12 @@ class DartApp {
         var cam = this._wizardState.currentCamera;
         if (step === 'lens_result') {
             this._wizardAdvance('board_running');
+            this._runWizardBoardCalibration(cam);
         } else if (step === 'board_result') {
             if (cam) this._autoTriggerPose(cam);
         } else if (step === 'pose_result') {
             this._wizardAdvance('stereo_running');
+            this._runWizardStereoCalibration();
         } else if (step === 'stereo_result') {
             this._wizardCancel();
         }
@@ -3038,15 +3135,57 @@ class DartApp {
 
     _wizardRetry() {
         var step = this._wizardState.step;
+        var cam = this._wizardState.currentCamera;
         if (step.indexOf('lens') === 0) {
             this._wizardAdvance('lens_running');
+            fetch('/api/calibration/charuco-start/' + encodeURIComponent(cam || ''), {method: 'POST'})
+                .catch(function() {});
+            this._startCharucoGuidance(cam, 'lens');
         } else if (step.indexOf('board') === 0) {
             this._wizardAdvance('board_running');
+            this._runWizardBoardCalibration(cam);
         } else if (step.indexOf('pose') === 0) {
-            var cam = this._wizardState.currentCamera;
             if (cam) this._autoTriggerPose(cam);
         } else if (step.indexOf('stereo') === 0) {
             this._wizardAdvance('stereo_running');
+            this._runWizardStereoCalibration();
+        }
+    }
+
+    async _runWizardStereoCalibration() {
+        var camA = document.getElementById('stereo-cam-a') ? document.getElementById('stereo-cam-a').value : null;
+        var camB = document.getElementById('stereo-cam-b') ? document.getElementById('stereo-cam-b').value : null;
+        var preset = this._getSelectedCharucoPreset();
+        if (!camA || !camB || camA === camB) {
+            this._showWizardResult({ok: false, error: 'Bitte zwei verschiedene Kameras auswaehlen.'});
+            this._wizardState.step = 'stereo_result';
+            this._updateStepperVisuals();
+            return;
+        }
+        try {
+            var resp = await fetch('/api/calibration/stereo', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({camera_a: camA, camera_b: camB, preset: preset}),
+            });
+            if (!resp.ok) {
+                this._wizardState.step = 'stereo_result';
+                this._showWizardResult({ok: false, error: 'Stereo HTTP ' + resp.status});
+                this._updateStepperVisuals();
+                return;
+            }
+            var data = await resp.json();
+            this._wizardState.step = 'stereo_result';
+            this._wizardState.lastResult = data;
+            if (data.ok && data.charuco_board && data.charuco_board.preset) {
+                this._syncCharucoBoardSelectors(data.charuco_board.preset);
+            }
+            this._showWizardResult(data);
+            this._updateStepperVisuals();
+        } catch (e) {
+            this._wizardState.step = 'stereo_result';
+            this._showWizardResult({ok: false, error: 'Fehler: ' + e.message});
+            this._updateStepperVisuals();
         }
     }
 
