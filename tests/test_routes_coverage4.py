@@ -944,3 +944,39 @@ class TestCalibrationResultImage:
                     app_state.pop(k, None)
                 else:
                     app_state[k] = v
+
+    def test_lens_calibration_returns_result_image(self):
+        """Lens calibration should include result_image on success."""
+        pipe = _make_dummy_pipeline()
+        pipe.camera = MagicMock()  # camera must be truthy
+        pipe.camera_calibration.get_charuco_board_spec.return_value = MagicMock()
+        pipe.camera_calibration.charuco_calibration.return_value = {
+            "ok": True,
+            "camera_matrix": np.eye(3).tolist(),
+            "dist_coeffs": [0, 0, 0, 0, 0],
+            "reprojection_error": 0.5,
+            "image_size": [640, 480],
+        }
+
+        save = {}
+        for k in ["pipeline", "pipeline_running", "multi_pipeline_running", "multi_pipeline"]:
+            save[k] = app_state.get(k)
+        try:
+            app_state["pipeline"] = pipe
+            app_state["pipeline_running"] = True
+            app_state["multi_pipeline_running"] = False
+            app_state["multi_pipeline"] = None
+            with TestClient(app) as client:
+                resp = client.post("/api/calibration/lens/charuco")
+            data = resp.json()
+            assert data["ok"] is True
+            assert "result_image" in data
+            assert data["result_image"].startswith("data:image/jpeg;base64,")
+            assert "quality_info" in data
+            assert data["quality_info"]["reprojection_error"] == 0.5
+        finally:
+            for k, v in save.items():
+                if v is None:
+                    app_state.pop(k, None)
+                else:
+                    app_state[k] = v

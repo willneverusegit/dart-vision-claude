@@ -784,6 +784,17 @@ def setup_routes(app_state: dict) -> APIRouter:
         result = pipeline.camera_calibration.charuco_calibration(frames, board_spec=board_spec)
         if result.get("ok"):
             pipeline.refresh_remapper()
+        if result.get("ok") and frames:
+            from src.cv.calibration_overlay import draw_undistorted_preview, encode_result_image
+            import numpy as _np
+            cam_mtx = _np.array(result["camera_matrix"])
+            dist = _np.array(result["dist_coeffs"])
+            preview = draw_undistorted_preview(frames[-1], cam_mtx, dist)
+            result["result_image"] = encode_result_image(preview)
+            result["quality_info"] = {
+                "reprojection_error": result["reprojection_error"],
+                "description": f"Lens-Kalibrierung OK (RMS {result['reprojection_error']:.2f}px)",
+            }
         if resolved_camera_id is not None:
             result.setdefault("camera_id", resolved_camera_id)
         return result
