@@ -1,6 +1,6 @@
 # Current State
 
-Stand dieser Zusammenfassung: 2026-03-18 (Welle 1-4 + Auto-Agents: P22, P26, P27, P28, P30-P31, P33, P39-P43, P46-P49, P50-P56, P60-P65, Tier-2 #5-#7, #10-#14, P32, P35 erledigt)
+Stand dieser Zusammenfassung: 2026-03-18 (Welle 1-4 + Auto-Agents: P22, P26, P27, P28, P30-P31, P33, P39-P43, P46-P49, P50-P56, P60-P65, P67-P70, Tier-2 #5-#7, #10-#14, P32, P35 erledigt)
 
 ## Technischer Kern
 
@@ -96,6 +96,10 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 - 54 weitere Route-Tests fuer Pipeline-Start/Stop, Multi-Cam, WebSocket, Telemetrie (P64)
 - Ground-Truth-Validierungsskript und 32 Tests (P11)
 - Video-Replay-Testinfrastruktur: add_ground_truth.py Helper, verbessertes Fehler-Reporting, 29 Tests (P39)
+- Async Sleep Fix: alle time.sleep() in async Route-Handlern durch asyncio.sleep() ersetzt (P70)
+- Ring-Naming-Konsistenz: Mapping-Layer in E2E-Test-Helpers fuer bull_inner/outer Varianten (P69)
+- Timestamp-basiertes Detection Matching: Greedy-Matching GT-Timestamps gegen Detection-Frames, 10 Tests (P68)
+- Routes Factory Pattern: router innerhalb setup_routes() erzeugt statt module-level (P67)
 
 ## Was heute als fortgeschritten, aber noch sensibel gilt
 
@@ -107,7 +111,7 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 
 ## Verifizierte Kennzahlen
 
-- `1203` Tests bestanden (Stand 2026-03-18, +558 neue Tests)
+- `1355` Tests bestanden (Stand 2026-03-18, +710 neue Tests)
 - Gesamt-Coverage ~77%
 - Wichtige Module: main.py 78%, routes.py 74%, pipeline.py 68%, multi_camera.py 62%, capture.py 72%
 - synthetische Pipeline-Benchmarks fuer `1`, `2` und `3` Kameras innerhalb der definierten KPI-Grenzen
