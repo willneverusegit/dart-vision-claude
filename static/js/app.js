@@ -1092,16 +1092,6 @@ class DartApp {
     }
 
     async _startArucoCalibration() {
-        if (this.multiCamRunning) {
-            var cameraId = this._getCalibrationCameraId();
-            var stepper = document.getElementById('wizard-stepper');
-            if (stepper) stepper.style.display = 'block';
-            this._wizardState.currentCamera = cameraId;
-            this._wizardAdvance('board_running');
-            await this._runWizardBoardCalibration(cameraId);
-            return;
-        }
-
         this._showCalStep("cal-step-auto");
         this._setCalibrationAutoStatus(
             this._getCalibrationTargetLabel() + ": Board-ArUco Alignment wird gestartet..."
@@ -1167,18 +1157,6 @@ class DartApp {
     }
 
     async _startLensCalibration() {
-        if (this.multiCamRunning) {
-            var cameraId = this._getCalibrationCameraId();
-            var stepper = document.getElementById('wizard-stepper');
-            if (stepper) stepper.style.display = 'block';
-            this._wizardState.currentCamera = cameraId;
-            this._wizardAdvance('lens_running');
-            fetch('/api/calibration/charuco-start/' + encodeURIComponent(cameraId || ''), {method: 'POST'})
-                .catch(function() {});
-            this._startCharucoGuidance(cameraId, 'lens');
-            return;
-        }
-
         this._showCalStep("cal-step-auto");
         const preset = this._getSelectedCharucoPreset();
         this._setCalibrationAutoStatus(
@@ -1468,6 +1446,8 @@ class DartApp {
         this.calibrationPoints = [];
         const nextStepPanel = document.getElementById("calibration-next-step-panel");
         if (nextStepPanel) nextStepPanel.style.display = "none";
+        // Stop any running charuco guidance polling
+        this._stopCharucoGuidance();
         // Disable marker overlay when calibration modal closes
         this._setMarkerOverlay(false);
     }
@@ -1880,7 +1860,13 @@ class DartApp {
 
     _bindMultiCam() {
         const btnMultiCam = document.getElementById("btn-multi-cam");
-        if (btnMultiCam) btnMultiCam.addEventListener("click", () => this._openMultiCamModal());
+        if (btnMultiCam) btnMultiCam.addEventListener("click", () => {
+            if (this.multiCamRunning) {
+                this._stopMultiPipeline();
+            } else {
+                this._openMultiCamModal();
+            }
+        });
 
         const btnMultiClose = document.getElementById("btn-multi-close");
         if (btnMultiClose) btnMultiClose.addEventListener("click", () => this._closeMultiCamModal());
@@ -1924,6 +1910,21 @@ class DartApp {
     _openMultiCamModal() {
         const modal = document.getElementById("multi-cam-modal");
         if (modal) modal.style.display = "flex";
+        // Reset wizard/charuco state to prevent leaking from calibration modal
+        this._stopCharucoGuidance();
+        var stepper = document.getElementById("wizard-stepper");
+        if (stepper) stepper.style.display = "none";
+        var wizResult = document.getElementById("wizard-result");
+        if (wizResult) wizResult.style.display = "none";
+        var wizComputing = document.getElementById("wizard-computing");
+        if (wizComputing) wizComputing.style.display = "none";
+        var charucoPanel = document.getElementById("charuco-guidance");
+        if (charucoPanel) charucoPanel.style.display = "none";
+        // Show config step, hide stereo step
+        var stepConfig = document.getElementById("multi-step-config");
+        if (stepConfig) stepConfig.style.display = "block";
+        var stepStereo = document.getElementById("multi-step-stereo");
+        if (stepStereo) stepStereo.style.display = "none";
         this._refreshCharucoBoardPresetFromServer();
         this._refreshMultiCamStatus();
         this._loadLastMultiConfig();
@@ -2122,6 +2123,7 @@ class DartApp {
                 this.activeCameraIds = data.cameras || [];
                 this._refreshMultiCamStatus();
                 this._showMultiVideoGrid();
+                this._updateMultiCamToggleButton();
                 // Close the modal so user sees the video grid
                 this._closeMultiCamModal();
             } else {
@@ -2146,6 +2148,7 @@ class DartApp {
             this.activeCameraIds = [];
             this._refreshMultiCamStatus();
             this._hideMultiVideoGrid();
+            this._updateMultiCamToggleButton();
         } catch (e) {
             console.error("Multi-cam stop error:", e);
         }
@@ -2424,6 +2427,7 @@ class DartApp {
             stereoSection.style.display = this.multiCamRunning ? "block" : "none";
         }
         this._updateCalibrationCameraSelector();
+        this._updateMultiCamToggleButton();
     }
 
     _showMultiVideoGrid() {
@@ -2463,6 +2467,12 @@ class DartApp {
             while (grid.firstChild) grid.removeChild(grid.firstChild);
         }
         if (single) single.style.display = "block";
+    }
+
+    _updateMultiCamToggleButton() {
+        const btn = document.getElementById("btn-multi-cam");
+        if (!btn) return;
+        btn.textContent = this.multiCamRunning ? "Single Cam" : "Multi-Cam";
     }
 
     _showStereoStep() {
@@ -2984,7 +2994,7 @@ class DartApp {
         try {
             var body = {preset: preset};
             if (cameraId) body.camera_id = cameraId;
-            var resp = await fetch('/api/calibration/lens-setup', {
+            var resp = await fetch('/api/calibration/lens/charuco', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(body),
@@ -3058,7 +3068,7 @@ class DartApp {
         var computingText = document.getElementById('wizard-computing-text');
         if (computing) {
             computing.style.display = 'flex';
-            computingText.textContent = 'Lens- und Board-Kalibrierung abgeschlossen, nun wird daraus Board-Pose berechnet\u2026';
+            computingText.textContent = 'Bitte sicherstellen, dass alle 4 ArUco-Marker (ID 0\u20133) im Kamerabild sichtbar sind. Pose wird berechnet\u2026';
         }
         document.getElementById('wizard-result').style.display = 'none';
         this._wizardState.step = 'pose_computing';
@@ -3137,6 +3147,7 @@ class DartApp {
         var step = this._wizardState.step;
         var cam = this._wizardState.currentCamera;
         if (step.indexOf('lens') === 0) {
+            this._stopCharucoGuidance();
             this._wizardAdvance('lens_running');
             fetch('/api/calibration/charuco-start/' + encodeURIComponent(cam || ''), {method: 'POST'})
                 .catch(function() {});

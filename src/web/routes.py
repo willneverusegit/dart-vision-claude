@@ -446,6 +446,12 @@ def setup_routes(app_state: dict) -> APIRouter:
                 pipeline.show_overlay_motion = bool(body["motion"])
             if "markers" in body:
                 pipeline.show_overlay_markers = bool(body["markers"])
+        # Also apply to all multi-cam pipelines
+        for _, pipe in _ordered_multi_pipelines():
+            if "motion" in body:
+                pipe.show_overlay_motion = bool(body["motion"])
+            if "markers" in body:
+                pipe.show_overlay_markers = bool(body["markers"])
         return {
             "ok": True,
             "motion": pipeline.show_overlay_motion if pipeline else False,
@@ -765,22 +771,27 @@ def setup_routes(app_state: dict) -> APIRouter:
         if pipeline is None:
             return {"ok": False, "error": error}
         if not pipeline.camera:
-            return {"ok": False, "error": "Kamera nicht verfuegbar â€” bitte Verbindung pruefen."}
+            return {"ok": False, "error": "Kamera nicht verfuegbar -- bitte Verbindung pruefen."}
         overrides = _charuco_override_fields(body)
         try:
             board_spec = pipeline.camera_calibration.get_charuco_board_spec(**overrides)
         except ValueError as exc:
             return {"ok": False, "error": str(exc)}
 
-        frames = []
-        for _ in range(30):
-            raw = pipeline.get_latest_raw_frame()
-            if raw is not None:
-                frames.append(raw.copy())
-            await asyncio.sleep(0.1)
+        # Prefer diverse frames from CharucoFrameCollector if available
+        collector = app_state.get("charuco_collectors", {}).get(camera_id or resolved_camera_id or "")
+        if collector and collector.frames_captured >= 3:
+            frames = collector.get_frames()
+        else:
+            frames = []
+            for _ in range(30):
+                raw = pipeline.get_latest_raw_frame()
+                if raw is not None:
+                    frames.append(raw.copy())
+                await asyncio.sleep(0.1)
 
         if len(frames) < 3:
-            return {"ok": False, "error": f"Nur {len(frames)} Frames erfasst (mind. 3 noetig) â€” Kamera pruefen."}
+            return {"ok": False, "error": f"Nur {len(frames)} Frames erfasst (mind. 3 noetig) — Kamera pruefen."}
         result = pipeline.camera_calibration.charuco_calibration(frames, board_spec=board_spec)
         if result.get("ok"):
             pipeline.refresh_remapper()
@@ -852,7 +863,7 @@ def setup_routes(app_state: dict) -> APIRouter:
             return {"ok": False, "error": error}
         roi = pipeline.get_roi_preview()
         if roi is None:
-            return {"ok": False, "error": "Kein ROI-Frame â€” Board-Kalibrierung zuerst durchfuehren."}
+            return {"ok": False, "error": "Kein ROI-Frame -- Board-Kalibrierung zuerst durchfuehren."}
         result = pipeline.board_calibration.verify_rings(roi)
         return result
 
@@ -866,7 +877,7 @@ def setup_routes(app_state: dict) -> APIRouter:
             return {"ok": False, "error": error}
         oc = pipeline.detect_optical_center()
         if oc is None:
-            return {"ok": False, "error": "Mittelpunkt konnte nicht erkannt werden â€” manuell setzen."}
+            return {"ok": False, "error": "Mittelpunkt konnte nicht erkannt werden -- manuell setzen."}
         return {"ok": True, "optical_center": [oc[0], oc[1]]}
 
     @router.post("/api/calibration/optical-center/manual")
@@ -946,6 +957,8 @@ def setup_routes(app_state: dict) -> APIRouter:
         cam_b = body.get("camera_b")
         if not cam_b:
             return {"ok": False, "error": "camera_b is required"}
+        if cam_a == cam_b:
+            return {"ok": False, "error": "camera_a und camera_b muessen unterschiedlich sein"}
 
         multi = app_state.get("multi_pipeline")
         if multi is None:
@@ -986,8 +999,6 @@ def setup_routes(app_state: dict) -> APIRouter:
             detected_a = False
             detected_b = False
             if raw_a is not None and raw_b is not None:
-                frames_a.append(raw_a.copy())
-                frames_b.append(raw_b.copy())
                 gray_a = cv2.cvtColor(raw_a, cv2.COLOR_BGR2GRAY) if len(raw_a.shape) == 3 else raw_a
                 gray_b = cv2.cvtColor(raw_b, cv2.COLOR_BGR2GRAY) if len(raw_b.shape) == 3 else raw_b
                 corners_a, _ = detect_charuco_corners(gray_a)
@@ -995,6 +1006,8 @@ def setup_routes(app_state: dict) -> APIRouter:
                 detected_a = corners_a is not None
                 detected_b = corners_b is not None
                 if detected_a and detected_b:
+                    frames_a.append(raw_a.copy())
+                    frames_b.append(raw_b.copy())
                     valid_pairs_count += 1
 
             progress = StereoProgressTracker.frame_progress(
@@ -1017,27 +1030,27 @@ def setup_routes(app_state: dict) -> APIRouter:
                 "total": num_pairs,
             })
 
-        if len(frames_a) < 5:
-            return {"ok": False, "error": f"Only captured {len(frames_a)} pairs, need at least 5"}
+        if len(frames_a) < 3:
+            return {"ok": False, "error": f"Nur {len(frames_a)} gueltige Frame-Paare erfasst (mind. 3 noetig) — Board in beiden Kameras sichtbar?"}
 
         # Run stereo calibration
         from src.cv.stereo_calibration import stereo_calibrate
         try:
             if _has_charuco_override(body):
-                board_spec = pipe_a.camera_calibration.get_charuco_board_spec(
-                    **_charuco_override_fields(body),
-                )
+                overrides = _charuco_override_fields(body)
+                board_spec = pipe_a.camera_calibration.get_charuco_board_spec(**overrides)
+                board_spec_b = pipe_b.camera_calibration.get_charuco_board_spec(**overrides)
             else:
                 board_spec = pipe_a.camera_calibration.get_charuco_board_spec()
                 board_spec_b = pipe_b.camera_calibration.get_charuco_board_spec()
-                if board_spec != board_spec_b:
-                    return {
-                        "ok": False,
-                        "error": (
-                            "Configured ChArUco board differs between cameras. "
-                            "Provide an explicit preset or board geometry for stereo calibration."
-                        ),
-                    }
+            if board_spec != board_spec_b:
+                return {
+                    "ok": False,
+                    "error": (
+                        "ChArUco-Board-Konfiguration unterscheidet sich zwischen den Kameras. "
+                        "Bitte identisches Preset oder Board-Geometrie angeben."
+                    ),
+                }
         except ValueError as exc:
             return {"ok": False, "error": str(exc)}
         result = stereo_calibrate(

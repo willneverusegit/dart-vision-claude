@@ -154,6 +154,10 @@ class TestRoutesCoverage:
             )
 
         monkeypatch.setattr("src.cv.stereo_calibration.stereo_calibrate", fake_stereo_calibrate)
+        monkeypatch.setattr(
+            "src.cv.stereo_calibration.detect_charuco_corners",
+            lambda gray: (np.array([[0.0, 0.0]]), np.array([0])),
+        )
         monkeypatch.setattr("src.utils.config.save_stereo_pair", lambda *args, **kwargs: None)
         monkeypatch.setattr("src.web.routes._time.sleep", lambda _seconds: None)
         monkeypatch.setattr("src.cv.board_calibration.BoardCalibrationManager.has_valid_intrinsics", lambda self: True)
