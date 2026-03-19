@@ -1074,6 +1074,24 @@ def setup_routes(app_state: dict) -> APIRouter:
         if em and hasattr(em, 'broadcast_sync'):
             em.broadcast_sync("stereo_result", result_event)
 
+        from src.cv.calibration_overlay import draw_stereo_epipolar_overlay, encode_result_image as _encode_result_image
+        result_image = None
+        frame_a_last = pipe_a.get_latest_raw_frame() if hasattr(pipe_a, "get_latest_raw_frame") else None
+        frame_b_last = pipe_b.get_latest_raw_frame() if hasattr(pipe_b, "get_latest_raw_frame") else None
+        if frame_a_last is not None and frame_b_last is not None:
+            overlay = draw_stereo_epipolar_overlay(frame_a_last, frame_b_last)
+            result_image = _encode_result_image(overlay)
+
+        rpe = result.reprojection_error
+        if rpe < 0.5:
+            quality_desc = "Sehr gute Stereo-Kalibrierung."
+        elif rpe < 1.0:
+            quality_desc = "Gute Stereo-Kalibrierung."
+        elif rpe < 2.0:
+            quality_desc = "Akzeptable Stereo-Kalibrierung, weitere Verbesserung moeglich."
+        else:
+            quality_desc = "Schlechte Stereo-Kalibrierung – bitte neu kalibrieren."
+
         return {
             "ok": True,
             "reprojection_error": result.reprojection_error,
@@ -1081,6 +1099,12 @@ def setup_routes(app_state: dict) -> APIRouter:
             "camera_a": cam_a,
             "camera_b": cam_b,
             "charuco_board": board_spec.to_api_payload(),
+            "result_image": result_image,
+            "quality_info": {
+                "reprojection_error": rpe,
+                "pairs_used": len(frames_a),
+                "description": quality_desc,
+            },
         }
 
     @router.post("/api/calibration/stereo/reload")

@@ -65,3 +65,12 @@ def test_draw_pose_result_overlay():
     result = draw_pose_result_overlay(frame, corners_px, center_px, radii_px, rvec, tvec, cam_mtx, dist)
     assert result.shape == (480, 640, 3)
     assert result.sum() > 0
+
+
+def test_draw_stereo_epipolar_overlay():
+    from src.cv.calibration_overlay import draw_stereo_epipolar_overlay
+    frame_a = np.zeros((480, 640, 3), dtype=np.uint8)
+    frame_b = np.zeros((480, 640, 3), dtype=np.uint8)
+    result = draw_stereo_epipolar_overlay(frame_a, frame_b, num_lines=5)
+    assert result.shape == (480, 1280, 3)
+    assert result.sum() > 0

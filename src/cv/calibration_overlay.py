@@ -62,6 +62,24 @@ def draw_pose_result_overlay(
     return out
 
 
+def draw_stereo_epipolar_overlay(
+    frame_a: np.ndarray,
+    frame_b: np.ndarray,
+    num_lines: int = 8,
+) -> np.ndarray:
+    """Draw side-by-side stereo frames with horizontal epipolar lines."""
+    h = max(frame_a.shape[0], frame_b.shape[0])
+    w_a, w_b = frame_a.shape[1], frame_b.shape[1]
+    out = np.zeros((h, w_a + w_b, 3), dtype=np.uint8)
+    out[:frame_a.shape[0], :w_a] = frame_a
+    out[:frame_b.shape[0], w_a:w_a + w_b] = frame_b
+    for i in range(1, num_lines + 1):
+        y = int(h * i / (num_lines + 1))
+        cv2.line(out, (0, y), (w_a + w_b, y), (0, 255, 255), 1, cv2.LINE_AA)
+    cv2.line(out, (w_a, 0), (w_a, h), (255, 255, 255), 1)
+    return out
+
+
 def encode_result_image(frame: np.ndarray, quality: int = 75) -> str:
     """Encode a BGR frame as base64 data-URI JPEG string."""
     import base64
