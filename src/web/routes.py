@@ -2200,22 +2200,18 @@ def setup_routes(app_state: dict) -> APIRouter:
 
         board_visible = False
         corners_found = 0
-        if pipeline:
+        img_shape = (480, 640)
+        if pipeline and hasattr(pipeline, "get_latest_raw_frame"):
             frame = pipeline.get_latest_raw_frame()
             if frame is not None:
+                img_shape = frame.shape[:2]
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                 dictionary = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_6X6_250)
-                detector = cv2.aruco.ArucoDetector(dictionary)
-                corners, ids, _ = detector.detectMarkers(gray)
+                _aruco_detector = cv2.aruco.ArucoDetector(dictionary)
+                corners, ids, _ = _aruco_detector.detectMarkers(gray)
                 if ids is not None:
                     board_visible = True
                     corners_found = len(ids)
-
-        img_shape = (480, 640)
-        if pipeline:
-            f = pipeline.get_latest_raw_frame()
-            if f is not None:
-                img_shape = f.shape[:2]
 
         return {
             "frames_captured": collector.frames_captured,

@@ -99,6 +99,10 @@ class TestCharucoProgressEndpoint:
         assert "ready_to_calibrate" in data
         assert data["frames_captured"] == 0
         assert data["ready_to_calibrate"] is False
+        assert "board_visible" in data
+        assert "corners_found" in data
+        assert data["board_visible"] is False
+        assert data["corners_found"] == 0
 
     def test_charuco_progress_endpoint_with_collector(self, client, app_state):
         from src.cv.camera_calibration import CharucoFrameCollector
@@ -114,3 +118,7 @@ class TestCharucoProgressEndpoint:
         assert data["frames_needed"] == 15
         assert isinstance(data["tips"], list)
         assert data["ready_to_calibrate"] is False
+        assert "board_visible" in data
+        assert "corners_found" in data
+        assert isinstance(data["board_visible"], bool)
+        assert isinstance(data["corners_found"], int)
