@@ -31,6 +31,7 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 - Optische-Mittelpunkt-Erkennung mit Intensity-Fallback
 - Kalibrierungs-UX mit Statusanzeige und gefuehrten Schritten
 - Multi-Cam-Kalibrierung nutzt pro Kamera die aktive Sub-Pipeline statt nur den Single-Cam-Pfad (Frame, Info, Board, Lens, ROI, Overlay, Optical Center)
+- Multi-Cam-Kalibrierdialog fuehrt per Kamera durch den naechsten Schritt (Statuskarten, Empfehlungspanel, Button-Highlight, Weiter-CTA mit direktem Start des empfohlenen Standardpfads)
 - Telemetrie im Header (FPS, Dropped Frames, Queue-Druck, RAM)
 - Idempotentes Logging mit Session-ID, optionalem File-Rotation-Log (`DARTVISION_LOG_FILE`)
 - Windows-Startskript (`start.bat`) mit venv, Dependency-Check, Diagnose
@@ -112,6 +113,7 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 - Gesamt-Coverage ~77%
 - Wichtige Module: main.py 78%, routes.py 74%, pipeline.py 68%, multi_camera.py 62%, capture.py 72%
 - Zusatzverifikation 2026-03-19: 256 fokussierte Tests gruen (Multi-Cam-Kalibrierung, Route-Coverage, Web/Hardening, Multi-Cam-Config); kein Vollsuite-Lauf
+- Zusatzverifikation 2026-03-19 (Kalibrier-UX): 35 weitere fokussierte Checks gruen (`node -c`, 30 Web/Route/WebSocket/Stereo-Tests, 5 Multi-Cam-Kalibrier-Tests)
 - synthetische Pipeline-Benchmarks fuer `1`, `2` und `3` Kameras innerhalb der definierten KPI-Grenzen
 - E2E-Replay-Tests: 90% Hit Rate, 100% Score Accuracy auf synthetischen Clips (6 Tests)
 - Echte Video-Validierung: ~55% Hit Rate, 64% Sektor-Accuracy auf 2 echten Videos (rec_094311, rec_094521)

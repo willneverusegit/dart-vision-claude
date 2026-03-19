@@ -299,6 +299,12 @@
                     </label>
                     <p id="calibration-camera-hint" class="charuco-board-note charuco-board-note--inline">Lens- und Board-Kalibrierung werden pro Kamera gespeichert.</p>
                 </div>
+                <div id="calibration-camera-summary" class="calibration-camera-summary" style="display:none;"></div>
+                <div id="calibration-guide-panel" class="calibration-guide-panel">
+                    <p id="calibration-guide-title" class="calibration-guide-panel__title">Empfohlene Aktion</p>
+                    <p id="calibration-guide-text" class="calibration-guide-panel__text">Starte mit dem Lens Setup, damit die Kamera-Verzerrung zuerst korrigiert wird.</p>
+                    <p id="calibration-guide-note" class="calibration-guide-panel__note"></p>
+                </div>
 
                 <div class="cal-marker-toggle" style="margin-bottom: 12px;">
                     <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
@@ -369,6 +375,12 @@
                     </div>
                 </div>
                 <div id="ring-deviations" class="ring-deviations" style="display:none;"></div>
+                <div id="calibration-next-step-panel" class="calibration-next-step-panel" style="display:none;">
+                    <p id="calibration-next-step-text" class="modal__text" style="margin-bottom: 8px;"></p>
+                    <div class="modal__actions">
+                        <button id="btn-cal-next-camera" class="btn btn--primary">Weiter mit naechster Aktion</button>
+                    </div>
+                </div>
                 <div class="modal__actions">
                     <button id="btn-cal-set-center" class="btn btn--secondary">Mittelpunkt manuell setzen</button>
                 </div>

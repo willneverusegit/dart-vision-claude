@@ -404,6 +404,106 @@ body {
     border-radius: var(--radius);
 }
 
+.calibration-camera-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+    max-width: 720px;
+    margin: 0 auto 12px;
+}
+
+.calibration-camera-card {
+    width: 100%;
+    padding: 12px 14px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--bg-panel);
+    color: var(--text-primary);
+    text-align: left;
+    cursor: pointer;
+    transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+}
+
+.calibration-camera-card:hover {
+    transform: translateY(-1px);
+    border-color: var(--accent);
+    box-shadow: 0 8px 20px var(--shadow);
+}
+
+.calibration-camera-card--active {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+}
+
+.calibration-camera-card--done {
+    background: var(--success-bg);
+}
+
+.calibration-camera-card__title {
+    font-size: 0.9rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+
+.calibration-camera-card__meta {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.calibration-camera-card__pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+}
+
+.calibration-camera-card__pill--done {
+    background: var(--success-bg-2);
+    color: var(--success);
+}
+
+.calibration-camera-card__pill--pending {
+    background: var(--warning-bg);
+    color: var(--warning);
+}
+
+.calibration-guide-panel,
+.calibration-next-step-panel {
+    max-width: 720px;
+    margin: 0 auto 16px;
+    padding: 14px 16px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: linear-gradient(135deg, var(--bg-panel-translucent), var(--bg-panel));
+}
+
+.calibration-guide-panel__title {
+    margin: 0 0 6px;
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+
+.calibration-guide-panel__text {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.calibration-guide-panel__note {
+    margin: 8px 0 0;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+}
+
 .ws-status {
     padding: 3px 10px;
     border-radius: 12px;
@@ -900,6 +1000,12 @@ body {
     min-width: 180px;
     padding: 16px 24px;
     font-size: 1rem;
+}
+
+.cal-mode-btn--recommended {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent), 0 10px 24px var(--accent-glow);
+    background: var(--accent-bg-2);
 }
 
 .cal-spinner {

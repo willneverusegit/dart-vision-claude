@@ -16,6 +16,7 @@ class DartApp {
         this.calibrationValid = false;
         this._pickingCenter = false;
         this.activeCameraIds = [];
+        this._calibrationCameraStates = new Map();
         this.charucoPreset = "40x20";
 
         this._bindEvents();
@@ -114,6 +115,8 @@ class DartApp {
         if (btnCalAccept) btnCalAccept.addEventListener("click", () => this._closeCalibration());
         const btnCalRetry = document.getElementById("btn-cal-retry");
         if (btnCalRetry) btnCalRetry.addEventListener("click", () => this._showCalStep("cal-step-mode"));
+        const btnCalNext = document.getElementById("btn-cal-next-camera");
+        if (btnCalNext) btnCalNext.addEventListener("click", () => this._continueCalibrationFlow());
 
         // B1: Manual optical center override
         const btnSetCenter = document.getElementById("btn-cal-set-center");
@@ -319,7 +322,262 @@ class DartApp {
         return cameraId ? "Kamera " + cameraId : "Single-Cam";
     }
 
-    _updateCalibrationCameraSelector() {
+    _setCalibrationCameraValue(cameraId) {
+        const select = document.getElementById("calibration-camera-select");
+        if (!select || !cameraId) return;
+        if ([...select.options].some((option) => option.value === cameraId)) {
+            select.value = cameraId;
+        }
+    }
+
+    _replaceCalibrationCameraStates(cameras = []) {
+        this._calibrationCameraStates.clear();
+        cameras.forEach((camera) => {
+            if (!camera?.camera_id) return;
+            this._calibrationCameraStates.set(camera.camera_id, {
+                lens_valid: !!camera.lens_calibrated,
+                board_valid: !!camera.board_calibrated,
+            });
+        });
+    }
+
+    _setCalibrationState(cameraId, state) {
+        if (!cameraId) return;
+        const current = this._calibrationCameraStates.get(cameraId) || {};
+        this._calibrationCameraStates.set(cameraId, { ...current, ...state });
+    }
+
+    _getCalibrationState(cameraId = null) {
+        const resolvedCameraId = cameraId || this._getCalibrationCameraId() || "default";
+        return this._calibrationCameraStates.get(resolvedCameraId) || null;
+    }
+
+    _isCalibrationComplete(cameraId) {
+        const state = this._getCalibrationState(cameraId);
+        return !!(state && state.lens_valid && state.board_valid);
+    }
+
+    _getCalibrationStateLabel(cameraId) {
+        const state = this._getCalibrationState(cameraId);
+        if (!state) return "Status wird geladen";
+        if (!state.lens_valid) return "Lens fehlt";
+        if (!state.board_valid) return "Board fehlt";
+        return "Bereit";
+    }
+
+    _findFirstIncompleteCalibrationCamera(excludeCameraId = null) {
+        const cameraIds = (this.activeCameraIds || []).filter(Boolean);
+        return cameraIds.find((cameraId) => cameraId !== excludeCameraId && !this._isCalibrationComplete(cameraId)) || null;
+    }
+
+    _buildCalibrationOptionLabel(cameraId) {
+        return cameraId + " - " + this._getCalibrationStateLabel(cameraId);
+    }
+
+    _getCalibrationRecommendation(cameraId = null) {
+        const activeCameraId = cameraId || this._getCalibrationCameraId();
+        const state = this._getCalibrationState(activeCameraId);
+        const selectedLabel = activeCameraId ? "Kamera " + activeCameraId : "Single-Cam";
+
+        if (!state || !state.lens_valid) {
+            return {
+                targetCameraId: activeCameraId,
+                step: "lens",
+                title: "Empfohlen: Lens Setup",
+                text: selectedLabel + " sollte zuerst per ChArUco entzerrt werden.",
+            };
+        }
+
+        if (!state.board_valid) {
+            return {
+                targetCameraId: activeCameraId,
+                step: "board",
+                title: "Empfohlen: Board Alignment",
+                text: "Lens ist fuer " + selectedLabel + " bereit. Als Naechstes Board per ArUco oder manuell ausrichten.",
+            };
+        }
+
+        const nextCameraId = this._findFirstIncompleteCalibrationCamera(activeCameraId);
+        if (nextCameraId) {
+            const nextState = this._getCalibrationState(nextCameraId);
+            const nextStep = !nextState || !nextState.lens_valid ? "lens" : "board";
+            return {
+                targetCameraId: nextCameraId,
+                step: nextStep,
+                title: "Naechste Kamera vorbereiten",
+                text: "Kamera " + nextCameraId + " ist als Naechstes dran: " +
+                    (nextStep === "lens" ? "Lens Setup" : "Board Alignment") + ".",
+            };
+        }
+
+        return {
+            targetCameraId: activeCameraId,
+            step: "done",
+            title: "Kalibrierung bereit",
+            text: selectedLabel + " ist fuer Lens und Board fertig. Optional Mittelpunkt pruefen oder Stereo-Kalibrierung starten.",
+        };
+    }
+
+    _renderCalibrationCameraSummary() {
+        const container = document.getElementById("calibration-camera-summary");
+        if (!container) return;
+
+        const cameraIds = this.multiCamRunning ? (this.activeCameraIds || []).filter(Boolean) : [];
+        if (cameraIds.length < 2) {
+            container.style.display = "none";
+            container.textContent = "";
+            return;
+        }
+
+        const activeCameraId = this._getCalibrationCameraId();
+        container.style.display = "grid";
+        container.textContent = "";
+
+        cameraIds.forEach((cameraId) => {
+            const state = this._getCalibrationState(cameraId);
+            const card = document.createElement("button");
+            card.type = "button";
+            card.className = "calibration-camera-card";
+            if (cameraId === activeCameraId) card.classList.add("calibration-camera-card--active");
+            if (this._isCalibrationComplete(cameraId)) card.classList.add("calibration-camera-card--done");
+            card.addEventListener("click", () => {
+                this._setCalibrationCameraValue(cameraId);
+                this._refreshCharucoBoardPresetFromServer();
+                this._refreshCalibrationStatus({ preferredCameraId: cameraId });
+            });
+
+            const title = document.createElement("div");
+            title.className = "calibration-camera-card__title";
+            title.textContent = cameraId;
+            card.appendChild(title);
+
+            const meta = document.createElement("div");
+            meta.className = "calibration-camera-card__meta";
+            [
+                ["Lens", !!state?.lens_valid],
+                ["Board", !!state?.board_valid],
+                [this._getCalibrationStateLabel(cameraId), this._isCalibrationComplete(cameraId)],
+            ].forEach(([label, done]) => {
+                const pill = document.createElement("span");
+                pill.className = "calibration-camera-card__pill " +
+                    (done ? "calibration-camera-card__pill--done" : "calibration-camera-card__pill--pending");
+                pill.textContent = label;
+                meta.appendChild(pill);
+            });
+            card.appendChild(meta);
+            container.appendChild(card);
+        });
+    }
+
+    _updateCalibrationGuide() {
+        const titleEl = document.getElementById("calibration-guide-title");
+        const textEl = document.getElementById("calibration-guide-text");
+        const noteEl = document.getElementById("calibration-guide-note");
+        if (!titleEl || !textEl || !noteEl) return;
+
+        const recommendation = this._getCalibrationRecommendation();
+        if (!recommendation) {
+            titleEl.textContent = "Empfohlene Aktion";
+            textEl.textContent = "Starte mit dem Lens Setup, damit die Kamera-Verzerrung zuerst korrigiert wird.";
+            noteEl.textContent = "";
+            return;
+        }
+
+        titleEl.textContent = recommendation.title;
+        textEl.textContent = recommendation.text;
+
+        const openCount = (this.activeCameraIds || []).filter((cameraId) => !this._isCalibrationComplete(cameraId)).length;
+        if (!this.multiCamRunning) {
+            noteEl.textContent = "Empfohlene Reihenfolge: Lens Setup zuerst, dann Board Alignment.";
+        } else if (recommendation.step === "done" && openCount === 0) {
+            noteEl.textContent = "Alle aktiven Kameras sind fuer Lens und Board bereit.";
+        } else if (recommendation.targetCameraId && recommendation.targetCameraId !== this._getCalibrationCameraId()) {
+            noteEl.textContent = "Wechsle fuer den naechsten Schritt auf " + recommendation.targetCameraId + ".";
+        } else if (openCount > 1) {
+            noteEl.textContent = openCount + " Kameras brauchen noch mindestens einen Kalibrierschritt.";
+        } else if (openCount === 1) {
+            noteEl.textContent = "Noch 1 Kamera ist nicht vollstaendig fuer Lens und Board vorbereitet.";
+        } else {
+            noteEl.textContent = "Board nur neu kalibrieren, wenn Kamera, Stativ oder Board verschoben wurden.";
+        }
+        if (recommendation.step === "board") {
+            noteEl.textContent += (noteEl.textContent ? " " : "") +
+                "Standardpfad: Board ArUco zuerst, manuell nur wenn Marker nicht stabil erkannt werden.";
+        }
+    }
+
+    _updateCalibrationActionHints() {
+        const lensBtn = document.getElementById("btn-cal-lens");
+        const arucoBtn = document.getElementById("btn-cal-aruco");
+        const manualBtn = document.getElementById("btn-cal-manual");
+        [lensBtn, arucoBtn, manualBtn].forEach((button) => button?.classList.remove("cal-mode-btn--recommended"));
+
+        const recommendation = this._getCalibrationRecommendation();
+        if (!recommendation || recommendation.targetCameraId !== this._getCalibrationCameraId()) return;
+        if (recommendation.step === "lens") lensBtn?.classList.add("cal-mode-btn--recommended");
+        if (recommendation.step === "board") arucoBtn?.classList.add("cal-mode-btn--recommended");
+    }
+
+    _updateCalibrationNextStep() {
+        const panel = document.getElementById("calibration-next-step-panel");
+        const textEl = document.getElementById("calibration-next-step-text");
+        const button = document.getElementById("btn-cal-next-camera");
+        if (!panel || !textEl || !button) return;
+
+        const currentCameraId = this._getCalibrationCameraId();
+        const recommendation = this._getCalibrationRecommendation(currentCameraId);
+        if (!recommendation) {
+            panel.style.display = "none";
+            return;
+        }
+
+        if (recommendation.step === "done") {
+            if (this.multiCamRunning) {
+                textEl.textContent = "Alle aktuell aktiven Kameras sind fuer Lens und Board bereit.";
+                button.style.display = "none";
+                panel.style.display = "block";
+                return;
+            }
+            panel.style.display = "none";
+            return;
+        }
+
+        button.style.display = "inline-block";
+        if (recommendation.targetCameraId === currentCameraId) {
+            textEl.textContent = "Als Naechstes hier: " +
+                (recommendation.step === "lens" ? "Lens Setup abschliessen." : "Board Alignment abschliessen.");
+            button.textContent = recommendation.step === "lens"
+                ? "Lens Setup jetzt starten"
+                : "Board ArUco jetzt starten";
+        } else {
+            textEl.textContent = "Weiter mit Kamera " + recommendation.targetCameraId + ": " +
+                (recommendation.step === "lens" ? "Lens Setup" : "Board Alignment") + ".";
+            button.textContent = "Zu " + recommendation.targetCameraId + " und " +
+                (recommendation.step === "lens" ? "Lens Setup" : "Board ArUco");
+        }
+        panel.style.display = "block";
+    }
+
+    async _continueCalibrationFlow() {
+        const recommendation = this._getCalibrationRecommendation();
+        const targetCameraId = recommendation?.targetCameraId || this._getCalibrationCameraId();
+        if (targetCameraId) this._setCalibrationCameraValue(targetCameraId);
+        this._showCalStep("cal-step-mode");
+        await this._refreshCharucoBoardPresetFromServer();
+        await this._refreshCalibrationStatus({
+            preferredCameraId: targetCameraId,
+        });
+        if (!recommendation) return;
+        if (recommendation.step === "lens") {
+            await this._startLensCalibration();
+            return;
+        }
+        if (recommendation.step === "board") {
+            await this._startArucoCalibration();
+        }
+    }
+
+    _updateCalibrationCameraSelector(preferredCameraId = null) {
         const panel = document.getElementById("calibration-camera-panel");
         const select = document.getElementById("calibration-camera-select");
         const hint = document.getElementById("calibration-camera-hint");
@@ -330,22 +588,32 @@ class DartApp {
         if (!cameraIds.length) {
             panel.style.display = "none";
             title.textContent = this.multiCamRunning ? "Aktueller Status (Multi-Cam):" : "Aktueller Status (Single-Cam):";
+            hint.textContent = "Lens- und Board-Kalibrierung werden fuer den aktiven Single-Cam-Pfad gespeichert.";
+            this._renderCalibrationCameraSummary();
             return;
         }
 
         panel.style.display = "block";
         const previous = select.value;
+        const nextCameraId =
+            (preferredCameraId && cameraIds.includes(preferredCameraId) && preferredCameraId) ||
+            (cameraIds.includes(previous) ? previous : null) ||
+            this._findFirstIncompleteCalibrationCamera() ||
+            cameraIds[0];
         while (select.firstChild) select.removeChild(select.firstChild);
         cameraIds.forEach((cameraId) => {
             const option = document.createElement("option");
             option.value = cameraId;
-            option.textContent = cameraId;
+            option.textContent = this._buildCalibrationOptionLabel(cameraId);
             select.appendChild(option);
         });
-        select.value = cameraIds.includes(previous) ? previous : cameraIds[0];
+        select.value = nextCameraId;
         const activeCamera = select.value;
-        hint.textContent = "Lens- und Board-Kalibrierung werden fuer " + activeCamera + " gespeichert.";
+        const openCount = cameraIds.filter((cameraId) => !this._isCalibrationComplete(cameraId)).length;
+        hint.textContent = "Lens- und Board-Kalibrierung werden fuer " + activeCamera +
+            " gespeichert." + (openCount > 1 ? " Noch " + openCount + " Kameras offen." : "");
         title.textContent = "Aktueller Status (" + activeCamera + "):";
+        this._renderCalibrationCameraSummary();
     }
 
     _setCalibrationAutoStatus(message, { showSpinner = true, isError = false } = {}) {
@@ -711,19 +979,51 @@ class DartApp {
         modal.style.display = "flex";
         this._showCalStep("cal-step-mode");
         this._updateCalibrationCameraSelector();
+        this._updateCalibrationGuide();
+        this._updateCalibrationActionHints();
         this._refreshCharucoBoardPresetFromServer();
         this._refreshCalibrationStatus();
         // Enable marker overlay by default when calibration modal opens
         this._setMarkerOverlay(true);
     }
 
-    async _refreshCalibrationStatus() {
-        this._updateCalibrationCameraSelector();
+    async _refreshCalibrationStatus({ preferredCameraId = null } = {}) {
+        if (this.multiCamRunning) {
+            try {
+                const multiResp = await fetch("/api/multi/status");
+                if (multiResp.ok) {
+                    const multiData = await multiResp.json();
+                    if (multiData.ok) {
+                        this._replaceCalibrationCameraStates(multiData.cameras || []);
+                    }
+                }
+            } catch (e) {
+                console.error("Calibration multi-status error:", e);
+            }
+        }
+
+        this._updateCalibrationCameraSelector(preferredCameraId);
         try {
             const resp = await fetch(this._buildCalibrationUrl("/api/calibration/info"));
-            if (!resp.ok) return;
+            if (!resp.ok) {
+                this._updateCalibrationGuide();
+                this._updateCalibrationActionHints();
+                this._updateCalibrationNextStep();
+                return;
+            }
             const data = await resp.json();
-            if (!data.ok) return;
+            if (!data.ok) {
+                this._updateCalibrationGuide();
+                this._updateCalibrationActionHints();
+                this._updateCalibrationNextStep();
+                return;
+            }
+            const resolvedCameraId = data.camera_id || this._getCalibrationCameraId() || "default";
+            this._setCalibrationState(resolvedCameraId, {
+                lens_valid: !!data.lens_valid,
+                board_valid: !!data.board_valid,
+            });
+            this._updateCalibrationCameraSelector(resolvedCameraId);
             const lensEl = document.getElementById("cal-status-lens");
             const boardEl = document.getElementById("cal-status-board");
             if (lensEl) {
@@ -736,6 +1036,9 @@ class DartApp {
                 boardEl.textContent = hasBoard ? "Board ✓" : "Board ✗";
                 boardEl.className = "cal-status-item " + (hasBoard ? "cal-status-item--done" : "cal-status-item--pending");
             }
+            this._updateCalibrationGuide();
+            this._updateCalibrationActionHints();
+            this._updateCalibrationNextStep();
         } catch (e) { /* silent */ }
     }
 
@@ -996,7 +1299,7 @@ class DartApp {
             console.error("Ring verify error:", e);
         }
 
-        this._refreshCalibrationStatus();
+        await this._refreshCalibrationStatus({ preferredCameraId: this._getCalibrationCameraId() });
         if (this.multiCamRunning) {
             this._refreshMultiCamStatus();
         }
@@ -1101,6 +1404,8 @@ class DartApp {
         const modal = document.getElementById("calibration-modal");
         if (modal) modal.style.display = "none";
         this.calibrationPoints = [];
+        const nextStepPanel = document.getElementById("calibration-next-step-panel");
+        if (nextStepPanel) nextStepPanel.style.display = "none";
         // Disable marker overlay when calibration modal closes
         this._setMarkerOverlay(false);
     }
@@ -1835,13 +2140,18 @@ class DartApp {
                     this._refreshSetupGuide();
                 }
                 // Populate stereo dropdowns
+                this._replaceCalibrationCameraStates(data.cameras || []);
                 this._populateStereoDropdowns(data.cameras.map(c => c.camera_id));
+                this._updateCalibrationCameraSelector();
+                this._updateCalibrationGuide();
+                this._updateCalibrationActionHints();
             } else {
                 if (btnStart) btnStart.style.display = "inline-block";
                 if (btnStop) btnStop.style.display = "none";
                 if (info) info.style.display = "none";
                 const guide = document.getElementById("multi-setup-guide");
                 if (guide) guide.style.display = "none";
+                this._calibrationCameraStates.clear();
             }
             this._updateCameraHealth();
         } catch (e) {
