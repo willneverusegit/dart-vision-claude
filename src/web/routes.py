@@ -18,6 +18,12 @@ from src.web.stream import encode_frame_jpeg, make_mjpeg_frame
 logger = logging.getLogger(__name__)
 
 
+async def _run_blocking(fn, *args):
+    """Run a synchronous function in a thread executor to avoid blocking the event loop."""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, fn, *args)
+
+
 def setup_routes(app_state: dict) -> APIRouter:
     """Create a fresh router with access to shared app state.
 
@@ -1204,24 +1210,24 @@ def setup_routes(app_state: dict) -> APIRouter:
         body = await _optional_json_body(request)
         camera_src = body.get("src", 0)
 
-        _pl = app_state.get("pipeline_lock")
-        with (_pl if _pl else _nullcontext()):
-            # Stop multi if running
-            if app_state.get("multi_pipeline_running"):
-                stop_pipeline_thread(app_state, "multi", timeout=5.0)
-            # Stop existing single if running
-            if app_state.get("pipeline_running") and app_state.get("pipeline"):
-                try:
-                    app_state["pipeline"].stop()
-                except Exception:
-                    pass
-                app_state["pipeline_running"] = False
-                app_state["pipeline"] = None
-            stop_pipeline_thread(app_state, "single", timeout=5.0)
-            _full_state_reset(app_state)
+        def _do_single_start(src):
+            _pl = app_state.get("pipeline_lock")
+            with (_pl if _pl else _nullcontext()):
+                if app_state.get("multi_pipeline_running"):
+                    stop_pipeline_thread(app_state, "multi", timeout=5.0)
+                if app_state.get("pipeline_running") and app_state.get("pipeline"):
+                    try:
+                        app_state["pipeline"].stop()
+                    except Exception:
+                        pass
+                    app_state["pipeline_running"] = False
+                    app_state["pipeline"] = None
+                stop_pipeline_thread(app_state, "single", timeout=5.0)
+                _full_state_reset(app_state)
+            _wait_for_camera_release([src])
+            start_single_pipeline(app_state, camera_src=src)
 
-        _wait_for_camera_release([camera_src])
-        start_single_pipeline(app_state, camera_src=camera_src)
+        await _run_blocking(_do_single_start, camera_src)
 
         # Wait for pipeline to initialize (up to 3s)
         for _ in range(30):
@@ -1241,17 +1247,19 @@ def setup_routes(app_state: dict) -> APIRouter:
         if not app_state.get("pipeline_running"):
             return {"ok": False, "error": "Single-pipeline not running"}
 
-        _pl = app_state.get("pipeline_lock")
-        with (_pl if _pl else _nullcontext()):
-            stop_pipeline_thread(app_state, "single", timeout=5.0)
-            if app_state.get("pipeline"):
-                try:
-                    app_state["pipeline"].stop()
-                except Exception:
-                    pass
-                app_state["pipeline_running"] = False
-                app_state["pipeline"] = None
+        def _do_single_stop():
+            _pl = app_state.get("pipeline_lock")
+            with (_pl if _pl else _nullcontext()):
+                stop_pipeline_thread(app_state, "single", timeout=5.0)
+                if app_state.get("pipeline"):
+                    try:
+                        app_state["pipeline"].stop()
+                    except Exception:
+                        pass
+                    app_state["pipeline_running"] = False
+                    app_state["pipeline"] = None
 
+        await _run_blocking(_do_single_stop)
         return {"ok": True}
 
     # --- Multi-Camera Pipeline Routes ---
@@ -1379,19 +1387,19 @@ def setup_routes(app_state: dict) -> APIRouter:
 
         # Stop the existing single pipeline thread cleanly
         from src.main import stop_pipeline_thread, _full_state_reset, _wait_for_camera_release
-        _pl = app_state.get("pipeline_lock")
-        with (_pl if _pl else _nullcontext()):
-            stop_pipeline_thread(app_state, "single", timeout=5.0)
-            # Thread's finally block already calls pipeline.stop() + camera.release().
-            # Only clean up state here — no redundant stop() call.
-            if app_state.get("pipeline"):
-                app_state["pipeline_running"] = False
-                app_state["pipeline"] = None
-            _full_state_reset(app_state)
-
-        # Wait for camera hardware to release (Windows USB)
         cam_srcs = [c.get("src", 0) for c in cameras]
-        _wait_for_camera_release(cam_srcs)
+
+        def _do_stop_and_release():
+            _pl = app_state.get("pipeline_lock")
+            with (_pl if _pl else _nullcontext()):
+                stop_pipeline_thread(app_state, "single", timeout=5.0)
+                if app_state.get("pipeline"):
+                    app_state["pipeline_running"] = False
+                    app_state["pipeline"] = None
+                _full_state_reset(app_state)
+            _wait_for_camera_release(cam_srcs)
+
+        await _run_blocking(_do_stop_and_release)
 
         # Start multi-pipeline in a background thread with its own stop event
         from src.main import _run_multi_pipeline
@@ -1468,17 +1476,24 @@ def setup_routes(app_state: dict) -> APIRouter:
 
         # Signal the multi thread to stop and wait for it to exit
         from src.main import stop_pipeline_thread, start_single_pipeline, _full_state_reset, _wait_for_camera_release
-        _pl = app_state.get("pipeline_lock")
-        with (_pl if _pl else _nullcontext()):
-            stop_pipeline_thread(app_state, "multi", timeout=5.0)
-            _full_state_reset(app_state)
+
+        def _do_multi_stop():
+            _pl = app_state.get("pipeline_lock")
+            with (_pl if _pl else _nullcontext()):
+                stop_pipeline_thread(app_state, "multi", timeout=5.0)
+                _full_state_reset(app_state)
+
+        await _run_blocking(_do_multi_stop)
 
         result = {"ok": True}
 
         # Auto-restart single pipeline so the user isn't left without a camera
         if restart_single:
-            _wait_for_camera_release([single_src])
-            start_single_pipeline(app_state, camera_src=single_src)
+            def _do_restart_single():
+                _wait_for_camera_release([single_src])
+                start_single_pipeline(app_state, camera_src=single_src)
+
+            await _run_blocking(_do_restart_single)
             for _ in range(30):
                 await asyncio.sleep(0.1)
                 if app_state.get("pipeline_running"):
