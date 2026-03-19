@@ -2176,6 +2176,56 @@ def setup_routes(app_state: dict) -> APIRouter:
             ) and len(pairs) > 0,
         }
 
+    @router.get("/api/calibration/charuco-progress/{camera_id}")
+    async def charuco_progress(camera_id: str, request: Request) -> dict:
+        """Get ChArUco frame collection progress and guidance tips."""
+        collectors = app_state.setdefault("charuco_collectors", {})
+        collector = collectors.get(camera_id)
+        if collector is None:
+            return {
+                "frames_captured": 0,
+                "frames_needed": 15,
+                "board_visible": False,
+                "corners_found": 0,
+                "tips": ["Starte Lens-Kalibrierung fuer diese Kamera"],
+                "ready_to_calibrate": False,
+            }
+
+        # Try to detect board in current frame
+        multi = app_state.get("multi_pipeline")
+        pipeline = None
+        if multi and hasattr(multi, "get_pipelines"):
+            pipelines = multi.get_pipelines() or {}
+            pipeline = pipelines.get(camera_id)
+
+        board_visible = False
+        corners_found = 0
+        if pipeline:
+            frame = pipeline.get_latest_raw_frame()
+            if frame is not None:
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                dictionary = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_6X6_250)
+                detector = cv2.aruco.ArucoDetector(dictionary)
+                corners, ids, _ = detector.detectMarkers(gray)
+                if ids is not None:
+                    board_visible = True
+                    corners_found = len(ids)
+
+        img_shape = (480, 640)
+        if pipeline:
+            f = pipeline.get_latest_raw_frame()
+            if f is not None:
+                img_shape = f.shape[:2]
+
+        return {
+            "frames_captured": collector.frames_captured,
+            "frames_needed": collector.frames_needed,
+            "board_visible": board_visible,
+            "corners_found": corners_found,
+            "tips": collector.get_tips(image_shape=img_shape),
+            "ready_to_calibrate": collector.ready_to_calibrate,
+        }
+
     @router.post("/api/multi-cam/calibration/validate")
     async def multi_cam_calibration_validate(request: Request) -> dict:
         """Validate stereo calibration prerequisites for a camera pair."""

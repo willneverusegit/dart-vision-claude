@@ -1,4 +1,30 @@
+import pytest
 import numpy as np
+from starlette.testclient import TestClient
+from fastapi import FastAPI
+
+from src.web.routes import setup_routes
+
+
+@pytest.fixture
+def app_state():
+    from src.game.engine import GameEngine
+    import threading
+    return {
+        "game_engine": GameEngine(),
+        "event_manager": None,
+        "pipeline": None,
+        "pending_hits": {},
+        "pending_hits_lock": threading.Lock(),
+    }
+
+
+@pytest.fixture
+def client(app_state):
+    router = setup_routes(app_state)
+    app = FastAPI()
+    app.include_router(router)
+    return TestClient(app)
 
 
 class TestCharucoFrameCollector:
@@ -60,3 +86,31 @@ class TestCharucoFrameCollector:
         c.add_frame_if_diverse(np.array([[100, 100]], dtype=np.float32), f)
         frames = c.get_frames()
         assert len(frames) == 1
+
+
+class TestCharucoProgressEndpoint:
+    def test_charuco_progress_endpoint_no_collector(self, client):
+        resp = client.get("/api/calibration/charuco-progress/cam_left")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "frames_captured" in data
+        assert "frames_needed" in data
+        assert "tips" in data
+        assert "ready_to_calibrate" in data
+        assert data["frames_captured"] == 0
+        assert data["ready_to_calibrate"] is False
+
+    def test_charuco_progress_endpoint_with_collector(self, client, app_state):
+        from src.cv.camera_calibration import CharucoFrameCollector
+        collector = CharucoFrameCollector(frames_needed=15)
+        f = np.zeros((480, 640, 3), dtype=np.uint8)
+        collector.add_frame_if_diverse(np.array([[100, 100], [200, 100]], dtype=np.float32), f)
+        app_state.setdefault("charuco_collectors", {})["cam_right"] = collector
+
+        resp = client.get("/api/calibration/charuco-progress/cam_right")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["frames_captured"] == 1
+        assert data["frames_needed"] == 15
+        assert isinstance(data["tips"], list)
+        assert data["ready_to_calibrate"] is False
