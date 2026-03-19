@@ -19,6 +19,15 @@ class DartApp {
         this._calibrationCameraStates = new Map();
         this.charucoPreset = "40x20";
 
+        this._wizardState = {
+            currentCamera: null,
+            cameraQueue: [],
+            step: 'idle',
+            lastResult: null,
+        };
+        this._charucoPollingTimer = null;
+        this._charucoPollingCamera = null;
+
         this._bindEvents();
         this._bindWebSocket();
         this._bindKeyboard();
@@ -26,6 +35,7 @@ class DartApp {
         this._bindCaptureSettings();
         this._bindRecording();
         this._bindMultiCam();
+        this._bindWizard();
         this._bindCharucoBoardSelectors();
         this._syncCharucoBoardSelectors(this.charucoPreset);
         this._refreshCharucoBoardPresetFromServer();
@@ -2894,6 +2904,228 @@ class DartApp {
         } catch (e) {
             this._showError("Rotation-Fehler: " + e.message);
         }
+    }
+
+    // ─── Task 12: Wizard State Machine ───────────────────────────────────────
+
+    _bindWizard() {
+        var self = this;
+        var btnNext = document.getElementById('wizard-btn-next');
+        var btnRetry = document.getElementById('wizard-btn-retry');
+        var btnCancel = document.getElementById('wizard-btn-cancel');
+        if (btnNext) btnNext.addEventListener('click', function() { self._wizardNext(); });
+        if (btnRetry) btnRetry.addEventListener('click', function() { self._wizardRetry(); });
+        if (btnCancel) btnCancel.addEventListener('click', function() { self._wizardCancel(); });
+    }
+
+    _wizardAdvance(nextStep) {
+        this._wizardState.step = nextStep;
+        this._updateStepperVisuals();
+        var computing = document.getElementById('wizard-computing');
+        var result = document.getElementById('wizard-result');
+        var isComputing = nextStep.endsWith('_running') || nextStep === 'pose_computing';
+        if (computing) computing.style.display = isComputing ? 'flex' : 'none';
+        if (result && isComputing) result.style.display = 'none';
+    }
+
+    _showWizardResult(data) {
+        var resultEl = document.getElementById('wizard-result');
+        var img = document.getElementById('wizard-result-img');
+        var text = document.getElementById('wizard-result-text');
+        if (!resultEl) return;
+
+        if (data.result_image) {
+            img.src = data.result_image;
+            img.style.display = 'block';
+        } else {
+            img.style.display = 'none';
+        }
+        if (data.quality_info) {
+            text.textContent = data.quality_info.description || '';
+        }
+        resultEl.style.display = 'block';
+
+        if (!data.ok && !data.success) {
+            resultEl.classList.add('wizard-result--error');
+            text.textContent = data.error || 'Kalibrierung fehlgeschlagen';
+            document.getElementById('wizard-btn-next').style.display = 'none';
+        } else {
+            resultEl.classList.remove('wizard-result--error');
+            document.getElementById('wizard-btn-next').style.display = '';
+            var nextLabel = this._getNextStepLabel();
+            document.getElementById('wizard-btn-next').textContent = '\u25b6 Weiter: ' + nextLabel;
+        }
+        document.getElementById('wizard-computing').style.display = 'none';
+    }
+
+    async _autoTriggerPose(cameraId) {
+        var computing = document.getElementById('wizard-computing');
+        var computingText = document.getElementById('wizard-computing-text');
+        if (computing) {
+            computing.style.display = 'flex';
+            computingText.textContent = 'Lens- und Board-Kalibrierung abgeschlossen, nun wird daraus Board-Pose berechnet\u2026';
+        }
+        document.getElementById('wizard-result').style.display = 'none';
+        this._wizardState.step = 'pose_computing';
+        this._updateStepperVisuals();
+
+        try {
+            var resp = await fetch('/api/calibration/board-pose', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({camera_id: cameraId}),
+            });
+            if (!resp.ok) {
+                this._showWizardResult({ok: false, error: 'Board-Pose HTTP ' + resp.status});
+                this._wizardState.step = 'pose_result';
+                return;
+            }
+            var data = await resp.json();
+            this._wizardState.step = 'pose_result';
+            this._wizardState.lastResult = data;
+            this._showWizardResult(data);
+            this._updateStepperVisuals();
+        } catch (e) {
+            this._showWizardResult({ok: false, error: 'Pose-Berechnung fehlgeschlagen: ' + e.message});
+            this._wizardState.step = 'pose_result';
+        }
+    }
+
+    _updateStepperVisuals() {
+        var STEP_ORDER = ['lens', 'board', 'pose', 'stereo'];
+        var step = this._wizardState.step;
+        var currentIdx = -1;
+        for (var i = 0; i < STEP_ORDER.length; i++) {
+            if (step.indexOf(STEP_ORDER[i]) === 0) {
+                currentIdx = i;
+                break;
+            }
+        }
+        STEP_ORDER.forEach(function(name, idx) {
+            var el = document.getElementById('wizard-step-' + name);
+            if (!el) return;
+            el.classList.remove('wizard-step--done', 'wizard-step--active');
+            if (idx < currentIdx) {
+                el.classList.add('wizard-step--done');
+            } else if (idx === currentIdx) {
+                el.classList.add('wizard-step--active');
+            }
+        });
+    }
+
+    _getNextStepLabel() {
+        var step = this._wizardState.step;
+        if (step === 'lens_result') return 'Board-Kalibrierung';
+        if (step === 'board_result') return 'Pose berechnen';
+        if (step === 'pose_result') return 'Stereo-Kalibrierung';
+        if (step === 'stereo_result') return 'Abschliessen';
+        return 'Weiter';
+    }
+
+    _wizardNext() {
+        var step = this._wizardState.step;
+        var cam = this._wizardState.currentCamera;
+        if (step === 'lens_result') {
+            this._wizardAdvance('board_running');
+        } else if (step === 'board_result') {
+            if (cam) this._autoTriggerPose(cam);
+        } else if (step === 'pose_result') {
+            this._wizardAdvance('stereo_running');
+        } else if (step === 'stereo_result') {
+            this._wizardCancel();
+        }
+    }
+
+    _wizardRetry() {
+        var step = this._wizardState.step;
+        if (step.indexOf('lens') === 0) {
+            this._wizardAdvance('lens_running');
+        } else if (step.indexOf('board') === 0) {
+            this._wizardAdvance('board_running');
+        } else if (step.indexOf('pose') === 0) {
+            var cam = this._wizardState.currentCamera;
+            if (cam) this._autoTriggerPose(cam);
+        } else if (step.indexOf('stereo') === 0) {
+            this._wizardAdvance('stereo_running');
+        }
+    }
+
+    _wizardCancel() {
+        this._wizardState = {
+            currentCamera: null,
+            cameraQueue: [],
+            step: 'idle',
+            lastResult: null,
+        };
+        this._stopCharucoGuidance();
+        var computing = document.getElementById('wizard-computing');
+        var result = document.getElementById('wizard-result');
+        if (computing) computing.style.display = 'none';
+        if (result) result.style.display = 'none';
+        this._updateStepperVisuals();
+    }
+
+    // ─── Task 13: ChArUco Guidance Panel ─────────────────────────────────────
+
+    _startCharucoGuidance(cameraId, mode) {
+        var panel = document.getElementById('charuco-guidance');
+        if (!panel) return;
+        panel.style.display = 'flex';
+        var steps = document.getElementById('charuco-guidance-steps');
+        while (steps.firstChild) steps.removeChild(steps.firstChild);
+        var instructions = mode === 'stereo'
+            ? ['ChArUco-Board so halten, dass beide Kameras es sehen', 'Langsam kippen und drehen', 'Verschiedene Abstaende nutzen', 'Alle Bildecken abdecken']
+            : ['ChArUco-Board vor die Kamera halten', 'Langsam kippen und drehen', 'Verschiedene Abstaende nutzen', 'Alle Bildecken abdecken'];
+        instructions.forEach(function(text) {
+            var li = document.createElement('li');
+            li.textContent = text;
+            steps.appendChild(li);
+        });
+        this._charucoPollingCamera = cameraId;
+        this._pollCharucoProgress();
+        this._charucoPollingTimer = setInterval(function() { this._pollCharucoProgress(); }.bind(this), 2000);
+    }
+
+    async _pollCharucoProgress() {
+        var camId = this._charucoPollingCamera;
+        if (!camId) return;
+        try {
+            var resp = await fetch('/api/calibration/charuco-progress/' + encodeURIComponent(camId));
+            if (!resp.ok) return;
+            var data = await resp.json();
+            var count = document.getElementById('charuco-frame-count');
+            var fill = document.getElementById('charuco-progress-fill');
+            var btn = document.getElementById('charuco-calibrate-btn');
+            var tipsEl = document.getElementById('charuco-tips-content');
+            if (count) count.textContent = data.frames_captured + ' / ' + data.frames_needed + ' Frames';
+            if (fill) fill.style.width = ((data.frames_captured / data.frames_needed) * 100) + '%';
+            if (btn) {
+                btn.disabled = !data.ready_to_calibrate;
+                btn.textContent = data.ready_to_calibrate
+                    ? 'Kalibrieren \u2713'
+                    : 'Kalibrieren (noch ' + (data.frames_needed - data.frames_captured) + ' Frames)';
+            }
+            if (tipsEl) {
+                while (tipsEl.firstChild) tipsEl.removeChild(tipsEl.firstChild);
+                (data.tips || []).forEach(function(t) {
+                    var p = document.createElement('p');
+                    p.style.fontSize = '0.85em';
+                    p.style.margin = '2px 0';
+                    p.textContent = t;
+                    tipsEl.appendChild(p);
+                });
+            }
+        } catch (e) { /* non-fatal */ }
+    }
+
+    _stopCharucoGuidance() {
+        if (this._charucoPollingTimer) {
+            clearInterval(this._charucoPollingTimer);
+            this._charucoPollingTimer = null;
+        }
+        this._charucoPollingCamera = null;
+        var panel = document.getElementById('charuco-guidance');
+        if (panel) panel.style.display = 'none';
     }
 }
 
