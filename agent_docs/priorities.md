@@ -38,9 +38,15 @@ Ziel:
 
 Verbleibende Arbeiten:
 
-- Drag-and-Drop Kamera-Anordnung
-- Board-Pose: visuelles Feedback (erkannte Marker im Bild einblenden)
-- Setup-Wizard: automatisch zum naechsten Schritt wechseln wenn ein Schritt erledigt ist
+- Drag-and-Drop Kamera-Anordnung (bewusst ausgelassen — kein Mehrwert erkannt)
+
+Erledigt (2026-03-19, Branch `claude/stupefied-hellman`):
+
+- Board-Pose: visuelles Feedback (Marker-Ecken + Scoring-Ringe + 3D-Achsen im Ergebnisbild)
+- Setup-Wizard: Auto-Advance mit Stepper (Lens→Board→Pose→Stereo), Result-Preview nach jedem Schritt, Auto-Pose-Berechnung
+- ChArUco-Guidance: Anleitung, Live-Fortschrittsbalken, Qualitaets-Tipps, Auto-Frame-Collection im MJPEG-Feed
+- result_image + quality_info in allen 4 Kalibrier-Endpoints (ArUco, Lens, Board-Pose, Stereo)
+- Neue Dateien: `src/cv/calibration_overlay.py`, `tests/test_calibration_overlay.py`, `tests/test_charuco_progress.py`, `tests/test_wizard_flow.py`
 
 ## Prioritaet 11: E2E-Tests mit echten Videoclips (neu — entdeckt bei Arbeit an P1)
 

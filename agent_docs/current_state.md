@@ -1,6 +1,6 @@
 # Current State
 
-Stand dieser Zusammenfassung: 2026-03-19 (Welle 1-4 + Auto-Agents: P22, P26, P27, P28, P30-P31, P33, P39-P43, P46-P49, P50-P56, P60-P65, Tier-2 #5-#7, #10-#14, P32, P35, P73, P75-P77 erledigt, Multi-Cam-Kalibriermodus repariert)
+Stand dieser Zusammenfassung: 2026-03-19 (Welle 1-4 + Auto-Agents: P22, P26, P27, P28, P30-P31, P33, P39-P43, P46-P49, P50-P56, P60-P65, Tier-2 #5-#7, #10-#14, P32, P35, P73, P75-P77 erledigt, Multi-Cam-Kalibriermodus repariert, P9 Wizard implementiert)
 
 ## Technischer Kern
 
@@ -32,6 +32,9 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 - Kalibrierungs-UX mit Statusanzeige und gefuehrten Schritten
 - Multi-Cam-Kalibrierung nutzt pro Kamera die aktive Sub-Pipeline statt nur den Single-Cam-Pfad (Frame, Info, Board, Lens, ROI, Overlay, Optical Center)
 - Multi-Cam-Kalibrierdialog fuehrt per Kamera durch den naechsten Schritt (Statuskarten, Empfehlungspanel, Button-Highlight, Weiter-CTA mit direktem Start des empfohlenen Standardpfads)
+- Wizard-Stepper (Lens→Board→Pose→Stereo) mit Auto-Advance, Result-Preview nach jedem Kalibrierungsschritt, automatischer Board-Pose-Berechnung
+- ChArUco-Guidance-Panel mit Schritt-fuer-Schritt-Anleitung, Live-Fortschrittsbalken, Qualitaets-Tipps, automatischer Frame-Collection im MJPEG-Feed
+- Kalibrier-Ergebnisbilder (result_image) mit Overlay (Marker-Ecken, Scoring-Ringe, 3D-Achsen, Epipolar-Linien) in allen 4 Endpoints
 - Telemetrie im Header (FPS, Dropped Frames, Queue-Druck, RAM)
 - Idempotentes Logging mit Session-ID, optionalem File-Rotation-Log (`DARTVISION_LOG_FILE`)
 - Windows-Startskript (`start.bat`) mit venv, Dependency-Check, Diagnose
