@@ -6,7 +6,7 @@ Sie wird aus `CLAUDE.md` referenziert, um das Hauptdokument schlank zu halten.
 ## Iteration protokollieren
 
 Nach jedem geloesten Bug, jeder nicht-trivialen Fehlerbehebung oder wenn ein Ansatz gescheitert ist:
-- Aktiviere `self-improving-agent:iteration-logger`
+- Aktiviere `agentic-os:iteration-logger`
 - Das erfasst Problem, Root Cause, Loesung und gescheiterte Ansaetze automatisch in `.agent-memory/`
 - Auch gescheiterte Ansaetze ohne endgueltige Loesung protokollieren — sie sind wertvoll fuer Pattern-Erkennung
 
@@ -25,10 +25,21 @@ Nach jedem geloesten Bug, jeder nicht-trivialen Fehlerbehebung oder wenn ein Ans
 ## Session-Start: Kontext aufbauen
 
 Vor Beginn jeder neuen Arbeitssession:
-- Aktiviere `self-improving-agent:session-bootstrap` fuer ein kompaktes Projekt-Briefing mit Warnungen und Statistiken
+- Aktiviere `agentic-os:heartbeat` fuer ein kompaktes Projekt-Briefing mit Warnungen und Statistiken
 - Lies zusaetzlich die letzten 2-3 Session-Logs in `agent_docs/session_logs/` (neueste zuerst)
 - Nimm Erkenntnisse und bekannte Probleme aus den Logs in deine Planung auf
 - Wiederhole nicht Fehler die in frueheren Sessions dokumentiert wurden
+
+## Nach Code-Aenderungen: Qualitaetssicherung
+
+Optional nach groesseren Aenderungen oder vor Session-Ende:
+- `agentic-os:code-reviewer` — Selbst-Review auf Lesbarkeit, Sicherheit, Projekt-Konventionen
+- `agentic-os:test-validator` — nach Test-Runs fuer Trend-Tracking und Regressionserkennung
+
+## Bei Session-Abbruch: Kontext sichern
+
+Wenn eine Session mitten in der Arbeit abgebrochen wird (Context-Limit, User-Unterbrechung):
+- Aktiviere `agentic-os:agent-handoff` um den aktuellen Arbeitsstand fuer die naechste Session zu sichern
 
 ## Session-Ende: Protokoll und Selbstverbesserung
 
@@ -37,8 +48,8 @@ Am Ende jeder Arbeitssession (oder per `/session-log`):
 ### Pattern-Analyse (wenn Iterationen geloggt wurden)
 
 - Wenn in dieser Session mindestens 3 Iterationen via `iteration-logger` erfasst wurden:
-  - Aktiviere `self-improving-agent:pattern-extractor` um wiederkehrende Muster zu erkennen
-  - Bei gefundenen `skill_candidate`-Patterns: `self-improving-agent:skill-generator` vorschlagen
+  - Aktiviere `agentic-os:pattern-extractor` um wiederkehrende Muster zu erkennen
+  - Bei gefundenen `skill_candidate`-Patterns: `agentic-os:skill-generator` vorschlagen
 - Aktualisiere `.agent-memory/session-summary.md` mit Zusammenfassung der Session
 
 ### Session-Log schreiben
@@ -108,3 +119,8 @@ Nach jeder Aufgabe aktiv pruefen:
 ### 4. Neue Schwachstellen als Prioritaeten erfassen (wenn vorhanden)
 
 Wenn bei der Arbeit neue Schwachstellen oder Folgethemen entdeckt werden, als neue Prioritaeten hinten an `priorities.md` anhaengen. Kein kuenstliches Aufblaehen — nur echte Funde eintragen.
+
+## Periodisch: Cross-Project-Learning und Retrospektive
+
+- `agentic-os:sync-context` — nach groesseren Milestones ausfuehren, um Learnings in `~/.claude-memory/global/` zu synchronisieren
+- `agentic-os:retrospective` — alle 5-10 Sessions fuer Tiefenanalyse ueber mehrere Sessions hinweg (Metriken, Blind Spots, Verbesserungstrends)

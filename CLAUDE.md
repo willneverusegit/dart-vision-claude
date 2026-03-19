@@ -56,6 +56,9 @@ Vor Arbeit an Code: `agent_docs/current_state.md` lesen fuer den aktuellen Stand
 - `/save-session` — Kompletter Session-Abschluss (alle Protokolle gebuendelt)
 - `/task-splitter` — Aufgaben in parallele Agenten zerlegen
 - `.claude/agents/calibration-reviewer.md` — Review-Agent fuer Kalibrierung
+- `/agentic-os:init` — Memory-System in neuem Projekt initialisieren
+- `/agentic-os:status` — System-Health und Memory-Status anzeigen
+- `/agentic-os:sync` — Learnings zwischen Projekt und Global synchronisieren
 
 ## Prozess-Regeln
 

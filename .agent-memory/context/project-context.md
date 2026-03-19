@@ -1,6 +1,6 @@
 # Project Context — DartVision
 
-*Last updated: 2026-03-18 (Multi-Cam Mode-Switch Robustness Fix: _full_state_reset, atomic start, camera-release check)*
+*Last updated: 2026-03-19 (Auto-Agent Run #3: P73, P75-P77 erledigt — async Pipeline-Ops, Template-Factory, Checkout-Test-Fix, Cricket-Tests)*
 
 ## Projektziel
 Lokales Dart-Scoring-System mit Computer Vision zur automatischen Treffererkennung auf einer Dartscheibe. CPU-only, Windows-Laptop, kein Cloud-Zwang.
@@ -13,7 +13,7 @@ Lokales Dart-Scoring-System mit Computer Vision zur automatischen Treffererkennu
 | Backend | FastAPI | — | REST + WebSocket |
 | CV | OpenCV + NumPy | — | CPU-only, keine GPU |
 | Frontend | Vanilla JS / HTML / CSS | — | Web Audio API |
-| Tests | pytest | — | 1355 Tests, ~77% Coverage |
+| Tests | pytest | — | 1348 Tests (ohne e2e), ~77% Coverage |
 | Config | YAML | — | calibration_config.yaml |
 
 ## Architektur
@@ -70,6 +70,8 @@ ThreadedCamera
 | Homography-Warning | stabil | P62 — Frontend-Banner bei homography_age>30, Telemetrie-Status-Widget |
 | Quick-Wins | erledigt | P63 — cv2.setNumThreads(0), Flight-Tipp im UI (#28/#29 waren bereits Standard) |
 | Routes Coverage | verbessert | 48 neue Tests → routes.py 74% (P64: Ziel 80%+) |
+| Async Pipeline Ops | stabil | P76 — blocking stop/start in run_in_executor gewrappt |
+| Routes Factory | stabil | P67+P73 — Router + Jinja2Templates in setup_routes(), kein module-level State |
 
 ## Key Decisions (quick reference)
 

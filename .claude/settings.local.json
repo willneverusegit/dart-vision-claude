@@ -38,7 +38,7 @@
       "Skill(commit-commands:commit:*)",
       "Skill(claude-md-management:revise-claude-md:*)",
       "Read(//c/Users/domes/OneDrive/Desktop/dart-vision-claude/**)",
-      "Read(//c/Users/domes/.claude/plugins/self-improving-agent/**)"
+      "Read(//c/Users/domes/.claude/plugins/agentic-os/**)"
     ]
   },
   "hooks": {
