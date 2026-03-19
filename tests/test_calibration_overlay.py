@@ -1,6 +1,5 @@
 # tests/test_calibration_overlay.py
 import numpy as np
-import pytest
 
 
 def test_draw_aruco_result_overlay_returns_image():
