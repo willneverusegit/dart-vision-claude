@@ -317,11 +317,14 @@
                     <label class="charuco-board-control">
                         <span class="modal__text" style="margin: 0;">Gedrucktes Board</span>
                         <select id="charuco-board-preset" class="select charuco-board-select">
-                            <option value="40x20">7x5 Standard (40 / 20 mm)</option>
-                            <option value="40x28">7x5 Groessere Marker (40 / 28 mm)</option>
+                            <option value="auto">Auto (7x5 oder 5x7 erkennen)</option>
+                            <option value="7x5_40x20">7x5 Standard (40 / 20 mm)</option>
+                            <option value="7x5_40x28">7x5 Groessere Marker (40 / 28 mm)</option>
+                            <option value="5x7_40x20">5x7 Standard (40 / 20 mm)</option>
+                            <option value="5x7_40x28">5x7 Groessere Marker (40 / 28 mm)</option>
                         </select>
                     </label>
-                    <p class="charuco-board-note">Die Auswahl muss zur gedruckten Vorlage passen.</p>
+                    <p class="charuco-board-note">Auto ist empfohlen und loest das konkrete Layout erst waehrend der Kalibrierung auf.</p>
                 </div>
                 <p class="modal__text"><strong>Schritt 1:</strong> Lens-Kalibrierung — korrigiert Verzerrung der Kamera.</p>
                 <p class="modal__text cal-hint-text">ChArUco-Board vor die Kamera halten und gut sichtbar positionieren.</p>
@@ -453,11 +456,14 @@
                 <label class="charuco-board-control charuco-board-control--inline">
                     <span class="modal__text" style="margin: 0;">ChArUco-Board</span>
                     <select id="stereo-charuco-board-preset" class="select charuco-board-select">
-                        <option value="40x20">7x5 Standard (40 / 20 mm)</option>
-                        <option value="40x28">7x5 Groessere Marker (40 / 28 mm)</option>
+                        <option value="auto">Auto (7x5 oder 5x7 erkennen)</option>
+                        <option value="7x5_40x20">7x5 Standard (40 / 20 mm)</option>
+                        <option value="7x5_40x28">7x5 Groessere Marker (40 / 28 mm)</option>
+                        <option value="5x7_40x20">5x7 Standard (40 / 20 mm)</option>
+                        <option value="5x7_40x28">5x7 Groessere Marker (40 / 28 mm)</option>
                     </select>
                 </label>
-                <p class="charuco-board-note charuco-board-note--inline">Nutze dieselbe Auswahl wie beim gedruckten Board.</p>
+                <p class="charuco-board-note charuco-board-note--inline">Auto ist empfohlen und akzeptiert nur Frame-Paare mit identisch erkanntem Layout in beiden Kameras.</p>
                 <div class="stereo-pair-row">
                     <select id="stereo-cam-a" class="select"></select>
                     <span class="modal__text" style="margin: 0 8px;">&#8596;</span>

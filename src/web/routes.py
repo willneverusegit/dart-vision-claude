@@ -55,6 +55,12 @@ def setup_routes(app_state: dict) -> APIRouter:
         fields = _charuco_override_fields(body)
         return any(value is not None for value in fields.values())
 
+    def _get_charuco_candidate_specs(calibration_manager, body: dict | None = None) -> list:
+        overrides = _charuco_override_fields(body)
+        if hasattr(calibration_manager, "get_charuco_board_candidates"):
+            return calibration_manager.get_charuco_board_candidates(**overrides)
+        return [calibration_manager.get_charuco_board_spec(**overrides)]
+
     def _normalize_camera_id(camera_id: str | None) -> str | None:
         if camera_id is None:
             return None
@@ -772,16 +778,28 @@ def setup_routes(app_state: dict) -> APIRouter:
             return {"ok": False, "error": error}
         if not pipeline.camera:
             return {"ok": False, "error": "Kamera nicht verfuegbar -- bitte Verbindung pruefen."}
-        overrides = _charuco_override_fields(body)
         try:
-            board_spec = pipeline.camera_calibration.get_charuco_board_spec(**overrides)
+            candidate_specs = _get_charuco_candidate_specs(pipeline.camera_calibration, body)
         except ValueError as exc:
             return {"ok": False, "error": str(exc)}
 
-        # Prefer diverse frames from CharucoFrameCollector if available
-        collector = app_state.get("charuco_collectors", {}).get(camera_id or resolved_camera_id or "")
-        if collector and collector.frames_captured >= 3:
-            frames = collector.get_frames()
+        collector_key = resolved_camera_id or camera_id or "default"
+        collectors = app_state.setdefault("charuco_collectors", {})
+        collector = collectors.get(collector_key)
+        if collector:
+            if collector.candidate_specs:
+                candidate_specs = collector.candidate_specs
+            usable_frames = collector.usable_frames
+            resolved_board_spec = collector.resolved_board_spec
+            if usable_frames < 3 or resolved_board_spec is None:
+                return {
+                    "ok": False,
+                    "error": (
+                        f"Nur {usable_frames} nutzbare ChArUco-Frames gesammelt "
+                        "(mind. 3 noetig). Bitte Guided Capture fortsetzen."
+                    ),
+                }
+            frames = collector.get_frames(board_spec=resolved_board_spec)
         else:
             frames = []
             for _ in range(30):
@@ -792,9 +810,13 @@ def setup_routes(app_state: dict) -> APIRouter:
 
         if len(frames) < 3:
             return {"ok": False, "error": f"Nur {len(frames)} Frames erfasst (mind. 3 noetig) — Kamera pruefen."}
-        result = pipeline.camera_calibration.charuco_calibration(frames, board_spec=board_spec)
+        result = pipeline.camera_calibration.charuco_calibration(
+            frames,
+            candidate_specs=candidate_specs,
+        )
         if result.get("ok"):
             pipeline.refresh_remapper()
+            collectors.pop(collector_key, None)
         if result.get("ok") and frames:
             from src.cv.calibration_overlay import draw_undistorted_preview, encode_result_image
             import numpy as _np
@@ -981,16 +1003,19 @@ def setup_routes(app_state: dict) -> APIRouter:
             return {"ok": False, "error": error_msg, "preflight": preflight}
         intr_a = pipe_a.camera_calibration.get_intrinsics()
         intr_b = pipe_b.camera_calibration.get_intrinsics()
+        try:
+            candidate_specs_a = _get_charuco_candidate_specs(pipe_a.camera_calibration, body)
+            candidate_specs_b = _get_charuco_candidate_specs(pipe_b.camera_calibration, body)
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
 
         # Capture synchronized frame pairs
         num_pairs = body.get("num_pairs", 15)
         capture_delay = body.get("capture_delay", 0.5)
-        frames_a = []
-        frames_b = []
+        accepted_pairs: list[dict] = []
 
         from src.web.stereo_progress import StereoProgressTracker
-        from src.cv.stereo_calibration import detect_charuco_corners
-        import cv2
+        from src.cv.stereo_calibration import detect_charuco_board
 
         valid_pairs_count = 0
         for i in range(num_pairs):
@@ -998,22 +1023,43 @@ def setup_routes(app_state: dict) -> APIRouter:
             raw_b = pipe_b.get_latest_raw_frame()
             detected_a = False
             detected_b = False
+            resolved_a = None
+            resolved_b = None
             if raw_a is not None and raw_b is not None:
-                gray_a = cv2.cvtColor(raw_a, cv2.COLOR_BGR2GRAY) if len(raw_a.shape) == 3 else raw_a
-                gray_b = cv2.cvtColor(raw_b, cv2.COLOR_BGR2GRAY) if len(raw_b.shape) == 3 else raw_b
-                corners_a, _ = detect_charuco_corners(gray_a)
-                corners_b, _ = detect_charuco_corners(gray_b)
-                detected_a = corners_a is not None
-                detected_b = corners_b is not None
-                if detected_a and detected_b:
-                    frames_a.append(raw_a.copy())
-                    frames_b.append(raw_b.copy())
+                detection_a = detect_charuco_board(raw_a, board_specs=candidate_specs_a)
+                detection_b = detect_charuco_board(raw_b, board_specs=candidate_specs_b)
+                detected_a = detection_a.interpolation_ok
+                detected_b = detection_b.interpolation_ok
+                resolved_a = None if detection_a.board_spec is None else detection_a.board_spec.preset_name
+                resolved_b = None if detection_b.board_spec is None else detection_b.board_spec.preset_name
+                same_board = (
+                    detected_a
+                    and detected_b
+                    and detection_a.board_spec is not None
+                    and detection_b.board_spec is not None
+                    and detection_a.board_spec == detection_b.board_spec
+                )
+                if same_board:
+                    accepted_pairs.append(
+                        {
+                            "frame_a": raw_a.copy(),
+                            "frame_b": raw_b.copy(),
+                            "board_spec": detection_a.board_spec,
+                            "corner_sum": (
+                                detection_a.charuco_corners_found + detection_b.charuco_corners_found
+                            ),
+                        }
+                    )
                     valid_pairs_count += 1
 
             progress = StereoProgressTracker.frame_progress(
                 i, num_pairs, detected_a, detected_b,
                 valid_pairs=valid_pairs_count, phase="capture",
             )
+            if resolved_a is not None:
+                progress["resolved_preset_a"] = resolved_a
+            if resolved_b is not None:
+                progress["resolved_preset_b"] = resolved_b
             em = app_state.get("event_manager")
             if em and hasattr(em, 'broadcast_sync'):
                 em.broadcast_sync("stereo_progress", progress)
@@ -1030,10 +1076,112 @@ def setup_routes(app_state: dict) -> APIRouter:
                 "total": num_pairs,
             })
 
-        if len(frames_a) < 3:
+        if len(accepted_pairs) < 3:
+            return {
+                "ok": False,
+                "error": (
+                    f"Nur {len(accepted_pairs)} gueltige Frame-Paare erfasst "
+                    "(mind. 3 noetig) - Board in beiden Kameras sichtbar und gleiches Layout?"
+                ),
+            }
             return {"ok": False, "error": f"Nur {len(frames_a)} gueltige Frame-Paare erfasst (mind. 3 noetig) — Board in beiden Kameras sichtbar?"}
 
         # Run stereo calibration
+        board_stats: dict[str, dict] = {}
+        for pair in accepted_pairs:
+            spec = pair["board_spec"]
+            entry = board_stats.setdefault(
+                spec.preset_name,
+                {"spec": spec, "pairs": 0, "corner_sum": 0},
+            )
+            entry["pairs"] += 1
+            entry["corner_sum"] += pair["corner_sum"]
+        board_spec = max(
+            board_stats.values(),
+            key=lambda item: (item["pairs"], item["corner_sum"]),
+        )["spec"]
+        frames_a = [pair["frame_a"] for pair in accepted_pairs if pair["board_spec"] == board_spec]
+        frames_b = [pair["frame_b"] for pair in accepted_pairs if pair["board_spec"] == board_spec]
+        if len(frames_a) < 3:
+            return {
+                "ok": False,
+                "error": (
+                    f"Nur {len(frames_a)} Paare mit konsistentem Layout {board_spec.preset_name} "
+                    "verfuegbar (mind. 3 noetig)."
+                ),
+            }
+
+        from src.cv.stereo_calibration import stereo_calibrate
+        result = stereo_calibrate(
+            frames_a, frames_b,
+            intr_a.camera_matrix, intr_a.dist_coeffs,
+            intr_b.camera_matrix, intr_b.dist_coeffs,
+            board_spec=board_spec,
+        )
+
+        if not result.ok:
+            return {"ok": False, "error": result.error_message}
+
+        from src.utils.config import save_stereo_pair
+        save_stereo_pair(
+            cam_a, cam_b,
+            result.R.tolist(), result.T.tolist(),
+            result.reprojection_error,
+        )
+        if hasattr(pipe_a.camera_calibration, "store_charuco_board_spec"):
+            pipe_a.camera_calibration.store_charuco_board_spec(board_spec)
+        if hasattr(pipe_b.camera_calibration, "store_charuco_board_spec"):
+            pipe_b.camera_calibration.store_charuco_board_spec(board_spec)
+
+        multi = app_state.get("multi_pipeline")
+        if multi is not None and hasattr(multi, "reload_stereo_params"):
+            try:
+                multi.reload_stereo_params()
+                logger.info("Stereo params reloaded into live pipeline after calibration")
+            except Exception as reload_err:
+                logger.warning("Failed to reload stereo params: %s", reload_err)
+
+        result_event = StereoProgressTracker.calibration_result(
+            result.reprojection_error, len(frames_a), cam_a, cam_b
+        )
+        em = app_state.get("event_manager")
+        if em and hasattr(em, 'broadcast_sync'):
+            em.broadcast_sync("stereo_result", result_event)
+
+        from src.cv.calibration_overlay import draw_stereo_epipolar_overlay, encode_result_image
+        result_image = None
+        frame_a_last = pipe_a.get_latest_raw_frame() if hasattr(pipe_a, "get_latest_raw_frame") else None
+        frame_b_last = pipe_b.get_latest_raw_frame() if hasattr(pipe_b, "get_latest_raw_frame") else None
+        if frame_a_last is not None and frame_b_last is not None:
+            overlay = draw_stereo_epipolar_overlay(frame_a_last, frame_b_last)
+            result_image = encode_result_image(overlay)
+
+        rpe = result.reprojection_error
+        if rpe < 0.5:
+            quality_desc = "Sehr gute Stereo-Kalibrierung."
+        elif rpe < 1.0:
+            quality_desc = "Gute Stereo-Kalibrierung."
+        elif rpe < 2.0:
+            quality_desc = "Akzeptable Stereo-Kalibrierung, weitere Verbesserung moeglich."
+        else:
+            quality_desc = "Schlechte Stereo-Kalibrierung - bitte neu kalibrieren."
+
+        return {
+            "ok": True,
+            "reprojection_error": result.reprojection_error,
+            "pairs_used": len(frames_a),
+            "camera_a": cam_a,
+            "camera_b": cam_b,
+            "charuco_board": board_spec.to_api_payload(),
+            "result_image": result_image,
+            "quality_info": {
+                "reprojection_error": rpe,
+                "pairs_used": len(frames_a),
+                "description": quality_desc,
+            },
+        }
+
+        # Legacy block kept below for reference; unreachable after the return above.
         from src.cv.stereo_calibration import stereo_calibrate
         try:
             if _has_charuco_override(body):
@@ -1689,6 +1837,8 @@ def setup_routes(app_state: dict) -> APIRouter:
     @router.get("/video/feed/{camera_id}")
     async def video_feed_camera(camera_id: str) -> StreamingResponse:
         """MJPEG video stream for a specific camera in multi-pipeline."""
+        from src.cv.stereo_calibration import detect_charuco_board
+
         _feed_frame_counter: dict = {"n": 0}
 
         async def generate():
@@ -1703,20 +1853,28 @@ def setup_routes(app_state: dict) -> APIRouter:
                             collectors = app_state.get("charuco_collectors", {})
                             collector = collectors.get(camera_id)
                             if collector and not collector.ready_to_calibrate:
-                                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                                dictionary = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_6X6_250)
-                                detector = cv2.aruco.ArucoDetector(dictionary)
-                                corners, ids, _ = detector.detectMarkers(gray)
-                                if ids is not None and len(ids) >= 4:
-                                    all_corners = np.concatenate([c.reshape(-1, 2) for c in corners])
-                                    collector.add_frame_if_diverse(all_corners, frame)
+                                detection = detect_charuco_board(
+                                    frame,
+                                    board_specs=collector.candidate_specs,
+                                )
+                                collector.add_frame_if_diverse(
+                                    detection.charuco_corners,
+                                    frame,
+                                    board_spec=detection.board_spec,
+                                    markers_found=detection.markers_found,
+                                    charuco_corners_found=detection.charuco_corners_found,
+                                    interpolation_ok=detection.interpolation_ok,
+                                    warning=detection.warning,
+                                )
                         except Exception as exc:
                             logger.warning("Auto-capture error for %s: %s", camera_id, exc)
                     # Overlay frame-count progress if a collector is active
                     collectors = app_state.get("charuco_collectors", {})
                     collector = collectors.get(camera_id)
                     if collector:
-                        progress_text = f"{collector.frames_captured}/{collector.frames_needed} Frames"
+                        progress_text = f"{collector.usable_frames}/{collector.frames_needed} Frames"
+                        if collector.resolved_preset:
+                            progress_text += f" | {collector.resolved_preset}"
                         if collector.ready_to_calibrate:
                             progress_text += " - Bereit!"
                             color = (0, 255, 0)  # green
@@ -2044,10 +2202,54 @@ def setup_routes(app_state: dict) -> APIRouter:
     @router.get("/video/feed")
     async def video_feed() -> StreamingResponse:
         """MJPEG video stream endpoint."""
+        from src.cv.stereo_calibration import detect_charuco_board
+
+        _feed_frame_counter: dict = {"n": 0}
+
         async def generate():
             while True:
                 frame = app_state.get("latest_frame")
                 if frame is not None:
+                    _feed_frame_counter["n"] += 1
+                    if _feed_frame_counter["n"] % 10 == 0:
+                        try:
+                            collectors = app_state.get("charuco_collectors", {})
+                            collector = collectors.get("default")
+                            if collector and not collector.ready_to_calibrate:
+                                detection = detect_charuco_board(
+                                    frame,
+                                    board_specs=collector.candidate_specs,
+                                )
+                                collector.add_frame_if_diverse(
+                                    detection.charuco_corners,
+                                    frame,
+                                    board_spec=detection.board_spec,
+                                    markers_found=detection.markers_found,
+                                    charuco_corners_found=detection.charuco_corners_found,
+                                    interpolation_ok=detection.interpolation_ok,
+                                    warning=detection.warning,
+                                )
+                        except Exception as exc:
+                            logger.warning("Auto-capture error for default camera: %s", exc)
+                    collector = app_state.get("charuco_collectors", {}).get("default")
+                    if collector:
+                        frame = frame.copy()
+                        progress_text = f"{collector.usable_frames}/{collector.frames_needed} Frames"
+                        if collector.resolved_preset:
+                            progress_text += f" | {collector.resolved_preset}"
+                        color = (0, 255, 0) if collector.ready_to_calibrate else (0, 255, 136)
+                        if collector.ready_to_calibrate:
+                            progress_text += " - Bereit!"
+                        cv2.putText(
+                            frame,
+                            progress_text,
+                            (10, frame.shape[0] - 15),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.6,
+                            color,
+                            2,
+                            cv2.LINE_AA,
+                        )
                     jpeg = encode_frame_jpeg(frame)
                     yield make_mjpeg_frame(jpeg)
                 await asyncio.sleep(0.033)  # ~30fps max
@@ -2246,16 +2448,41 @@ def setup_routes(app_state: dict) -> APIRouter:
         }
 
     @router.post("/api/calibration/charuco-start/{camera_id}")
-    async def charuco_start(camera_id: str) -> dict:
+    async def charuco_start(camera_id: str, request: Request) -> dict:
         """Create or reset a CharucoFrameCollector for the given camera."""
         from src.cv.camera_calibration import CharucoFrameCollector
+
+        body = await _optional_json_body(request)
+        pipeline, resolved_camera_id, error = _resolve_live_calibration_pipeline(
+            camera_id,
+            required_attr="camera_calibration",
+        )
+        if pipeline is None:
+            return {"ok": False, "error": error}
+
+        try:
+            candidate_specs = _get_charuco_candidate_specs(pipeline.camera_calibration, body)
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
+
+        collector_key = resolved_camera_id or camera_id or "default"
         collectors = app_state.setdefault("charuco_collectors", {})
-        collectors[camera_id] = CharucoFrameCollector(frames_needed=15)
-        return {"ok": True, "camera_id": camera_id, "frames_needed": 15}
+        collectors[collector_key] = CharucoFrameCollector(
+            frames_needed=15,
+            board_specs=candidate_specs,
+        )
+        return {
+            "ok": True,
+            "camera_id": collector_key,
+            "frames_needed": 15,
+            "candidate_boards": [spec.to_api_payload() for spec in candidate_specs],
+        }
 
     @router.get("/api/calibration/charuco-progress/{camera_id}")
     async def charuco_progress(camera_id: str, request: Request) -> dict:
         """Get ChArUco frame collection progress and guidance tips."""
+        from src.cv.stereo_calibration import detect_charuco_board
+
         collectors = app_state.setdefault("charuco_collectors", {})
         collector = collectors.get(camera_id)
         if collector is None:
@@ -2264,37 +2491,61 @@ def setup_routes(app_state: dict) -> APIRouter:
                 "frames_needed": 15,
                 "board_visible": False,
                 "corners_found": 0,
+                "markers_found": 0,
+                "charuco_corners_found": 0,
+                "interpolation_ok": False,
+                "resolved_preset": None,
+                "resolved_board": None,
+                "usable_frames": 0,
+                "warning": "Starte Lens-Kalibrierung fuer diese Kamera",
                 "tips": ["Starte Lens-Kalibrierung fuer diese Kamera"],
                 "ready_to_calibrate": False,
             }
 
-        # Try to detect board in current frame
-        multi = app_state.get("multi_pipeline")
-        pipeline = None
-        if multi and hasattr(multi, "get_pipelines"):
-            pipelines = multi.get_pipelines() or {}
-            pipeline = pipelines.get(camera_id)
-
-        board_visible = False
-        corners_found = 0
+        _pipeline, frame, _, _error = _get_live_calibration_frame(camera_id)
         img_shape = (480, 640)
-        if pipeline and hasattr(pipeline, "get_latest_raw_frame"):
-            frame = pipeline.get_latest_raw_frame()
-            if frame is not None:
-                img_shape = frame.shape[:2]
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                dictionary = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_6X6_250)
-                _aruco_detector = cv2.aruco.ArucoDetector(dictionary)
-                corners, ids, _ = _aruco_detector.detectMarkers(gray)
-                if ids is not None:
-                    board_visible = True
-                    corners_found = len(ids)
+        detection = None
+        if frame is not None:
+            img_shape = frame.shape[:2]
+            detection = detect_charuco_board(
+                frame,
+                board_specs=collector.candidate_specs,
+            )
+            collector.update_detection(
+                board_spec=detection.board_spec,
+                markers_found=detection.markers_found,
+                charuco_corners_found=detection.charuco_corners_found,
+                interpolation_ok=detection.interpolation_ok,
+                warning=detection.warning,
+            )
+
+        markers_found = collector.last_markers_found
+        charuco_corners_found = collector.last_charuco_corners_found
+        interpolation_ok = collector.last_interpolation_ok
+        current_board_spec = (
+            detection.board_spec
+            if detection is not None and detection.board_spec is not None
+            else collector.resolved_board_spec
+        )
+        warning = collector.last_warning
+        resolved_board = (
+            current_board_spec.to_api_payload()
+            if current_board_spec is not None
+            else collector.get_resolved_board_payload()
+        )
 
         return {
             "frames_captured": collector.frames_captured,
             "frames_needed": collector.frames_needed,
-            "board_visible": board_visible,
-            "corners_found": corners_found,
+            "board_visible": markers_found > 0,
+            "corners_found": markers_found,
+            "markers_found": markers_found,
+            "charuco_corners_found": charuco_corners_found,
+            "interpolation_ok": interpolation_ok,
+            "resolved_preset": None if current_board_spec is None else current_board_spec.preset_name,
+            "resolved_board": resolved_board,
+            "usable_frames": collector.usable_frames,
+            "warning": warning,
             "tips": collector.get_tips(image_shape=img_shape),
             "ready_to_calibrate": collector.ready_to_calibrate,
         }

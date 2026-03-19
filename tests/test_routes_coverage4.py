@@ -715,7 +715,7 @@ class TestCalibrationEndpointsWithMultiCam:
         with _SaveRestore("pipeline", "multi_pipeline", "active_camera_ids"):
             multi, left, right = self._setup_multi()
             board_spec = MagicMock()
-            board_spec.to_api_payload.return_value = {"preset": "40x20"}
+            board_spec.to_api_payload.return_value = {"preset": "7x5_40x20"}
             right.camera_calibration.get_charuco_board_spec.return_value = board_spec
             right.camera_calibration.get_config.return_value = {
                 "lens_valid": True,
@@ -732,7 +732,7 @@ class TestCalibrationEndpointsWithMultiCam:
                 assert data["ok"] is True
                 assert data["camera_id"] == "cam_right"
                 assert data["valid"] is True
-                assert data["charuco_board"]["preset"] == "40x20"
+                assert data["charuco_board"]["preset"] == "7x5_40x20"
 
 
 # ---- Optical Center Manual ----

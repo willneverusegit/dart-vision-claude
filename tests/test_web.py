@@ -94,5 +94,6 @@ class TestWebEndpoints:
         response = client.get("/static/js/app.js")
         assert response.status_code == 200
         assert "DartApp" in response.text
-        assert "40x28" in response.text
+        assert "5x7_40x20" in response.text
+        assert '"auto"' in response.text
         assert "charuco-board-select" in response.text

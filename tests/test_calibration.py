@@ -262,26 +262,26 @@ class TestCameraCharucoBoardConfig:
         manager = CameraCalibrationManager(config_path=path)
         frames = [np.zeros((120, 160, 3), dtype=np.uint8) for _ in range(3)]
 
-        class DummyDetector:
-            def detectMarkers(self, _gray):
-                corners = [np.zeros((1, 4, 2), dtype=np.float32)]
-                ids = np.array([[0], [1], [2], [3]], dtype=np.int32)
-                return corners, ids, None
-
-        def fake_interpolate(_corners, _ids, _gray, _board):
-            return 4, np.zeros((4, 1, 2), dtype=np.float32), np.arange(4, dtype=np.int32).reshape(-1, 1)
+        def fake_detect(_frame, board_specs=None, **_kwargs):
+            board_spec = board_specs[0]
+            return type(
+                "Detection",
+                (),
+                {
+                    "board_spec": board_spec,
+                    "charuco_corners": np.zeros((4, 1, 2), dtype=np.float32),
+                    "charuco_ids": np.arange(4, dtype=np.int32).reshape(-1, 1),
+                    "markers_found": 4,
+                    "charuco_corners_found": 4,
+                    "interpolation_ok": True,
+                    "warning": None,
+                },
+            )()
 
         def fake_calibrate(_corners, _ids, _board, _image_size, _camera_matrix, _dist_coeffs):
             return 0.25, np.eye(3, dtype=np.float64), np.zeros((5, 1), dtype=np.float64), [], []
 
-        monkeypatch.setattr(
-            "src.cv.camera_calibration.cv2.aruco.ArucoDetector",
-            lambda _dictionary: DummyDetector(),
-        )
-        monkeypatch.setattr(
-            "src.cv.camera_calibration.cv2.aruco.interpolateCornersCharuco",
-            fake_interpolate,
-        )
+        monkeypatch.setattr("src.cv.camera_calibration.detect_charuco_board", fake_detect)
         monkeypatch.setattr(
             "src.cv.camera_calibration.cv2.aruco.calibrateCameraCharuco",
             fake_calibrate,
@@ -299,5 +299,44 @@ class TestCameraCharucoBoardConfig:
         with open(path, "r", encoding="utf-8") as f:
             raw = yaml.safe_load(f)
         cfg = raw["cameras"]["default"]
-        assert cfg["charuco_preset"] == "40x28"
+        assert cfg["charuco_preset"] == "7x5_40x28"
         assert cfg["charuco_marker_length_m"] == pytest.approx(0.028)
+
+    def test_charuco_calibration_auto_persists_resolved_5x7_geometry(self, tmp_path, monkeypatch):
+        path = str(tmp_path / "cal.yaml")
+        manager = CameraCalibrationManager(config_path=path)
+        frames = [np.zeros((120, 160, 3), dtype=np.uint8) for _ in range(3)]
+
+        def fake_detect(_frame, board_specs=None, **_kwargs):
+            board_spec = next(spec for spec in board_specs if spec.preset_name == "5x7_40x20")
+            return type(
+                "Detection",
+                (),
+                {
+                    "board_spec": board_spec,
+                    "charuco_corners": np.zeros((18, 1, 2), dtype=np.float32),
+                    "charuco_ids": np.arange(18, dtype=np.int32).reshape(-1, 1),
+                    "markers_found": 4,
+                    "charuco_corners_found": 18,
+                    "interpolation_ok": True,
+                    "warning": None,
+                },
+            )()
+
+        def fake_calibrate(_corners, _ids, _board, _image_size, _camera_matrix, _dist_coeffs):
+            return 0.18, np.eye(3, dtype=np.float64), np.zeros((5, 1), dtype=np.float64), [], []
+
+        monkeypatch.setattr("src.cv.camera_calibration.detect_charuco_board", fake_detect)
+        monkeypatch.setattr(
+            "src.cv.camera_calibration.cv2.aruco.calibrateCameraCharuco",
+            fake_calibrate,
+        )
+
+        result = manager.charuco_calibration(frames, preset="auto")
+        assert result["ok"] is True
+        assert result["charuco_board"]["preset"] == "5x7_40x20"
+
+        with open(path, "r", encoding="utf-8") as f:
+            raw = yaml.safe_load(f)
+        cfg = raw["cameras"]["default"]
+        assert cfg["charuco_preset"] == "5x7_40x20"

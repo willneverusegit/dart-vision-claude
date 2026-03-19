@@ -17,7 +17,7 @@ class DartApp {
         this._pickingCenter = false;
         this.activeCameraIds = [];
         this._calibrationCameraStates = new Map();
-        this.charucoPreset = "40x20";
+        this.charucoPreset = "auto";
 
         this._wizardState = {
             currentCamera: null,
@@ -27,6 +27,7 @@ class DartApp {
         };
         this._charucoPollingTimer = null;
         this._charucoPollingCamera = null;
+        this._charucoPollingContext = null;
 
         this._bindEvents();
         this._bindWebSocket();
@@ -259,13 +260,28 @@ class DartApp {
         const selectors = document.querySelectorAll(".charuco-board-select");
         selectors.forEach((selector) => {
             selector.addEventListener("change", () => {
-                this._syncCharucoBoardSelectors(selector.value || "40x20");
+                this._syncCharucoBoardSelectors(selector.value || "auto");
             });
         });
     }
 
     _normalizeCharucoPreset(value) {
-        return value === "40x28" ? "40x28" : "40x20";
+        const normalized = String(value || "").trim().toLowerCase();
+        const aliases = {
+            default: "7x5_40x20",
+            "40x20": "7x5_40x20",
+            "40x28": "7x5_40x28",
+            large_markers_40x28: "7x5_40x28",
+        };
+        const allowed = new Set([
+            "auto",
+            "7x5_40x20",
+            "7x5_40x28",
+            "5x7_40x20",
+            "5x7_40x28",
+        ]);
+        const mapped = aliases[normalized] || normalized;
+        return allowed.has(mapped) ? mapped : "auto";
     }
 
     _syncCharucoBoardSelectors(value) {
@@ -282,12 +298,17 @@ class DartApp {
     _getSelectedCharucoPreset() {
         const selector = document.getElementById("charuco-board-preset") ||
             document.getElementById("stereo-charuco-board-preset");
-        return this._normalizeCharucoPreset(selector?.value || this.charucoPreset || "40x20");
+        return this._normalizeCharucoPreset(selector?.value || this.charucoPreset || "auto");
     }
 
     _describeCharucoPreset(preset) {
-        if (preset === "40x28") return "7x5 / 40x28 mm";
-        return "7x5 / 40x20 mm";
+        const normalized = this._normalizeCharucoPreset(preset);
+        if (normalized === "auto") return "Auto (7x5 / 5x7)";
+        if (normalized === "7x5_40x20") return "7x5 / 40x20 mm";
+        if (normalized === "7x5_40x28") return "7x5 / 40x28 mm";
+        if (normalized === "5x7_40x20") return "5x7 / 40x20 mm";
+        if (normalized === "5x7_40x28") return "5x7 / 40x28 mm";
+        return normalized;
     }
 
     async _refreshCharucoBoardPresetFromServer() {
@@ -1159,32 +1180,88 @@ class DartApp {
     async _startLensCalibration() {
         this._showCalStep("cal-step-auto");
         const preset = this._getSelectedCharucoPreset();
+        const cameraId = this._getCalibrationCameraId() || "default";
+        this._stopCharucoGuidance();
         this._setCalibrationAutoStatus(
-            this._getCalibrationTargetLabel() + ": Lens Setup per ChArUco (" +
-            this._describeCharucoPreset(preset) + ", ca. 3 Sekunden)..."
+            this._getCalibrationTargetLabel() + ": Guided Capture gestartet (" +
+            this._describeCharucoPreset(preset) + "). Bitte Board langsam bewegen."
         );
 
         try {
-            const response = await fetch("/api/calibration/lens/charuco", {
+            const response = await fetch("/api/calibration/charuco-start/" + encodeURIComponent(cameraId), {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(this._buildCalibrationBody({ preset })),
+                body: JSON.stringify({ preset }),
             });
             if (!response.ok) { this._showError(`Fehler: ${response.status}`); return; }
             const data = await response.json();
-            if (data.ok) {
-                if (data.charuco_board?.preset) {
-                    this._syncCharucoBoardSelectors(data.charuco_board.preset);
-                }
-                await this._showCalibrationResult("Lens Setup erfolgreich!");
-            } else {
+            if (!data.ok) {
                 this._setCalibrationAutoStatus("Fehler: " + (data.error || "Unbekannt"), {
                     showSpinner: false,
                     isError: true,
                 });
-                this._showError(data.error || "Lens Setup fehlgeschlagen.");
-                setTimeout(() => this._showCalStep("cal-step-mode"), 3000);
+                this._showError(data.error || "Guided Capture konnte nicht gestartet werden.");
+                return;
             }
+            this._charucoPollingCamera = data.camera_id || cameraId;
+            this._charucoPollingContext = {
+                mode: "lens-modal",
+                cameraId: this._charucoPollingCamera,
+                preset: preset,
+                calibrating: false,
+            };
+            this._pollCharucoProgress();
+            this._charucoPollingTimer = setInterval(() => this._pollCharucoProgress(), 1500);
+        } catch (e) {
+            console.error("Lens calibration error:", e);
+            this._setCalibrationAutoStatus("Verbindungsfehler", {
+                showSpinner: false,
+                isError: true,
+            });
+            this._showError("Verbindungsfehler beim Guided Capture.");
+        }
+    }
+
+    async _requestLensCalibration(cameraId, preset) {
+        const body = { preset: preset };
+        if (cameraId && cameraId !== "default") {
+            body.camera_id = cameraId;
+        }
+        const response = await fetch("/api/calibration/lens/charuco", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        });
+        if (!response.ok) {
+            return { ok: false, error: "Lens-Kalibrierung HTTP " + response.status };
+        }
+        return await response.json();
+    }
+
+    async _runCollectedLensCalibration(cameraId, preset) {
+        this._stopCharucoGuidance();
+        this._showCalStep("cal-step-auto");
+        this._setCalibrationAutoStatus(
+            this._getCalibrationTargetLabel() + ": Lens-Kalibrierung laeuft (" +
+            this._describeCharucoPreset(preset) + ")..."
+        );
+        try {
+            const data = await this._requestLensCalibration(cameraId, preset);
+            if (data.ok) {
+                if (data.charuco_board?.preset) {
+                    this._syncCharucoBoardSelectors(data.charuco_board.preset);
+                }
+                await this._refreshCalibrationStatus();
+                const boardLabel = this._describeCharucoPreset(data.charuco_board?.preset || preset);
+                await this._showCalibrationResult("Lens Setup erfolgreich (" + boardLabel + ").");
+                return;
+            }
+            this._setCalibrationAutoStatus("Fehler: " + (data.error || "Unbekannt"), {
+                showSpinner: false,
+                isError: true,
+            });
+            this._showError(data.error || "Lens Setup fehlgeschlagen.");
+            setTimeout(() => this._showCalStep("cal-step-mode"), 3000);
         } catch (e) {
             console.error("Lens calibration error:", e);
             this._setCalibrationAutoStatus("Verbindungsfehler", {
@@ -2982,7 +3059,12 @@ class DartApp {
         var btnCharucoCalibrate = document.getElementById('charuco-calibrate-btn');
         if (btnCharucoCalibrate) {
             btnCharucoCalibrate.addEventListener('click', function() {
+                var context = self._charucoPollingContext || {};
                 self._stopCharucoGuidance();
+                if (context.mode === 'lens-modal') {
+                    self._runCollectedLensCalibration(context.cameraId, context.preset || self._getSelectedCharucoPreset());
+                    return;
+                }
                 self._wizardAdvance('lens_running');
                 self._runWizardLensCalibration(self._wizardState.currentCamera);
             });
@@ -2992,20 +3074,7 @@ class DartApp {
     async _runWizardLensCalibration(cameraId) {
         var preset = this._getSelectedCharucoPreset();
         try {
-            var body = {preset: preset};
-            if (cameraId) body.camera_id = cameraId;
-            var resp = await fetch('/api/calibration/lens/charuco', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(body),
-            });
-            if (!resp.ok) {
-                this._wizardState.step = 'lens_result';
-                this._showWizardResult({ok: false, error: 'Lens-Kalibrierung HTTP ' + resp.status});
-                this._updateStepperVisuals();
-                return;
-            }
-            var data = await resp.json();
+            var data = await this._requestLensCalibration(cameraId, preset);
             this._wizardState.step = 'lens_result';
             this._wizardState.lastResult = data;
             if (data.ok) {
@@ -3149,7 +3218,11 @@ class DartApp {
         if (step.indexOf('lens') === 0) {
             this._stopCharucoGuidance();
             this._wizardAdvance('lens_running');
-            fetch('/api/calibration/charuco-start/' + encodeURIComponent(cam || ''), {method: 'POST'})
+            fetch('/api/calibration/charuco-start/' + encodeURIComponent(cam || 'default'), {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({preset: this._getSelectedCharucoPreset()}),
+            })
                 .catch(function() {});
             this._startCharucoGuidance(cam, 'lens');
         } else if (step.indexOf('board') === 0) {
@@ -3231,7 +3304,13 @@ class DartApp {
             li.textContent = text;
             steps.appendChild(li);
         });
-        this._charucoPollingCamera = cameraId;
+        this._charucoPollingCamera = cameraId || 'default';
+        this._charucoPollingContext = {
+            mode: mode || 'lens',
+            cameraId: this._charucoPollingCamera,
+            preset: this._getSelectedCharucoPreset(),
+            calibrating: false,
+        };
         this._pollCharucoProgress();
         this._charucoPollingTimer = setInterval(function() { this._pollCharucoProgress(); }.bind(this), 2000);
     }
@@ -3243,17 +3322,19 @@ class DartApp {
             var resp = await fetch('/api/calibration/charuco-progress/' + encodeURIComponent(camId));
             if (!resp.ok) return;
             var data = await resp.json();
+            var context = this._charucoPollingContext || {};
+            var usableFrames = data.usable_frames != null ? data.usable_frames : data.frames_captured;
             var count = document.getElementById('charuco-frame-count');
             var fill = document.getElementById('charuco-progress-fill');
             var btn = document.getElementById('charuco-calibrate-btn');
             var tipsEl = document.getElementById('charuco-tips-content');
-            if (count) count.textContent = data.frames_captured + ' / ' + data.frames_needed + ' Frames';
-            if (fill) fill.style.width = ((data.frames_captured / data.frames_needed) * 100) + '%';
+            if (count) count.textContent = usableFrames + ' / ' + data.frames_needed + ' nutzbare Frames';
+            if (fill) fill.style.width = ((usableFrames / data.frames_needed) * 100) + '%';
             if (btn) {
                 btn.disabled = !data.ready_to_calibrate;
                 btn.textContent = data.ready_to_calibrate
                     ? 'Kalibrieren \u2713'
-                    : 'Kalibrieren (noch ' + (data.frames_needed - data.frames_captured) + ' Frames)';
+                    : 'Kalibrieren (noch ' + Math.max(data.frames_needed - usableFrames, 0) + ' Frames)';
             }
             if (tipsEl) {
                 while (tipsEl.firstChild) tipsEl.removeChild(tipsEl.firstChild);
@@ -3265,6 +3346,30 @@ class DartApp {
                     tipsEl.appendChild(p);
                 });
             }
+            if (context.mode === 'lens-modal') {
+                var status = this._getCalibrationTargetLabel() + ': ' +
+                    usableFrames + '/' + data.frames_needed + ' nutzbare Frames';
+                if (data.resolved_preset) {
+                    status += ' | Layout ' + this._describeCharucoPreset(data.resolved_preset);
+                }
+                if (data.warning) {
+                    status += ' | ' + data.warning;
+                } else if (data.markers_found > 0 && !data.interpolation_ok) {
+                    status += ' | Marker sichtbar, ChArUco noch instabil';
+                }
+                this._setCalibrationAutoStatus(status, {
+                    showSpinner: !data.ready_to_calibrate,
+                    isError: false,
+                });
+                if (data.ready_to_calibrate && !context.calibrating) {
+                    context.calibrating = true;
+                    this._charucoPollingContext = context;
+                    this._setCalibrationAutoStatus(
+                        this._getCalibrationTargetLabel() + ': Genug Frames gesammelt, Kalibrierung startet...'
+                    );
+                    await this._runCollectedLensCalibration(context.cameraId, context.preset || this._getSelectedCharucoPreset());
+                }
+            }
         } catch (e) { /* non-fatal */ }
     }
 
@@ -3274,6 +3379,7 @@ class DartApp {
             this._charucoPollingTimer = null;
         }
         this._charucoPollingCamera = null;
+        this._charucoPollingContext = null;
         var panel = document.getElementById('charuco-guidance');
         if (panel) panel.style.display = 'none';
     }

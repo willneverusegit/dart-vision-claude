@@ -180,7 +180,11 @@ def create_aruco_pdf(path: Path) -> None:
 
     c.setFont("Helvetica", 9)
     c.drawCentredString(diag_left + diag_size / 2.0, diag_bottom - 8 * mm, "Board/frame schematic, not to scale")
-    c.drawCentredString(diag_left + diag_size / 2.0, diag_bottom - 14 * mm, "Center spacing between marker centers: 410 mm")
+    c.drawCentredString(
+        diag_left + diag_size / 2.0,
+        diag_bottom - 14 * mm,
+        f"Center spacing between marker centers: {MARKER_SPACING_MM} mm",
+    )
     c.save()
 
 

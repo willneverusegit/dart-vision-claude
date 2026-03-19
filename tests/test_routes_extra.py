@@ -3,7 +3,11 @@
 import numpy as np
 from fastapi.testclient import TestClient
 
-from src.cv.stereo_calibration import LARGE_MARKER_CHARUCO_BOARD_SPEC, StereoResult
+from src.cv.stereo_calibration import (
+    DEFAULT_CHARUCO_BOARD_SPEC,
+    LARGE_MARKER_CHARUCO_BOARD_SPEC,
+    StereoResult,
+)
 from src.main import app
 
 
@@ -87,7 +91,7 @@ class TestRoutesCoverage:
             with TestClient(app) as client:
                 resp = client.get("/api/calibration/lens/info")
                 data = resp.json()
-                assert data["charuco_board"]["preset"] == "40x28"
+                assert data["charuco_board"]["preset"] == "7x5_40x28"
                 assert data["charuco_board"]["marker_length_mm"] == 28.0
         finally:
             if saved is None:
@@ -155,8 +159,20 @@ class TestRoutesCoverage:
 
         monkeypatch.setattr("src.cv.stereo_calibration.stereo_calibrate", fake_stereo_calibrate)
         monkeypatch.setattr(
-            "src.cv.stereo_calibration.detect_charuco_corners",
-            lambda gray: (np.array([[0.0, 0.0]]), np.array([0])),
+            "src.cv.stereo_calibration.detect_charuco_board",
+            lambda _frame, **_kwargs: type(
+                "Detection",
+                (),
+                {
+                    "board_spec": LARGE_MARKER_CHARUCO_BOARD_SPEC,
+                    "charuco_corners": np.zeros((8, 1, 2), dtype=np.float32),
+                    "charuco_ids": np.arange(8, dtype=np.int32).reshape(-1, 1),
+                    "markers_found": 4,
+                    "charuco_corners_found": 8,
+                    "interpolation_ok": True,
+                    "warning": None,
+                },
+            )(),
         )
         monkeypatch.setattr("src.utils.config.save_stereo_pair", lambda *args, **kwargs: None)
         monkeypatch.setattr("src.web.routes._time.sleep", lambda _seconds: None)
@@ -182,9 +198,89 @@ class TestRoutesCoverage:
                 )
                 data = resp.json()
                 assert data["ok"] is True
-                assert data["charuco_board"]["preset"] == "40x28"
+                assert data["charuco_board"]["preset"] == "7x5_40x28"
                 assert captured["pairs"] == 5
                 assert captured["board_spec"] == LARGE_MARKER_CHARUCO_BOARD_SPEC
+        finally:
+            if saved is None:
+                app_state.pop("multi_pipeline", None)
+            else:
+                app_state["multi_pipeline"] = saved
+
+    def test_stereo_calibration_auto_rejects_conflicting_camera_layouts(self, monkeypatch):
+        from src.main import app_state
+
+        class DummyIntrinsics:
+            camera_matrix = np.eye(3, dtype=np.float64)
+            dist_coeffs = np.zeros((5, 1), dtype=np.float64)
+
+        class DummyCameraCalibration:
+            def get_intrinsics(self):
+                return DummyIntrinsics()
+
+            def get_charuco_board_candidates(self, **_kwargs):
+                return [DEFAULT_CHARUCO_BOARD_SPEC, LARGE_MARKER_CHARUCO_BOARD_SPEC]
+
+        class DummyPipeline:
+            def __init__(self, fill_value):
+                self.camera_calibration = DummyCameraCalibration()
+                self._frame = np.full((32, 32, 3), fill_value, dtype=np.uint8)
+
+            def get_latest_raw_frame(self):
+                return self._frame
+
+        class DummyMultiPipeline:
+            def __init__(self):
+                self._pipelines = {
+                    "cam_a": DummyPipeline(0),
+                    "cam_b": DummyPipeline(255),
+                }
+
+            def get_pipelines(self):
+                return self._pipelines
+
+        monkeypatch.setattr(
+            "src.cv.stereo_calibration.validate_stereo_prerequisites",
+            lambda *args, **kwargs: {"ready": True, "errors": [], "warnings": []},
+        )
+
+        saved = app_state.get("multi_pipeline")
+        app_state["multi_pipeline"] = DummyMultiPipeline()
+        try:
+            with TestClient(app) as client:
+                monkeypatch.setattr(
+                    "src.cv.stereo_calibration.detect_charuco_board",
+                    lambda frame, **_kwargs: type(
+                        "Detection",
+                        (),
+                        {
+                            "board_spec": (
+                                LARGE_MARKER_CHARUCO_BOARD_SPEC
+                                if frame.mean() == 0
+                                else DEFAULT_CHARUCO_BOARD_SPEC
+                            ),
+                            "charuco_corners": np.zeros((8, 1, 2), dtype=np.float32),
+                            "charuco_ids": np.arange(8, dtype=np.int32).reshape(-1, 1),
+                            "markers_found": 4,
+                            "charuco_corners_found": 8,
+                            "interpolation_ok": True,
+                            "warning": None,
+                        },
+                    )(),
+                )
+                resp = client.post(
+                    "/api/calibration/stereo",
+                    json={
+                        "camera_a": "cam_a",
+                        "camera_b": "cam_b",
+                        "num_pairs": 2,
+                        "capture_delay": 0,
+                        "preset": "auto",
+                    },
+                )
+                data = resp.json()
+                assert data["ok"] is False
+                assert "gleiches Layout" in data["error"]
         finally:
             if saved is None:
                 app_state.pop("multi_pipeline", None)

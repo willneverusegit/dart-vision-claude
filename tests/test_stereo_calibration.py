@@ -7,8 +7,11 @@ import pytest
 from src.cv.stereo_calibration import (
     DEFAULT_CHARUCO_BOARD_SPEC,
     LARGE_MARKER_CHARUCO_BOARD_SPEC,
+    PORTRAIT_CHARUCO_BOARD_SPEC,
     StereoResult,
+    detect_charuco_board,
     detect_charuco_corners,
+    resolve_charuco_board_candidates,
     resolve_charuco_board_spec,
     stereo_calibrate,
     STEREO_CHARUCO_DICT, STEREO_SQUARES_X, STEREO_SQUARES_Y,
@@ -101,7 +104,7 @@ class TestStereoCalibration:
         assert LARGE_MARKER_CHARUCO_BOARD_SPEC.squares_y == 5
         assert LARGE_MARKER_CHARUCO_BOARD_SPEC.square_length_m == pytest.approx(0.04)
         assert LARGE_MARKER_CHARUCO_BOARD_SPEC.marker_length_m == pytest.approx(0.028)
-        assert LARGE_MARKER_CHARUCO_BOARD_SPEC.preset_name == "40x28"
+        assert LARGE_MARKER_CHARUCO_BOARD_SPEC.preset_name == "7x5_40x28"
 
     def test_resolve_charuco_board_from_preset(self):
         spec = resolve_charuco_board_spec(preset="40x28")
@@ -123,3 +126,64 @@ class TestStereoCalibration:
     def test_resolve_charuco_board_rejects_invalid_geometry(self):
         with pytest.raises(ValueError):
             resolve_charuco_board_spec(square_length_mm=40, marker_length_mm=40)
+
+    def test_auto_candidates_include_landscape_and_portrait(self):
+        specs = resolve_charuco_board_candidates(preset="auto")
+        assert {spec.preset_name for spec in specs} == {
+            "7x5_40x20",
+            "7x5_40x28",
+            "5x7_40x20",
+            "5x7_40x28",
+        }
+
+    def test_detect_charuco_board_auto_prefers_5x7_when_7x5_has_no_corners(self, monkeypatch):
+        frame = np.zeros((120, 160, 3), dtype=np.uint8)
+
+        class DummyDetector:
+            def detectMarkers(self, _gray):
+                corners = [np.zeros((1, 4, 2), dtype=np.float32)]
+                ids = np.array([[0], [1], [2], [3]], dtype=np.int32)
+                return corners, ids, None
+
+        def fake_build_detector(_dictionary):
+            return DummyDetector()
+
+        def fake_interpolate(_corners, _ids, _gray, board):
+            size = board.getChessboardSize()
+            if tuple(size) == (5, 7):
+                return 18, np.zeros((18, 1, 2), dtype=np.float32), np.arange(18, dtype=np.int32).reshape(-1, 1)
+            return 0, None, None
+
+        monkeypatch.setattr("src.cv.stereo_calibration._build_aruco_detector", fake_build_detector)
+        monkeypatch.setattr("src.cv.stereo_calibration.cv2.aruco.interpolateCornersCharuco", fake_interpolate)
+
+        result = detect_charuco_board(frame, preset="auto")
+        assert result.interpolation_ok is True
+        assert result.board_spec == PORTRAIT_CHARUCO_BOARD_SPEC
+        assert result.charuco_corners_found == 18
+
+    def test_detect_charuco_board_auto_keeps_7x5_when_it_is_best(self, monkeypatch):
+        frame = np.zeros((120, 160, 3), dtype=np.uint8)
+
+        class DummyDetector:
+            def detectMarkers(self, _gray):
+                corners = [np.zeros((1, 4, 2), dtype=np.float32)]
+                ids = np.array([[0], [1], [2], [3]], dtype=np.int32)
+                return corners, ids, None
+
+        def fake_build_detector(_dictionary):
+            return DummyDetector()
+
+        def fake_interpolate(_corners, _ids, _gray, board):
+            size = board.getChessboardSize()
+            if tuple(size) == (7, 5):
+                return 16, np.zeros((16, 1, 2), dtype=np.float32), np.arange(16, dtype=np.int32).reshape(-1, 1)
+            return 0, None, None
+
+        monkeypatch.setattr("src.cv.stereo_calibration._build_aruco_detector", fake_build_detector)
+        monkeypatch.setattr("src.cv.stereo_calibration.cv2.aruco.interpolateCornersCharuco", fake_interpolate)
+
+        result = detect_charuco_board(frame, preset="auto")
+        assert result.interpolation_ok is True
+        assert result.board_spec == DEFAULT_CHARUCO_BOARD_SPEC
+        assert result.charuco_corners_found == 16

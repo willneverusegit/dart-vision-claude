@@ -76,7 +76,7 @@ DEFAULT_CHARUCO_BOARD_SPEC = CharucoBoardSpec(
     squares_y=STEREO_SQUARES_Y,
     square_length_m=STEREO_SQUARE_LENGTH,
     marker_length_m=STEREO_MARKER_LENGTH,
-    preset_name="40x20",
+    preset_name="7x5_40x20",
 )
 
 LARGE_MARKER_CHARUCO_BOARD_SPEC = CharucoBoardSpec(
@@ -84,7 +84,23 @@ LARGE_MARKER_CHARUCO_BOARD_SPEC = CharucoBoardSpec(
     squares_y=STEREO_SQUARES_Y,
     square_length_m=STEREO_SQUARE_LENGTH,
     marker_length_m=0.028,
-    preset_name="40x28",
+    preset_name="7x5_40x28",
+)
+
+PORTRAIT_CHARUCO_BOARD_SPEC = CharucoBoardSpec(
+    squares_x=5,
+    squares_y=7,
+    square_length_m=STEREO_SQUARE_LENGTH,
+    marker_length_m=STEREO_MARKER_LENGTH,
+    preset_name="5x7_40x20",
+)
+
+PORTRAIT_LARGE_MARKER_CHARUCO_BOARD_SPEC = CharucoBoardSpec(
+    squares_x=5,
+    squares_y=7,
+    square_length_m=STEREO_SQUARE_LENGTH,
+    marker_length_m=0.028,
+    preset_name="5x7_40x28",
 )
 
 _CHARUCO_BOARD_PRESETS = {
@@ -92,11 +108,37 @@ _CHARUCO_BOARD_PRESETS = {
     "40x20": DEFAULT_CHARUCO_BOARD_SPEC,
     "40x28": LARGE_MARKER_CHARUCO_BOARD_SPEC,
     "large_markers_40x28": LARGE_MARKER_CHARUCO_BOARD_SPEC,
+    "7x5_40x20": DEFAULT_CHARUCO_BOARD_SPEC,
+    "7x5_40x28": LARGE_MARKER_CHARUCO_BOARD_SPEC,
+    "5x7_40x20": PORTRAIT_CHARUCO_BOARD_SPEC,
+    "5x7_40x28": PORTRAIT_LARGE_MARKER_CHARUCO_BOARD_SPEC,
 }
+
+_CONCRETE_CHARUCO_BOARD_PRESETS = (
+    DEFAULT_CHARUCO_BOARD_SPEC,
+    LARGE_MARKER_CHARUCO_BOARD_SPEC,
+    PORTRAIT_CHARUCO_BOARD_SPEC,
+    PORTRAIT_LARGE_MARKER_CHARUCO_BOARD_SPEC,
+)
+
+
+@dataclass(frozen=True)
+class CharucoDetectionResult:
+    """Best-effort ChArUco detection result for one frame."""
+
+    board_spec: CharucoBoardSpec | None
+    charuco_corners: np.ndarray | None
+    charuco_ids: np.ndarray | None
+    marker_corners: tuple[np.ndarray, ...]
+    marker_ids: np.ndarray | None
+    markers_found: int
+    charuco_corners_found: int
+    interpolation_ok: bool
+    warning: str | None = None
 
 
 def _canonical_preset_name(spec: CharucoBoardSpec) -> str:
-    for preset in (DEFAULT_CHARUCO_BOARD_SPEC, LARGE_MARKER_CHARUCO_BOARD_SPEC):
+    for preset in _CONCRETE_CHARUCO_BOARD_PRESETS:
         if (
             spec.squares_x == preset.squares_x
             and spec.squares_y == preset.squares_y
@@ -162,6 +204,211 @@ def resolve_charuco_board_spec(
     )
 
 
+def resolve_charuco_board_candidates(
+    *,
+    config: dict | None = None,
+    preset: str | None = None,
+    squares_x: int | None = None,
+    squares_y: int | None = None,
+    square_length_m: float | None = None,
+    marker_length_m: float | None = None,
+    square_length_mm: float | None = None,
+    marker_length_mm: float | None = None,
+    board_spec: CharucoBoardSpec | None = None,
+) -> list[CharucoBoardSpec]:
+    """Resolve one or more candidate ChArUco boards.
+
+    ``preset="auto"`` evaluates all known concrete layouts. Concrete presets and
+    legacy aliases still resolve to a single board spec.
+    """
+    config = config or {}
+    preset_name = preset if preset is not None else config.get("charuco_preset")
+
+    if board_spec is not None:
+        return [
+            resolve_charuco_board_spec(
+                board_spec=board_spec,
+                squares_x=squares_x,
+                squares_y=squares_y,
+                square_length_m=square_length_m,
+                marker_length_m=marker_length_m,
+                square_length_mm=square_length_mm,
+                marker_length_mm=marker_length_mm,
+            )
+        ]
+
+    if str(preset_name).strip().lower() != "auto":
+        return [
+            resolve_charuco_board_spec(
+                config=config,
+                preset=preset,
+                squares_x=squares_x,
+                squares_y=squares_y,
+                square_length_m=square_length_m,
+                marker_length_m=marker_length_m,
+                square_length_mm=square_length_mm,
+                marker_length_mm=marker_length_mm,
+            )
+        ]
+
+    if square_length_mm is not None:
+        square_length_m = float(square_length_mm) / 1000.0
+    if marker_length_mm is not None:
+        marker_length_m = float(marker_length_mm) / 1000.0
+
+    candidates: list[CharucoBoardSpec] = []
+    for base in _CONCRETE_CHARUCO_BOARD_PRESETS:
+        resolved = CharucoBoardSpec(
+            squares_x=int(base.squares_x if squares_x is None else squares_x),
+            squares_y=int(base.squares_y if squares_y is None else squares_y),
+            square_length_m=float(
+                base.square_length_m if square_length_m is None else square_length_m
+            ),
+            marker_length_m=float(
+                base.marker_length_m if marker_length_m is None else marker_length_m
+            ),
+            dictionary_id=base.dictionary_id,
+            preset_name=base.preset_name,
+        )
+        candidates.append(
+            CharucoBoardSpec(
+                squares_x=resolved.squares_x,
+                squares_y=resolved.squares_y,
+                square_length_m=resolved.square_length_m,
+                marker_length_m=resolved.marker_length_m,
+                dictionary_id=resolved.dictionary_id,
+                preset_name=_canonical_preset_name(resolved),
+            )
+        )
+
+    deduped: list[CharucoBoardSpec] = []
+    seen: set[tuple[int, int, float, float, int]] = set()
+    for candidate in candidates:
+        key = (
+            candidate.squares_x,
+            candidate.squares_y,
+            round(candidate.square_length_m, 6),
+            round(candidate.marker_length_m, 6),
+            candidate.dictionary_id,
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(candidate)
+    return deduped
+
+
+def _build_aruco_detector(dictionary) -> cv2.aruco.ArucoDetector:
+    params = cv2.aruco.DetectorParameters()
+    if hasattr(params, "cornerRefinementMethod"):
+        params.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
+    return cv2.aruco.ArucoDetector(dictionary, params)
+
+
+def detect_charuco_board(
+    frame: np.ndarray,
+    *,
+    config: dict | None = None,
+    preset: str | None = None,
+    squares_x: int | None = None,
+    squares_y: int | None = None,
+    square_length_m: float | None = None,
+    marker_length_m: float | None = None,
+    square_length_mm: float | None = None,
+    marker_length_mm: float | None = None,
+    board_spec: CharucoBoardSpec | None = None,
+    board_specs: list[CharucoBoardSpec] | tuple[CharucoBoardSpec, ...] | None = None,
+    min_markers: int = 4,
+    min_corners: int = 4,
+) -> CharucoDetectionResult:
+    """Detect the best matching ChArUco board in a single frame."""
+
+    candidates = list(board_specs or resolve_charuco_board_candidates(
+        config=config,
+        preset=preset,
+        squares_x=squares_x,
+        squares_y=squares_y,
+        square_length_m=square_length_m,
+        marker_length_m=marker_length_m,
+        square_length_mm=square_length_mm,
+        marker_length_mm=marker_length_mm,
+        board_spec=board_spec,
+    ))
+    if not candidates:
+        return CharucoDetectionResult(
+            board_spec=None,
+            charuco_corners=None,
+            charuco_ids=None,
+            marker_corners=(),
+            marker_ids=None,
+            markers_found=0,
+            charuco_corners_found=0,
+            interpolation_ok=False,
+            warning="Keine ChArUco-Layouts konfiguriert.",
+        )
+
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if len(frame.shape) == 3 else frame
+    dictionary = candidates[0].create_dictionary()
+    detector = _build_aruco_detector(dictionary)
+    marker_corners, marker_ids, _ = detector.detectMarkers(gray)
+    markers_found = 0 if marker_ids is None else int(len(marker_ids))
+    if marker_ids is None or markers_found < min_markers:
+        warning = (
+            f"Nur {markers_found} Rohmarker erkannt."
+            if markers_found
+            else "Kein ChArUco-Board sichtbar."
+        )
+        return CharucoDetectionResult(
+            board_spec=candidates[0] if len(candidates) == 1 else None,
+            charuco_corners=None,
+            charuco_ids=None,
+            marker_corners=tuple(marker_corners or ()),
+            marker_ids=marker_ids,
+            markers_found=markers_found,
+            charuco_corners_found=0,
+            interpolation_ok=False,
+            warning=warning,
+        )
+
+    best_spec: CharucoBoardSpec | None = candidates[0] if len(candidates) == 1 else None
+    best_corners: np.ndarray | None = None
+    best_ids: np.ndarray | None = None
+    best_corner_count = -1
+
+    for candidate in candidates:
+        board = candidate.create_board(dictionary)
+        ret, charuco_corners, charuco_ids = cv2.aruco.interpolateCornersCharuco(
+            marker_corners, marker_ids, gray, board,
+        )
+        corner_count = int(ret) if ret else 0
+        if corner_count > best_corner_count:
+            best_corner_count = corner_count
+            best_spec = candidate
+            best_corners = charuco_corners if corner_count > 0 else None
+            best_ids = charuco_ids if corner_count > 0 else None
+
+    warning = None
+    interpolation_ok = best_corner_count >= min_corners
+    if best_corner_count <= 0:
+        warning = "Rohmarker erkannt, aber kein passendes ChArUco-Layout interpoliert."
+        if len(candidates) != 1:
+            best_spec = None
+    elif not interpolation_ok:
+        warning = f"Nur {best_corner_count} ChArUco-Ecken erkannt."
+
+    return CharucoDetectionResult(
+        board_spec=best_spec,
+        charuco_corners=best_corners,
+        charuco_ids=best_ids,
+        marker_corners=tuple(marker_corners or ()),
+        marker_ids=marker_ids,
+        markers_found=markers_found,
+        charuco_corners_found=max(best_corner_count, 0),
+        interpolation_ok=interpolation_ok,
+        warning=warning,
+    )
+
+
 def validate_stereo_prerequisites(
     cam_a_id: str,
     cam_b_id: str,
@@ -209,26 +456,10 @@ def detect_charuco_corners(
 
     Returns (charuco_corners, charuco_ids) or (None, None) if detection fails.
     """
-    board_spec = resolve_charuco_board_spec(board_spec=board_spec)
-    if dictionary is None:
-        dictionary = board_spec.create_dictionary()
-    if board is None:
-        board = board_spec.create_board(dictionary)
-
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if len(frame.shape) == 3 else frame
-    detector = cv2.aruco.ArucoDetector(dictionary)
-    corners, ids, _ = detector.detectMarkers(gray)
-
-    if ids is None or len(ids) < 4:
-        return None, None
-
-    ret, charuco_corners, charuco_ids = cv2.aruco.interpolateCornersCharuco(
-        corners, ids, gray, board,
-    )
-    if ret < 4:
-        return None, None
-
-    return charuco_corners, charuco_ids
+    if board_spec is None:
+        board_spec = resolve_charuco_board_spec(board_spec=board_spec)
+    result = detect_charuco_board(frame, board_spec=board_spec)
+    return result.charuco_corners, result.charuco_ids
 
 
 def stereo_calibrate(

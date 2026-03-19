@@ -9,7 +9,7 @@ ArUco board-alignment markers:
 - Dictionary: `DICT_4X4_50`
 - Marker IDs: `0, 1, 2, 3`
 - Black marker edge: `75 mm`
-- Required center-to-center spacing on the board/frame: `410 mm`
+- Required center-to-center spacing on the board/frame: `430 mm`
 - Placement order: `0 = top left, 1 = top right, 2 = bottom right, 3 = bottom left`
 
 ChArUco board for lens/stereo calibration:

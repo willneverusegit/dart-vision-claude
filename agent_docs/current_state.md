@@ -34,6 +34,9 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 - Multi-Cam-Kalibrierdialog fuehrt per Kamera durch den naechsten Schritt (Statuskarten, Empfehlungspanel, Button-Highlight, Weiter-CTA mit direktem Start des empfohlenen Standardpfads)
 - Wizard-Stepper (Lens→Board→Pose→Stereo) mit Auto-Advance, Result-Preview nach jedem Kalibrierungsschritt, automatischer Board-Pose-Berechnung
 - ChArUco-Guidance-Panel mit Schritt-fuer-Schritt-Anleitung, Live-Fortschrittsbalken, Qualitaets-Tipps, automatischer Frame-Collection im MJPEG-Feed
+- Lens- und Stereo-Kalibrierung loesen ChArUco-Layouts jetzt zur Laufzeit zwischen `7x5_40x20`, `7x5_40x28`, `5x7_40x20`, `5x7_40x28` auf; `auto` ist der empfohlene UI/API-Standard
+- Guided Capture zaehlt nur noch Frames mit erfolgreicher ChArUco-Interpolation; Rohmarker alleine machen den Collector oder die Progress-API nicht mehr "bereit"
+- `/api/calibration/charuco-progress/{camera_id}` liefert jetzt explizit `markers_found`, `charuco_corners_found`, `interpolation_ok`, `resolved_preset`, `resolved_board`, `usable_frames`, `warning`; der normale Lens-Button startet erst Guided Capture und kalibriert erst nach genuegend nutzbaren Frames
 - Kalibrier-Ergebnisbilder (result_image) mit Overlay (Marker-Ecken, Scoring-Ringe, 3D-Achsen, Epipolar-Linien) in allen 4 Endpoints
 - Telemetrie im Header (FPS, Dropped Frames, Queue-Druck, RAM)
 - Idempotentes Logging mit Session-ID, optionalem File-Rotation-Log (`DARTVISION_LOG_FILE`)
@@ -117,6 +120,7 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 - Wichtige Module: main.py 78%, routes.py 74%, pipeline.py 68%, multi_camera.py 62%, capture.py 72%
 - Zusatzverifikation 2026-03-19: 256 fokussierte Tests gruen (Multi-Cam-Kalibrierung, Route-Coverage, Web/Hardening, Multi-Cam-Config); kein Vollsuite-Lauf
 - Zusatzverifikation 2026-03-19 (Kalibrier-UX): 35 weitere fokussierte Checks gruen (`node -c`, 30 Web/Route/WebSocket/Stereo-Tests, 5 Multi-Cam-Kalibrier-Tests)
+- Zusatzverifikation 2026-03-19 (ChArUco-Haertung): 160 fokussierte Tests gruen (`tests/test_calibration.py`, `tests/test_charuco_progress.py`, `tests/test_stereo_calibration.py`, `tests/test_stereo_wizard_api.py`, `tests/test_wizard_flow.py`, `tests/test_web.py`, `tests/test_routes_extra.py`, `tests/test_routes_coverage4.py`); lokale 1080p-Kalibrierclips `testvids/1.mp4` und `testvids/2.mp4` bestaetigen `7x5_40x20` -> 14 Rohmarker / 0 ChArUco-Ecken und `auto` -> `5x7_40x20` mit 18 Ecken
 - synthetische Pipeline-Benchmarks fuer `1`, `2` und `3` Kameras innerhalb der definierten KPI-Grenzen
 - E2E-Replay-Tests: 90% Hit Rate, 100% Score Accuracy auf synthetischen Clips (6 Tests)
 - Echte Video-Validierung: ~55% Hit Rate, 64% Sektor-Accuracy auf 2 echten Videos (rec_094311, rec_094521)
@@ -126,6 +130,7 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 
 - `config/calibration_config.yaml` enthaelt eine gueltige Kalibrierung fuer `default`
 - `config/multi_cam.yaml` speichert last_cameras, sync_depth Presets (tight/standard/loose), governor Config
+- Print-Pack und Kalibrier-Notizen verwenden wieder konsistent `430 mm` Marker-Mitte-zu-Mitte statt der veralteten `410 mm`-Angabe
 - Telemetrie-Endpunkt `/api/stats` liefert FPS, Dropped Frames, Queue-Druck, RAM
 - Telemetrie-Historie-Endpunkt `/api/telemetry/history` liefert zeitliche Verlaeufe und Alerts
 - `/api/multi/readiness` liefert pro-Kamera-Diagnose fuer Multi-Cam-Setup
