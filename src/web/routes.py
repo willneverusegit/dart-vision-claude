@@ -1206,10 +1206,31 @@ def setup_routes(app_state: dict) -> APIRouter:
             except Exception as e:
                 logger.warning("Board-pose hot-reload failed: %s", e)
 
+        from src.cv.calibration_overlay import draw_pose_result_overlay, encode_result_image
+
+        board_cal_data = pipeline.board_calibration.get_calibration()
+        ordered_centers = [marker_centers[i] for i in order]
+        center_of_markers = [float(image_points[:, 0].mean()), float(image_points[:, 1].mean())]
+
+        if board_cal_data and board_cal_data.get("radii_px"):
+            overlay = draw_pose_result_overlay(
+                frame, ordered_centers, center_of_markers,
+                board_cal_data["radii_px"],
+                rvec, tvec, intr.camera_matrix, intr.dist_coeffs,
+            )
+            result_image = encode_result_image(overlay)
+        else:
+            result_image = encode_result_image(frame)
+
         return {
             "ok": True,
             "camera_id": cam_id,
             "reprojection_error_px": reproj_err,
+            "result_image": result_image,
+            "quality_info": {
+                "reprojection_error_px": round(reproj_err, 2),
+                "description": f"Board-Pose gespeichert (Reproj. {reproj_err:.1f}px)",
+            },
         }
 
     # --- Single-Camera Pipeline Routes ---

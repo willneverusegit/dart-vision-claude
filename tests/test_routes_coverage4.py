@@ -786,6 +786,129 @@ class TestOpticalCenterManual:
                 assert data["optical_center"] == [200.5, 200.5]
 
 
+class TestBoardPoseResultImage:
+    def test_board_pose_returns_result_image_on_error_with_frame(self):
+        """POST /api/calibration/board-pose error path (no ArUco on blank frame) — shape check."""
+        pipe = _make_dummy_pipeline()
+
+        cam_mtx = np.eye(3, dtype=np.float64)
+        cam_mtx[0, 0] = 500
+        cam_mtx[1, 1] = 500
+        cam_mtx[0, 2] = 320
+        cam_mtx[1, 2] = 240
+        dist = np.zeros(5, dtype=np.float64)
+        intr_mock = MagicMock()
+        intr_mock.camera_matrix = cam_mtx
+        intr_mock.dist_coeffs = dist
+        pipe.camera_calibration.get_intrinsics.return_value = intr_mock
+
+        pipe.board_calibration.get_calibration.return_value = {
+            "radii_px": [10, 20, 80, 100, 160, 170],
+        }
+
+        multi = MagicMock()
+        multi.get_pipelines.return_value = {"cam_left": pipe}
+
+        with _SaveRestore("pipeline", "pipeline_running", "multi_pipeline_running", "multi_pipeline"):
+            app_state["pipeline"] = None
+            app_state["pipeline_running"] = False
+            app_state["multi_pipeline_running"] = True
+            app_state["multi_pipeline"] = multi
+
+            with TestClient(app) as client:
+                resp = client.post("/api/calibration/board-pose",
+                                   json={"camera_id": "cam_left"})
+        data = resp.json()
+        # Blank frame → no ArUco markers detected → error response
+        assert data["ok"] is False
+        assert "error" in data
+
+    def test_board_pose_no_camera_id(self):
+        """Missing camera_id returns error immediately."""
+        with _SaveRestore("multi_pipeline", "multi_pipeline_running"):
+            multi = MagicMock()
+            app_state["multi_pipeline"] = multi
+            app_state["multi_pipeline_running"] = True
+            with TestClient(app) as client:
+                resp = client.post("/api/calibration/board-pose", json={})
+        assert resp.json()["ok"] is False
+        assert "camera_id" in resp.json()["error"]
+
+    def test_board_pose_no_multi_pipeline(self):
+        """No multi pipeline → error."""
+        with _SaveRestore("multi_pipeline"):
+            app_state["multi_pipeline"] = None
+            with TestClient(app) as client:
+                resp = client.post("/api/calibration/board-pose",
+                                   json={"camera_id": "cam_left"})
+        assert resp.json()["ok"] is False
+
+    def test_board_pose_success_returns_result_image(self):
+        """Success path with mocked solvePnP and ArUco detection returns result_image."""
+        pipe = _make_dummy_pipeline()
+
+        cam_mtx = np.eye(3, dtype=np.float64)
+        cam_mtx[0, 0] = 500
+        cam_mtx[1, 1] = 500
+        cam_mtx[0, 2] = 320
+        cam_mtx[1, 2] = 240
+        dist = np.zeros(5, dtype=np.float64)
+        intr_mock = MagicMock()
+        intr_mock.camera_matrix = cam_mtx
+        intr_mock.dist_coeffs = dist
+        pipe.camera_calibration.get_intrinsics.return_value = intr_mock
+        pipe.board_calibration.get_calibration.return_value = {
+            "radii_px": [10, 20, 80, 100, 160, 170],
+        }
+
+        multi = MagicMock()
+        multi.get_pipelines.return_value = {"cam_left": pipe}
+
+        # Build fake corners: 4 markers with IDs 0-3 at predictable positions
+        def _corner(cx, cy, sz=20):
+            return np.array([[
+                [cx - sz, cy - sz],
+                [cx + sz, cy - sz],
+                [cx + sz, cy + sz],
+                [cx - sz, cy + sz],
+            ]], dtype=np.float32)
+
+        fake_corners = [_corner(160, 120), _corner(480, 120), _corner(480, 360), _corner(160, 360)]
+        fake_ids = np.array([[0], [1], [2], [3]])
+
+        rvec_val = np.zeros((3, 1), dtype=np.float64)
+        tvec_val = np.array([[0.0], [0.0], [1.0]], dtype=np.float64)
+
+        with _SaveRestore("pipeline", "pipeline_running", "multi_pipeline_running", "multi_pipeline"):
+            app_state["pipeline"] = None
+            app_state["pipeline_running"] = False
+            app_state["multi_pipeline_running"] = True
+            app_state["multi_pipeline"] = multi
+
+            with patch("cv2.aruco.ArucoDetector") as mock_detector_cls, \
+                 patch("cv2.solvePnP", return_value=(True, rvec_val, tvec_val)), \
+                 patch("cv2.projectPoints", return_value=(
+                     np.array([[[160, 120]], [[480, 120]], [[480, 360]], [[160, 360]]], dtype=np.float32),
+                     None,
+                 )), \
+                 patch("src.utils.config.save_board_transform"):
+                mock_det = MagicMock()
+                mock_det.detectMarkers.return_value = (fake_corners, fake_ids, None)
+                mock_detector_cls.return_value = mock_det
+
+                with TestClient(app) as client:
+                    resp = client.post("/api/calibration/board-pose",
+                                       json={"camera_id": "cam_left"})
+
+        data = resp.json()
+        assert data["ok"] is True, data
+        assert "result_image" in data
+        assert data["result_image"].startswith("data:image/jpeg;base64,")
+        assert "quality_info" in data
+        assert "reprojection_error_px" in data["quality_info"]
+        assert "description" in data["quality_info"]
+
+
 class TestCalibrationResultImage:
     def test_aruco_returns_result_image(self):
         pipe = _make_dummy_pipeline()
