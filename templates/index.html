@@ -487,6 +487,68 @@
                 </div>
             </div>
 
+            <!-- Wizard Stepper -->
+            <div id="wizard-stepper" class="wizard-stepper" style="display:none;">
+                <div class="wizard-stepper__camera-label" id="wizard-camera-label"></div>
+                <div class="wizard-stepper__steps">
+                    <div class="wizard-step" data-step="lens">
+                        <div class="wizard-step__circle">1</div>
+                        <div class="wizard-step__label">Lens</div>
+                    </div>
+                    <div class="wizard-step__line"></div>
+                    <div class="wizard-step" data-step="board">
+                        <div class="wizard-step__circle">2</div>
+                        <div class="wizard-step__label">Board</div>
+                    </div>
+                    <div class="wizard-step__line"></div>
+                    <div class="wizard-step" data-step="pose">
+                        <div class="wizard-step__circle">3</div>
+                        <div class="wizard-step__label">Pose</div>
+                    </div>
+                    <div class="wizard-step__line"></div>
+                    <div class="wizard-step" data-step="stereo">
+                        <div class="wizard-step__circle">4</div>
+                        <div class="wizard-step__label">Stereo</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Result preview area -->
+            <div id="wizard-result" class="wizard-result" style="display:none;">
+                <img id="wizard-result-img" class="wizard-result__img" alt="Kalibrier-Ergebnis">
+                <p id="wizard-result-text" class="wizard-result__text"></p>
+                <div id="wizard-result-actions" class="wizard-result__actions">
+                    <button id="wizard-btn-next" class="btn btn--accent">Weiter</button>
+                    <button id="wizard-btn-retry" class="btn btn--secondary">Nochmal</button>
+                    <button id="wizard-btn-cancel" class="btn btn--ghost">Abbrechen</button>
+                </div>
+            </div>
+
+            <!-- Auto-pose computing indicator -->
+            <div id="wizard-computing" class="wizard-computing" style="display:none;">
+                <div class="wizard-computing__spinner"></div>
+                <p id="wizard-computing-text"></p>
+            </div>
+
+            <!-- ChArUco guidance panel -->
+            <div id="charuco-guidance" class="charuco-guidance" style="display:none;">
+                <div class="charuco-guidance__instructions">
+                    <p class="charuco-guidance__title">Anleitung:</p>
+                    <ol id="charuco-guidance-steps"></ol>
+                </div>
+                <div class="charuco-guidance__tips">
+                    <p class="charuco-guidance__tips-title">Qualitaets-Tipps:</p>
+                    <div id="charuco-tips-content"></div>
+                </div>
+                <div class="charuco-guidance__progress">
+                    <span id="charuco-frame-count"></span>
+                    <div class="charuco-progress-bar">
+                        <div id="charuco-progress-fill" class="charuco-progress-bar__fill"></div>
+                    </div>
+                    <button id="charuco-calibrate-btn" class="btn btn--accent" disabled>Kalibrieren</button>
+                </div>
+            </div>
+
             <div class="modal__actions">
                 <button id="btn-multi-close" class="btn btn--secondary">Schliessen</button>
             </div>
