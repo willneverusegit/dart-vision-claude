@@ -1098,7 +1098,9 @@ Kritikalitaet: MITTEL
 
 Warum sinnvoll: Blockierende Sleeps in async Handlern verhindern, dass der Server waehrend Pipeline-Start/Stop auf andere Clients reagieren kann. Bei Multi-Cam-Start sind das bis zu 4 Sekunden Event-Loop-Blockade.
 
-## Prioritaet 73: Jinja2Templates-Instanz in setup_routes Factory verschieben (neu — entdeckt bei P67)
+## Prioritaet 73: Jinja2Templates-Instanz in setup_routes Factory verschieben (✅ ERLEDIGT 2026-03-19)
+
+**Umsetzung:** `templates = Jinja2Templates(directory="templates")` von module-level in `setup_routes()` verschoben. Kein module-level Seiteneffekt mehr in routes.py. Alle Tests gruen. Geaenderte Dateien: `src/web/routes.py`.
 
 Kritikalitaet: NIEDRIG
 
