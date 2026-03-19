@@ -122,3 +122,38 @@ class TestCharucoProgressEndpoint:
         assert "corners_found" in data
         assert isinstance(data["board_visible"], bool)
         assert isinstance(data["corners_found"], int)
+
+
+class TestCharucoAutoCapture:
+    def test_collector_integration_with_feed(self):
+        """Collector should accumulate diverse frames."""
+        from src.cv.camera_calibration import CharucoFrameCollector
+        c = CharucoFrameCollector(frames_needed=3)
+        f = np.zeros((480, 640, 3), dtype=np.uint8)
+        for i in range(3):
+            corners = np.array([[100 * i, 100], [200 + 100 * i, 200]], dtype=np.float32)
+            c.add_frame_if_diverse(corners, f)
+        assert c.frames_captured == 3
+        assert c.ready_to_calibrate is True
+
+    def test_charuco_start_endpoint(self, client):
+        resp = client.post("/api/calibration/charuco-start/cam_left")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["ok"] is True
+        assert data["frames_needed"] == 15
+
+    def test_charuco_start_resets_existing_collector(self, client, app_state):
+        from src.cv.camera_calibration import CharucoFrameCollector
+        # Pre-populate a collector with some frames
+        collector = CharucoFrameCollector(frames_needed=15)
+        f = np.zeros((480, 640, 3), dtype=np.uint8)
+        collector.add_frame_if_diverse(np.array([[100, 100]], dtype=np.float32), f)
+        app_state.setdefault("charuco_collectors", {})["cam_left"] = collector
+
+        # Start should reset it
+        resp = client.post("/api/calibration/charuco-start/cam_left")
+        assert resp.status_code == 200
+        # The new collector in app_state should be fresh
+        new_collector = app_state["charuco_collectors"]["cam_left"]
+        assert new_collector.frames_captured == 0

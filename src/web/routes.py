@@ -1676,11 +1676,26 @@ def setup_routes(app_state: dict) -> APIRouter:
     @router.get("/video/feed/{camera_id}")
     async def video_feed_camera(camera_id: str) -> StreamingResponse:
         """MJPEG video stream for a specific camera in multi-pipeline."""
+        _feed_frame_counter: dict = {"n": 0}
+
         async def generate():
             while True:
                 frames = app_state.get("multi_latest_frames", {})
                 frame = frames.get(camera_id)
                 if frame is not None:
+                    # Auto-capture for ChArUco lens calibration (every 10th frame ~3fps)
+                    _feed_frame_counter["n"] += 1
+                    if _feed_frame_counter["n"] % 10 == 0:
+                        collectors = app_state.get("charuco_collectors", {})
+                        collector = collectors.get(camera_id)
+                        if collector and not collector.ready_to_calibrate:
+                            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                            dictionary = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_6X6_250)
+                            detector = cv2.aruco.ArucoDetector(dictionary)
+                            corners, ids, _ = detector.detectMarkers(gray)
+                            if ids is not None and len(ids) >= 4:
+                                all_corners = np.concatenate([c.reshape(-1, 2) for c in corners])
+                                collector.add_frame_if_diverse(all_corners, frame)
                     jpeg = encode_frame_jpeg(frame)
                     yield make_mjpeg_frame(jpeg)
                 await asyncio.sleep(0.033)
@@ -2199,6 +2214,14 @@ def setup_routes(app_state: dict) -> APIRouter:
                 for s in status.values()
             ) and len(pairs) > 0,
         }
+
+    @router.post("/api/calibration/charuco-start/{camera_id}")
+    async def charuco_start(camera_id: str) -> dict:
+        """Create or reset a CharucoFrameCollector for the given camera."""
+        from src.cv.camera_calibration import CharucoFrameCollector
+        collectors = app_state.setdefault("charuco_collectors", {})
+        collectors[camera_id] = CharucoFrameCollector(frames_needed=15)
+        return {"ok": True, "camera_id": camera_id, "frames_needed": 15}
 
     @router.get("/api/calibration/charuco-progress/{camera_id}")
     async def charuco_progress(camera_id: str, request: Request) -> dict:
