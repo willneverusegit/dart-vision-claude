@@ -1699,6 +1699,20 @@ def setup_routes(app_state: dict) -> APIRouter:
                                     collector.add_frame_if_diverse(all_corners, frame)
                         except Exception as exc:
                             logger.warning("Auto-capture error for %s: %s", camera_id, exc)
+                    # Overlay frame-count progress if a collector is active
+                    collectors = app_state.get("charuco_collectors", {})
+                    collector = collectors.get(camera_id)
+                    if collector:
+                        progress_text = f"{collector.frames_captured}/{collector.frames_needed} Frames"
+                        if collector.ready_to_calibrate:
+                            progress_text += " - Bereit!"
+                            color = (0, 255, 0)  # green
+                        else:
+                            color = (0, 255, 136)  # teal
+                        # Draw on a copy to not mutate shared frame
+                        frame = frame.copy()
+                        cv2.putText(frame, progress_text, (10, frame.shape[0] - 15),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2, cv2.LINE_AA)
                     jpeg = encode_frame_jpeg(frame)
                     yield make_mjpeg_frame(jpeg)
                 await asyncio.sleep(0.033)

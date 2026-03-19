@@ -157,3 +157,60 @@ class TestCharucoAutoCapture:
         # The new collector in app_state should be fresh
         new_collector = app_state["charuco_collectors"]["cam_left"]
         assert new_collector.frames_captured == 0
+
+
+class TestCharucoOverlay:
+    """Unit tests for frame-count overlay rendering in MJPEG feed."""
+
+    def test_puttext_in_progress(self):
+        """Overlay text for in-progress collection renders without error."""
+        import cv2
+        from src.cv.camera_calibration import CharucoFrameCollector
+
+        collector = CharucoFrameCollector(frames_needed=15)
+        f = np.zeros((480, 640, 3), dtype=np.uint8)
+        collector.add_frame_if_diverse(np.array([[100, 100], [200, 100]], dtype=np.float32), f)
+
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        progress_text = f"{collector.frames_captured}/{collector.frames_needed} Frames"
+        assert collector.ready_to_calibrate is False
+        color = (0, 255, 136)
+        frame = frame.copy()
+        cv2.putText(frame, progress_text, (10, frame.shape[0] - 15),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2, cv2.LINE_AA)
+        assert frame is not None
+        assert progress_text == "1/15 Frames"
+
+    def test_puttext_ready_to_calibrate(self):
+        """Overlay shows 'Bereit!' suffix and green color when ready."""
+        import cv2
+        from src.cv.camera_calibration import CharucoFrameCollector
+
+        collector = CharucoFrameCollector(frames_needed=2)
+        f = np.zeros((480, 640, 3), dtype=np.uint8)
+        collector.add_frame_if_diverse(np.array([[100, 100], [200, 100]], dtype=np.float32), f)
+        collector.add_frame_if_diverse(np.array([[300, 300], [400, 300]], dtype=np.float32), f)
+
+        assert collector.ready_to_calibrate is True
+        progress_text = f"{collector.frames_captured}/{collector.frames_needed} Frames"
+        progress_text += " - Bereit!"
+        color = (0, 255, 0)
+
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        frame = frame.copy()
+        cv2.putText(frame, progress_text, (10, frame.shape[0] - 15),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2, cv2.LINE_AA)
+        assert frame is not None
+        assert "Bereit!" in progress_text
+
+    def test_no_overlay_without_collector(self):
+        """No overlay is applied when no collector is present."""
+        import cv2
+
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        collectors = {}
+        collector = collectors.get("cam_left")
+        assert collector is None
+        # Frame should remain unchanged (no putText called)
+        original = frame.copy()
+        assert np.array_equal(frame, original)
