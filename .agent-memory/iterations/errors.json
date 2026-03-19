@@ -97,5 +97,37 @@
     "tags": ["javascript", "syntax", "class-definition", "agent-generated-code", "brace-mismatch"],
     "reusable_pattern": "Wenn ein Agent Methoden in eine bestehende JS-Klasse einfuegt: immer node -c <file> ausfuehren um Syntax zu verifizieren. Besonders bei Einfuegungen am Ende einer Klasse auf korrekte Klammerung achten.",
     "recurrence": []
+  },
+  {
+    "id": "2026-03-19-1315-multi-cam-calibration-single-pipeline-routing",
+    "timestamp": "2026-03-19T13:15:00+01:00",
+    "category": "logic",
+    "severity": "major",
+    "trigger": "Multi-Cam-Kalibriermodus zeigt fuer automatische Schritte 'Pipeline nicht aktiv'",
+    "problem": "Kalibrier-Endpunkte ausserhalb des manuellen Pfads griffen nur auf app_state['pipeline'] zu. Im Multi-Cam-Betrieb existiert die laufende Live-Pipeline aber unter app_state['multi_pipeline'] mit Sub-Pipelines pro Kamera.",
+    "root_cause": "Single-Cam-Annahme in src/web/routes.py und fehlender camera_id-Kontext im Kalibrier-Frontend. Dadurch funktionierten Lens/ArUco/Info/ROI/Overlay/Optical-Center nur im Single-Cam-Pfad, waehrend Multi-Cam mit einer generischen 'Pipeline nicht aktiv'-Meldung ausstieg.",
+    "solution": "Helper fuer die Auswahl der aktiven Live-Kalibrierpipeline eingefuehrt, camera_id durch relevante Endpunkte propagiert und den Kalibrierdialog um Kamera-Auswahl sowie zielbezogene Status-/Fehlertexte erweitert.",
+    "attempts": 2,
+    "failed_approaches": [
+      "Nur Backend-Fallback auf die erste Multi-Cam-Sub-Pipeline - funktional, aber fuer per-Kamera-Kalibrierung intransparent und UX-seitig zu unklar"
+    ],
+    "files_changed": [
+      "src/web/routes.py",
+      "static/js/app.js",
+      "templates/index.html",
+      "static/css/style.css",
+      "tests/test_routes_coverage4.py"
+    ],
+    "tags": [
+      "python",
+      "fastapi",
+      "javascript",
+      "multi-camera",
+      "calibration",
+      "routing",
+      "ux"
+    ],
+    "reusable_pattern": "Kalibrier- und Diagnose-Endpunkte duerfen im Multi-Cam-Betrieb nie stillschweigend nur app_state['pipeline'] verwenden. Immer den aktiven Kamera-Kontext explizit mitfuehren und im Frontend sichtbar machen.",
+    "recurrence": []
   }
 ]
