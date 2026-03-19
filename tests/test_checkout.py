@@ -80,8 +80,9 @@ class TestStandardCheckouts:
 
     def test_all_standard_scores_valid(self):
         """Every standard checkout path must sum to its score."""
-        from src.game.checkout import _STANDARD_CHECKOUTS
-        for score, path in _STANDARD_CHECKOUTS.items():
+        from src.game.checkout import PREFERRED_CHECKOUTS
+        for score, paths in PREFERRED_CHECKOUTS.items():
+            path = paths[0]
             total = 0
             for part in path.split():
                 if part.startswith("T"):
