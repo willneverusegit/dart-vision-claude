@@ -2,6 +2,23 @@
 
 ---
 
+## [2026-03-19 13:15] Multi-Cam-Kalibrierung war auf Single-Cam-Routen verdrahtet
+
+**Category:** logic | **Severity:** major | **Attempts:** 2
+
+**Problem:** Im Multi-Cam-Kalibriermodus funktionierte nur der manuelle Board-Pfad. ArUco, Lens, Status, ROI/Overlay und Optical-Center liefen in eine generische Meldung "Pipeline nicht aktiv".
+
+**Root Cause:** Die betroffenen Kalibrier-Endpunkte verwendeten nur `app_state["pipeline"]`. Im Multi-Cam-Betrieb lebt die aktive Live-Pipeline aber in `app_state["multi_pipeline"]`, und das Frontend uebergab keinen expliziten Kamera-Kontext.
+
+**Solution:** In `src/web/routes.py` eine Multi-Cam-faehige Aufloesung der aktiven Kalibrierpipeline pro `camera_id` eingebaut und das Kalibriermodal in `static/js/app.js`/`templates/index.html` um Kamera-Auswahl sowie zielbezogene Statusmeldungen erweitert. Dazu 5 neue Regressionstests fuer die Auswahl der richtigen Sub-Pipeline.
+
+**Failed Approaches:**
+- Nur implizit auf die erste Multi-Cam-Sub-Pipeline fallen lassen - funktional, aber fuer Nutzer und gespeicherte per-Kamera-Kalibrierungen zu intransparent
+
+**Takeaway:** Live-Kalibrierung ist im Multi-Cam-Modus immer kamera-spezifisch. Backend und Frontend muessen denselben Kamera-Kontext explizit tragen; ein stiller Single-Cam-Fallback ist hier ein Designfehler.
+
+---
+
 ## [2026-03-17 14:00] Motion-Gate blockiert SETTLING-State
 
 **Category:** architecture | **Severity:** major | **Attempts:** 1

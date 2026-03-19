@@ -133,6 +133,12 @@ Typische Arbeiten:
 
 **Teilfortschritt 2026-03-18:** Kamera-Vorschau-Thumbnails im Multi-Cam-Setup-Modal implementiert. Neuer Endpunkt `GET /api/camera/preview/{source}` liefert einzelnes JPEG-Bild von beliebiger Kamera-Quelle. Jede Kamera-Zeile zeigt 200x150px Vorschau mit Refresh-Button. Funktioniert unabhaengig von laufender Pipeline. Geaenderte Dateien: `src/web/routes.py`, `templates/index.html`, `static/js/app.js`, `static/css/style.css`.
 
+**Teilfortschritt 2026-03-19:** Multi-Cam-Kalibriermodus repariert. Ursache war, dass fast alle Kalibrier-Endpunkte nur `app_state["pipeline"]` verwendeten, obwohl im Multi-Cam-Betrieb die aktiven Live-Pipelines unter `app_state["multi_pipeline"]` liegen. `src/web/routes.py` loest jetzt fuer Kalibrier-Frames, Status, Board-Alignment, Lens-Setup, ROI/Overlay, Ring-Check und optischen Mittelpunkt die gewaehlte Sub-Pipeline pro `camera_id` auf. Das Kalibrier-Modal erhielt in `templates/index.html` und `static/js/app.js` eine explizite Kamera-Auswahl, zielbezogene Status-/Fehlertexte und per-Kamera-Requests. Regression: `tests/test_routes_coverage4.py` um 5 Multi-Cam-Kalibrier-Tests erweitert; zusaetzlich 20 fokussierte Kalibrier-/Stereo-Tests und 163 Route-Coverage-Tests gruen. Geaenderte Dateien: `src/web/routes.py`, `static/js/app.js`, `templates/index.html`, `static/css/style.css`, `tests/test_routes_coverage4.py`.
+
+Verknuepfte Weaknesses: keine
+
+Verknuepfte Entscheidungen: 2026-03-18-multi-cam-9-phase-plan
+
 Ziel:
 
 - Multi-Cam-Setup fuer Nicht-Experten bedienbar machen

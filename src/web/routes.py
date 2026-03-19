@@ -50,6 +50,105 @@ def setup_routes(app_state: dict) -> APIRouter:
         fields = _charuco_override_fields(body)
         return any(value is not None for value in fields.values())
 
+    def _normalize_camera_id(camera_id: str | None) -> str | None:
+        if camera_id is None:
+            return None
+        camera_id = str(camera_id).strip()
+        return camera_id or None
+
+    def _extract_camera_id(
+        request: Request | None = None,
+        body: dict | None = None,
+        camera_id: str | None = None,
+    ) -> str | None:
+        resolved = camera_id
+        if isinstance(body, dict):
+            resolved = body.get("camera_id") or body.get("cam_id") or resolved
+        if request is not None:
+            resolved = request.query_params.get("camera_id") or resolved
+        return _normalize_camera_id(resolved)
+
+    def _ordered_multi_pipelines() -> list[tuple[str, object]]:
+        multi = app_state.get("multi_pipeline")
+        if multi is None or not hasattr(multi, "get_pipelines"):
+            return []
+
+        pipelines = multi.get_pipelines() or {}
+        if not isinstance(pipelines, dict):
+            return []
+        ordered: list[tuple[str, object]] = []
+        seen: set[str] = set()
+
+        for cam_id in app_state.get("active_camera_ids", []) or []:
+            pipe = pipelines.get(cam_id)
+            if pipe is not None:
+                ordered.append((cam_id, pipe))
+                seen.add(cam_id)
+
+        for cam_id, pipe in pipelines.items():
+            if cam_id not in seen:
+                ordered.append((cam_id, pipe))
+        return ordered
+
+    def _resolve_live_calibration_pipeline(
+        camera_id: str | None = None,
+        *,
+        required_attr: str | None = None,
+    ) -> tuple[object | None, str | None, str | None]:
+        requested = _normalize_camera_id(camera_id)
+        pipeline = app_state.get("pipeline")
+        if requested in (None, "default") and pipeline is not None:
+            if required_attr is None or hasattr(pipeline, required_attr):
+                return pipeline, "default", None
+
+        ordered_multi = _ordered_multi_pipelines()
+        if requested not in (None, "default"):
+            for cam_id, pipe in ordered_multi:
+                if cam_id == requested:
+                    if required_attr is None or hasattr(pipe, required_attr):
+                        return pipe, cam_id, None
+                    break
+            if ordered_multi:
+                return (
+                    None,
+                    requested,
+                    (
+                        f"Kamera '{requested}' ist im Multi-Cam-Modus nicht aktiv - "
+                        "bitte eine aktive Kamera auswaehlen."
+                    ),
+                )
+            if pipeline is not None:
+                return (
+                    None,
+                    requested,
+                    f"Kamera '{requested}' ist im Single-Cam-Modus nicht verfuegbar.",
+                )
+
+        if ordered_multi:
+            cam_id, pipe = ordered_multi[0]
+            if required_attr is None or hasattr(pipe, required_attr):
+                return pipe, cam_id, None
+
+        if pipeline is not None and required_attr is not None and not hasattr(pipeline, required_attr):
+            return None, requested, "Kalibrierfunktion fuer die aktive Kamera ist nicht verfuegbar."
+        return None, requested, "Keine aktive Kalibrierkamera - bitte zuerst Single-Cam oder Multi-Cam starten."
+
+    def _get_live_calibration_frame(
+        camera_id: str | None = None,
+    ) -> tuple[object | None, object | None, str | None, str | None]:
+        pipeline, resolved_camera_id, error = _resolve_live_calibration_pipeline(camera_id)
+        if pipeline is None:
+            return None, None, resolved_camera_id, error
+
+        frame = None
+        if hasattr(pipeline, "get_latest_raw_frame"):
+            frame = pipeline.get_latest_raw_frame()
+        if frame is None and resolved_camera_id not in (None, "default"):
+            frame = app_state.get("multi_latest_frames", {}).get(resolved_camera_id)
+        if frame is None:
+            frame = app_state.get("latest_frame")
+        return pipeline, frame, resolved_camera_id, None
+
     VALID_RINGS = {"single", "double", "triple", "inner_bull", "outer_bull", "miss"}
     VALID_SECTORS = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 25, 50}
 
@@ -549,13 +648,21 @@ def setup_routes(app_state: dict) -> APIRouter:
 
     # --- Calibration ---
 
-    async def _run_manual_board_alignment(points: list[list[float]]) -> dict:
-        pipeline = app_state.get("pipeline")
-        if not pipeline or not hasattr(pipeline, "board_calibration"):
-            return {"ok": False, "error": "Pipeline nicht aktiv — bitte zuerst die Kamera starten."}
+    async def _run_manual_board_alignment(
+        points: list[list[float]],
+        camera_id: str | None = None,
+    ) -> dict:
+        pipeline, resolved_camera_id, error = _resolve_live_calibration_pipeline(
+            camera_id,
+            required_attr="board_calibration",
+        )
+        if pipeline is None:
+            return {"ok": False, "error": error or "Pipeline nicht aktiv - bitte zuerst die Kamera starten."}
         result = pipeline.board_calibration.manual_calibration(points)
         if result.get("ok"):
             pipeline.refresh_remapper()
+        if resolved_camera_id is not None:
+            result.setdefault("camera_id", resolved_camera_id)
         return result
 
     @router.post("/api/calibration/manual")
@@ -563,64 +670,79 @@ def setup_routes(app_state: dict) -> APIRouter:
         """Legacy endpoint: manual board alignment."""
         body = await request.json()
         points = body.get("points", [])
-        return await _run_manual_board_alignment(points)
+        camera_id = _extract_camera_id(request, body)
+        return await _run_manual_board_alignment(points, camera_id)
 
     @router.post("/api/calibration/board/manual")
     async def board_manual_calibration(request: Request) -> dict:
         """Board alignment via manual 4-point selection."""
         body = await request.json()
         points = body.get("points", [])
-        return await _run_manual_board_alignment(points)
+        camera_id = _extract_camera_id(request, body)
+        return await _run_manual_board_alignment(points, camera_id)
 
     @router.get("/api/calibration/frame")
-    async def get_calibration_frame() -> JSONResponse:
+    async def get_calibration_frame(camera_id: str | None = None) -> JSONResponse:
         """Get a single frame for calibration UI."""
-        frame = app_state.get("latest_frame")
+        _, frame, resolved_camera_id, error = _get_live_calibration_frame(camera_id)
         if frame is not None:
             jpeg = encode_frame_jpeg(frame, quality=90)
             b64 = base64.b64encode(jpeg).decode("ascii")
-            return JSONResponse({"ok": True, "image": "data:image/jpeg;base64," + b64})
-        return JSONResponse({"ok": False, "error": "Kein Kamerabild verfuegbar — ist die Kamera gestartet?"})
+            return JSONResponse({
+                "ok": True,
+                "camera_id": resolved_camera_id,
+                "image": "data:image/jpeg;base64," + b64,
+            })
+        if error is not None:
+            return JSONResponse({"ok": False, "error": error})
+        return JSONResponse({"ok": False, "error": "Kein Kamerabild verfuegbar - ist die Kamera gestartet?"})
 
-    async def _run_aruco_board_alignment(frame) -> dict:
-        pipeline = app_state.get("pipeline")
-        if not pipeline or not hasattr(pipeline, "board_calibration"):
-            return {"ok": False, "error": "Pipeline nicht aktiv — bitte zuerst die Kamera starten."}
+    async def _run_aruco_board_alignment(frame, camera_id: str | None = None) -> dict:
+        pipeline, resolved_camera_id, error = _resolve_live_calibration_pipeline(
+            camera_id,
+            required_attr="board_calibration",
+        )
+        if pipeline is None:
+            return {"ok": False, "error": error}
         result = pipeline.board_calibration.aruco_calibration_with_fallback(frame)
         if result.get("ok"):
             pipeline.refresh_remapper()
+        if resolved_camera_id is not None:
+            result.setdefault("camera_id", resolved_camera_id)
         return result
 
     @router.post("/api/calibration/aruco")
-    async def aruco_calibration() -> dict:
+    async def aruco_calibration(request: Request) -> dict:
         """Legacy endpoint: ArUco board alignment on latest frame."""
-        pipeline = app_state.get("pipeline")
-        frame = pipeline.get_latest_raw_frame() if pipeline else None
+        body = await _optional_json_body(request)
+        camera_id = _extract_camera_id(request, body)
+        _, frame, _, error = _get_live_calibration_frame(camera_id)
         if frame is None:
-            frame = app_state.get("latest_frame")
-        if frame is None:
-            return {"ok": False, "error": "Kein Kamerabild verfuegbar — ist die Kamera gestartet?"}
-        return await _run_aruco_board_alignment(frame)
+            return {"ok": False, "error": error or "Kein Kamerabild verfuegbar - ist die Kamera gestartet?"}
+        return await _run_aruco_board_alignment(frame, camera_id)
 
     @router.post("/api/calibration/board/aruco")
-    async def board_aruco_calibration() -> dict:
+    async def board_aruco_calibration(request: Request) -> dict:
         """Board alignment via ArUco markers on latest raw frame."""
-        pipeline = app_state.get("pipeline")
-        frame = pipeline.get_latest_raw_frame() if pipeline else None
+        body = await _optional_json_body(request)
+        camera_id = _extract_camera_id(request, body)
+        _, frame, _, error = _get_live_calibration_frame(camera_id)
         if frame is None:
-            frame = app_state.get("latest_frame")
-        if frame is None:
-            return {"ok": False, "error": "Kein Kamerabild verfuegbar — ist die Kamera gestartet?"}
-        return await _run_aruco_board_alignment(frame)
+            return {"ok": False, "error": error or "Kein Kamerabild verfuegbar - ist die Kamera gestartet?"}
+        return await _run_aruco_board_alignment(frame, camera_id)
 
     async def _run_lens_charuco_calibration(request: Request | None = None) -> dict:
         """Capture latest raw frames and calibrate camera intrinsics."""
-        pipeline = app_state.get("pipeline")
-        if not pipeline or not hasattr(pipeline, "camera_calibration"):
-            return {"ok": False, "error": "Pipeline nicht aktiv — bitte zuerst die Kamera starten."}
-        if not pipeline.camera:
-            return {"ok": False, "error": "Kamera nicht verfuegbar — bitte Verbindung pruefen."}
         body = await _optional_json_body(request)
+        camera_id = _extract_camera_id(request, body)
+        pipeline, resolved_camera_id, error = _resolve_live_calibration_pipeline(
+            camera_id,
+            required_attr="camera_calibration",
+        )
+        if pipeline is None:
+            return {"ok": False, "error": error}
+        if not pipeline.camera:
+            return {"ok": False, "error": "Kamera nicht verfuegbar â€” bitte Verbindung pruefen."}
         overrides = _charuco_override_fields(body)
         try:
             board_spec = pipeline.camera_calibration.get_charuco_board_spec(**overrides)
@@ -635,10 +757,12 @@ def setup_routes(app_state: dict) -> APIRouter:
             await asyncio.sleep(0.1)
 
         if len(frames) < 3:
-            return {"ok": False, "error": f"Nur {len(frames)} Frames erfasst (mind. 3 noetig) — Kamera pruefen."}
+            return {"ok": False, "error": f"Nur {len(frames)} Frames erfasst (mind. 3 noetig) â€” Kamera pruefen."}
         result = pipeline.camera_calibration.charuco_calibration(frames, board_spec=board_spec)
         if result.get("ok"):
             pipeline.refresh_remapper()
+        if resolved_camera_id is not None:
+            result.setdefault("camera_id", resolved_camera_id)
         return result
 
     @router.post("/api/calibration/charuco")
@@ -652,15 +776,19 @@ def setup_routes(app_state: dict) -> APIRouter:
         return await _run_lens_charuco_calibration(request)
 
     @router.get("/api/calibration/lens/info")
-    async def lens_info() -> dict:
+    async def lens_info(camera_id: str | None = None) -> dict:
         """Get lens calibration metadata."""
-        pipeline = app_state.get("pipeline")
-        if not pipeline or not hasattr(pipeline, "camera_calibration"):
-            return {"ok": False, "error": "Pipeline nicht aktiv — bitte zuerst die Kamera starten."}
+        pipeline, resolved_camera_id, error = _resolve_live_calibration_pipeline(
+            camera_id,
+            required_attr="camera_calibration",
+        )
+        if pipeline is None:
+            return {"ok": False, "error": error}
         cfg = pipeline.camera_calibration.get_config()
         board_spec = pipeline.camera_calibration.get_charuco_board_spec()
         return {
             "ok": True,
+            "camera_id": resolved_camera_id,
             "valid": bool(cfg.get("lens_valid", False)),
             "method": cfg.get("lens_method"),
             "image_size": cfg.get("lens_image_size"),
@@ -669,49 +797,57 @@ def setup_routes(app_state: dict) -> APIRouter:
         }
 
     @router.get("/api/calibration/roi-preview")
-    async def roi_preview() -> JSONResponse:
+    async def roi_preview(camera_id: str | None = None) -> JSONResponse:
         """Return the current ROI-warped frame as base64 JPEG."""
-        pipeline = app_state.get("pipeline")
+        pipeline, _, _ = _resolve_live_calibration_pipeline(camera_id)
         if pipeline:
             roi = pipeline.get_roi_preview()
             if roi is not None:
                 jpeg = encode_frame_jpeg(roi, quality=90)
                 b64 = base64.b64encode(jpeg).decode("ascii")
                 return JSONResponse({"ok": True, "image": "data:image/jpeg;base64," + b64})
-        return JSONResponse({"ok": False, "error": "Keine ROI-Vorschau — Board-Kalibrierung zuerst durchfuehren."})
+        return JSONResponse({"ok": False, "error": "Keine ROI-Vorschau - Board-Kalibrierung zuerst durchfuehren."})
 
     @router.post("/api/calibration/verify-rings")
-    async def verify_rings() -> dict:
+    async def verify_rings(request: Request) -> dict:
         """Verify calibrated ring radii against expected dartboard dimensions."""
-        pipeline = app_state.get("pipeline")
-        if not pipeline:
-            return {"ok": False, "error": "Pipeline nicht aktiv — bitte zuerst die Kamera starten."}
+        body = await _optional_json_body(request)
+        camera_id = _extract_camera_id(request, body)
+        pipeline, _, error = _resolve_live_calibration_pipeline(camera_id)
+        if pipeline is None:
+            return {"ok": False, "error": error}
         roi = pipeline.get_roi_preview()
         if roi is None:
-            return {"ok": False, "error": "Kein ROI-Frame — Board-Kalibrierung zuerst durchfuehren."}
+            return {"ok": False, "error": "Kein ROI-Frame â€” Board-Kalibrierung zuerst durchfuehren."}
         result = pipeline.board_calibration.verify_rings(roi)
         return result
 
     @router.post("/api/calibration/optical-center")
-    async def detect_optical_center() -> dict:
+    async def detect_optical_center(request: Request) -> dict:
         """Detect the true bullseye position via color thresholding."""
-        pipeline = app_state.get("pipeline")
-        if not pipeline:
-            return {"ok": False, "error": "Pipeline nicht aktiv — bitte zuerst die Kamera starten."}
+        body = await _optional_json_body(request)
+        camera_id = _extract_camera_id(request, body)
+        pipeline, _, error = _resolve_live_calibration_pipeline(camera_id)
+        if pipeline is None:
+            return {"ok": False, "error": error}
         oc = pipeline.detect_optical_center()
         if oc is None:
-            return {"ok": False, "error": "Mittelpunkt konnte nicht erkannt werden — manuell setzen."}
+            return {"ok": False, "error": "Mittelpunkt konnte nicht erkannt werden â€” manuell setzen."}
         return {"ok": True, "optical_center": [oc[0], oc[1]]}
 
     @router.post("/api/calibration/optical-center/manual")
     async def set_optical_center_manual(request: Request) -> dict:
         """Manually override the bullseye position (ROI pixel coordinates)."""
-        pipeline = app_state.get("pipeline")
-        if not pipeline:
-            return {"ok": False, "error": "Pipeline nicht aktiv — bitte zuerst die Kamera starten."}
+        body = await request.json()
+        camera_id = _extract_camera_id(request, body)
+        pipeline, _, error = _resolve_live_calibration_pipeline(
+            camera_id,
+            required_attr="board_calibration",
+        )
+        if pipeline is None:
+            return {"ok": False, "error": error}
         if not (hasattr(pipeline, "board_calibration") and pipeline.board_calibration.is_valid()):
             return {"ok": False, "error": "Board nicht kalibriert"}
-        body = await request.json()
         x = body.get("x")
         y = body.get("y")
         if x is None or y is None:
@@ -719,34 +855,38 @@ def setup_routes(app_state: dict) -> APIRouter:
         try:
             x, y = float(x), float(y)
         except (TypeError, ValueError):
-            return {"ok": False, "error": "x und y müssen Zahlen sein"}
+            return {"ok": False, "error": "x und y muessen Zahlen sein"}
         pipeline.board_calibration.store_optical_center((x, y))
         if hasattr(pipeline, "_refresh_geometry"):
             pipeline._refresh_geometry()
         return {"ok": True, "optical_center": [x, y]}
 
     @router.get("/api/calibration/overlay")
-    async def field_overlay() -> JSONResponse:
+    async def field_overlay(camera_id: str | None = None) -> JSONResponse:
         """Return ROI frame with field boundaries drawn as base64 JPEG."""
-        pipeline = app_state.get("pipeline")
+        pipeline, _, _ = _resolve_live_calibration_pipeline(camera_id)
         if pipeline:
             overlay = pipeline.get_field_overlay()
             if overlay is not None:
                 jpeg = encode_frame_jpeg(overlay, quality=90)
                 b64 = base64.b64encode(jpeg).decode("ascii")
                 return JSONResponse({"ok": True, "image": "data:image/jpeg;base64," + b64})
-        return JSONResponse({"ok": False, "error": "Kein Overlay verfuegbar — Board-Kalibrierung zuerst durchfuehren."})
+        return JSONResponse({"ok": False, "error": "Kein Overlay verfuegbar - Board-Kalibrierung zuerst durchfuehren."})
 
     @router.get("/api/calibration/info")
-    async def calibration_info() -> dict:
+    async def calibration_info(camera_id: str | None = None) -> dict:
         """Get combined calibration metadata (board + lens)."""
-        pipeline = app_state.get("pipeline")
-        if not pipeline or not hasattr(pipeline, "board_calibration"):
-            return {"ok": False, "error": "Pipeline nicht aktiv — bitte zuerst die Kamera starten."}
+        pipeline, resolved_camera_id, error = _resolve_live_calibration_pipeline(
+            camera_id,
+            required_attr="board_calibration",
+        )
+        if pipeline is None:
+            return {"ok": False, "error": error}
         config = pipeline.board_calibration.get_config()
         lens_cfg = pipeline.camera_calibration.get_config() if hasattr(pipeline, "camera_calibration") else {}
         return {
             "ok": True,
+            "camera_id": resolved_camera_id,
             "board_valid": config.get("valid", False),
             "board_method": config.get("method"),
             "mm_per_px": config.get("mm_per_px", 1.0),

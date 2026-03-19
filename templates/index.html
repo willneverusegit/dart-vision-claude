@@ -286,11 +286,18 @@
             <div id="cal-step-mode" class="cal-step">
                 <!-- Calibration status overview -->
                 <div id="cal-status-overview" class="cal-status-overview">
-                    <p class="cal-status-overview__title">Aktueller Status:</p>
+                    <p id="cal-status-overview-title" class="cal-status-overview__title">Aktueller Status:</p>
                     <div class="cal-status-row">
                         <span id="cal-status-lens" class="cal-status-item cal-status-item--pending">Lens</span>
                         <span id="cal-status-board" class="cal-status-item cal-status-item--pending">Board</span>
                     </div>
+                </div>
+                <div id="calibration-camera-panel" class="calibration-camera-panel" style="display:none;">
+                    <label class="charuco-board-control charuco-board-control--inline">
+                        <span class="modal__text" style="margin: 0;">Kalibrier-Kamera</span>
+                        <select id="calibration-camera-select" class="select"></select>
+                    </label>
+                    <p id="calibration-camera-hint" class="charuco-board-note charuco-board-note--inline">Lens- und Board-Kalibrierung werden pro Kamera gespeichert.</p>
                 </div>
 
                 <div class="cal-marker-toggle" style="margin-bottom: 12px;">
@@ -345,7 +352,7 @@
             <!-- Step 3: Auto Calibration Progress -->
             <div id="cal-step-auto" class="cal-step" style="display: none;">
                 <p id="cal-auto-status" class="modal__text">Kalibrierung laeuft...</p>
-                <div class="cal-spinner"></div>
+                <div id="cal-auto-spinner" class="cal-spinner"></div>
             </div>
 
             <!-- Step 4: Result / Preview -->

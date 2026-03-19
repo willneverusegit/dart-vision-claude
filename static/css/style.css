@@ -395,6 +395,15 @@ body {
     opacity: 0.9;
 }
 
+.calibration-camera-panel {
+    max-width: 520px;
+    margin: 0 auto 12px;
+    padding: 12px 16px;
+    background: var(--bg-panel-translucent);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+
 .ws-status {
     padding: 3px 10px;
     border-radius: 12px;

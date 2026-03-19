@@ -92,6 +92,14 @@ class DartApp {
         if (btnCalAruco) btnCalAruco.addEventListener("click", () => this._startArucoCalibration());
         const btnCalLens = document.getElementById("btn-cal-lens");
         if (btnCalLens) btnCalLens.addEventListener("click", () => this._startLensCalibration());
+        const calCameraSelect = document.getElementById("calibration-camera-select");
+        if (calCameraSelect) {
+            calCameraSelect.addEventListener("change", () => {
+                this._updateCalibrationCameraSelector();
+                this._refreshCharucoBoardPresetFromServer();
+                this._refreshCalibrationStatus();
+            });
+        }
 
         // Manual calibration confirm/reset
         const btnCalConfirm = document.getElementById("btn-calibrate-confirm");
@@ -271,7 +279,7 @@ class DartApp {
 
     async _refreshCharucoBoardPresetFromServer() {
         try {
-            const response = await fetch("/api/calibration/lens/info");
+            const response = await fetch(this._buildCalibrationUrl("/api/calibration/lens/info"));
             if (!response.ok) { this._showError(`Fehler: ${response.status}`); return; }
             const data = await response.json();
             const preset = data?.charuco_board?.preset;
@@ -281,6 +289,73 @@ class DartApp {
         } catch (e) {
             console.error("Charuco board info error:", e);
         }
+    }
+
+    _getCalibrationCameraId() {
+        if (!this.multiCamRunning) return null;
+        const activeIds = (this.activeCameraIds || []).filter(Boolean);
+        if (!activeIds.length) return null;
+        const select = document.getElementById("calibration-camera-select");
+        const selected = select?.value;
+        return activeIds.includes(selected) ? selected : activeIds[0];
+    }
+
+    _buildCalibrationUrl(path) {
+        const cameraId = this._getCalibrationCameraId();
+        if (!cameraId) return path;
+        const join = path.includes("?") ? "&" : "?";
+        return path + join + "camera_id=" + encodeURIComponent(cameraId);
+    }
+
+    _buildCalibrationBody(extra = {}) {
+        const body = { ...extra };
+        const cameraId = this._getCalibrationCameraId();
+        if (cameraId) body.camera_id = cameraId;
+        return body;
+    }
+
+    _getCalibrationTargetLabel() {
+        const cameraId = this._getCalibrationCameraId();
+        return cameraId ? "Kamera " + cameraId : "Single-Cam";
+    }
+
+    _updateCalibrationCameraSelector() {
+        const panel = document.getElementById("calibration-camera-panel");
+        const select = document.getElementById("calibration-camera-select");
+        const hint = document.getElementById("calibration-camera-hint");
+        const title = document.getElementById("cal-status-overview-title");
+        if (!panel || !select || !hint || !title) return;
+
+        const cameraIds = this.multiCamRunning ? (this.activeCameraIds || []).filter(Boolean) : [];
+        if (!cameraIds.length) {
+            panel.style.display = "none";
+            title.textContent = this.multiCamRunning ? "Aktueller Status (Multi-Cam):" : "Aktueller Status (Single-Cam):";
+            return;
+        }
+
+        panel.style.display = "block";
+        const previous = select.value;
+        while (select.firstChild) select.removeChild(select.firstChild);
+        cameraIds.forEach((cameraId) => {
+            const option = document.createElement("option");
+            option.value = cameraId;
+            option.textContent = cameraId;
+            select.appendChild(option);
+        });
+        select.value = cameraIds.includes(previous) ? previous : cameraIds[0];
+        const activeCamera = select.value;
+        hint.textContent = "Lens- und Board-Kalibrierung werden fuer " + activeCamera + " gespeichert.";
+        title.textContent = "Aktueller Status (" + activeCamera + "):";
+    }
+
+    _setCalibrationAutoStatus(message, { showSpinner = true, isError = false } = {}) {
+        const statusEl = document.getElementById("cal-auto-status");
+        const spinner = document.getElementById("cal-auto-spinner");
+        if (statusEl) {
+            statusEl.textContent = message;
+            statusEl.style.color = isError ? "var(--danger, #ff6b6b)" : "";
+        }
+        if (spinner) spinner.style.display = showSpinner ? "block" : "none";
     }
 
     // --- Hit Candidate Flow ---
@@ -635,6 +710,7 @@ class DartApp {
         if (!modal) return;
         modal.style.display = "flex";
         this._showCalStep("cal-step-mode");
+        this._updateCalibrationCameraSelector();
         this._refreshCharucoBoardPresetFromServer();
         this._refreshCalibrationStatus();
         // Enable marker overlay by default when calibration modal opens
@@ -642,10 +718,12 @@ class DartApp {
     }
 
     async _refreshCalibrationStatus() {
+        this._updateCalibrationCameraSelector();
         try {
-            const resp = await fetch("/api/calibration/info");
+            const resp = await fetch(this._buildCalibrationUrl("/api/calibration/info"));
             if (!resp.ok) return;
             const data = await resp.json();
+            if (!data.ok) return;
             const lensEl = document.getElementById("cal-status-lens");
             const boardEl = document.getElementById("cal-status-board");
             if (lensEl) {
@@ -675,7 +753,7 @@ class DartApp {
         if (btn) btn.disabled = true;
 
         try {
-            const response = await fetch("/api/calibration/frame");
+            const response = await fetch(this._buildCalibrationUrl("/api/calibration/frame"));
             if (!response.ok) { this._showError(`Fehler: ${response.status}`); return; }
             const data = await response.json();
             if (data.ok && data.image) {
@@ -691,48 +769,63 @@ class DartApp {
                     };
                     img.src = data.image;
                 }
+            } else if (data.error) {
+                this._showError(data.error);
             }
         } catch (e) {
             console.error("Calibration frame error:", e);
+            this._showError("Kalibrierbild konnte nicht geladen werden.");
         }
     }
 
     async _startArucoCalibration() {
         this._showCalStep("cal-step-auto");
-        const statusEl = document.getElementById("cal-auto-status");
-        if (statusEl) statusEl.textContent = "Board-ArUco Alignment wird gestartet...";
+        this._setCalibrationAutoStatus(
+            this._getCalibrationTargetLabel() + ": Board-ArUco Alignment wird gestartet..."
+        );
 
         try {
-            const response = await fetch("/api/calibration/board/aruco", { method: "POST" });
+            const response = await fetch("/api/calibration/board/aruco", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(this._buildCalibrationBody()),
+            });
             if (!response.ok) { this._showError(`Fehler: ${response.status}`); return; }
             const data = await response.json();
             if (data.ok) {
                 await this._showCalibrationResult("Board-ArUco Alignment erfolgreich!");
             } else {
-                if (statusEl) statusEl.textContent = "Fehler: " + (data.error || "Unbekannt");
+                this._setCalibrationAutoStatus("Fehler: " + (data.error || "Unbekannt"), {
+                    showSpinner: false,
+                    isError: true,
+                });
+                this._showError(data.error || "Board-ArUco Alignment fehlgeschlagen.");
                 setTimeout(() => this._showCalStep("cal-step-mode"), 3000);
             }
         } catch (e) {
             console.error("ArUco calibration error:", e);
-            if (statusEl) statusEl.textContent = "Verbindungsfehler";
+            this._setCalibrationAutoStatus("Verbindungsfehler", {
+                showSpinner: false,
+                isError: true,
+            });
+            this._showError("Verbindungsfehler bei der Board-ArUco-Kalibrierung.");
             setTimeout(() => this._showCalStep("cal-step-mode"), 3000);
         }
     }
 
     async _startLensCalibration() {
         this._showCalStep("cal-step-auto");
-        const statusEl = document.getElementById("cal-auto-status");
         const preset = this._getSelectedCharucoPreset();
-        if (statusEl) {
-            statusEl.textContent =
-                "Lens Setup per ChArUco (" + this._describeCharucoPreset(preset) + ", ca. 3 Sekunden)...";
-        }
+        this._setCalibrationAutoStatus(
+            this._getCalibrationTargetLabel() + ": Lens Setup per ChArUco (" +
+            this._describeCharucoPreset(preset) + ", ca. 3 Sekunden)..."
+        );
 
         try {
             const response = await fetch("/api/calibration/lens/charuco", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ preset }),
+                body: JSON.stringify(this._buildCalibrationBody({ preset })),
             });
             if (!response.ok) { this._showError(`Fehler: ${response.status}`); return; }
             const data = await response.json();
@@ -742,12 +835,20 @@ class DartApp {
                 }
                 await this._showCalibrationResult("Lens Setup erfolgreich!");
             } else {
-                if (statusEl) statusEl.textContent = "Fehler: " + (data.error || "Unbekannt");
+                this._setCalibrationAutoStatus("Fehler: " + (data.error || "Unbekannt"), {
+                    showSpinner: false,
+                    isError: true,
+                });
+                this._showError(data.error || "Lens Setup fehlgeschlagen.");
                 setTimeout(() => this._showCalStep("cal-step-mode"), 3000);
             }
         } catch (e) {
             console.error("Lens calibration error:", e);
-            if (statusEl) statusEl.textContent = "Verbindungsfehler";
+            this._setCalibrationAutoStatus("Verbindungsfehler", {
+                showSpinner: false,
+                isError: true,
+            });
+            this._showError("Verbindungsfehler beim Lens Setup.");
             setTimeout(() => this._showCalStep("cal-step-mode"), 3000);
         }
     }
@@ -836,7 +937,7 @@ class DartApp {
             const response = await fetch("/api/calibration/board/manual", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ points: this.calibrationPoints }),
+                body: JSON.stringify(this._buildCalibrationBody({ points: this.calibrationPoints })),
             });
             if (!response.ok) { this._showError(`Fehler: ${response.status}`); return; }
             const data = await response.json();
@@ -844,19 +945,21 @@ class DartApp {
                 await this._showCalibrationResult("Board-Alignment (manuell) erfolgreich!");
             } else {
                 console.error("Calibration failed:", data.error);
+                this._showError(data.error || "Board-Alignment fehlgeschlagen.");
             }
         } catch (e) {
             console.error("Calibration submit error:", e);
+            this._showError("Board-Alignment konnte nicht gespeichert werden.");
         }
     }
 
     async _showCalibrationResult(message) {
         this._showCalStep("cal-step-result");
         const textEl = document.getElementById("cal-result-text");
-        if (textEl) textEl.textContent = message;
+        if (textEl) textEl.textContent = this._getCalibrationTargetLabel() + ": " + message;
 
         try {
-            const roiResp = await fetch("/api/calibration/roi-preview");
+            const roiResp = await fetch(this._buildCalibrationUrl("/api/calibration/roi-preview"));
             if (!roiResp.ok) { this._showError(`Fehler: ${roiResp.status}`); return; }
             const roiData = await roiResp.json();
             if (roiData.ok && roiData.image) {
@@ -868,7 +971,7 @@ class DartApp {
         }
 
         try {
-            const overlayResp = await fetch("/api/calibration/overlay");
+            const overlayResp = await fetch(this._buildCalibrationUrl("/api/calibration/overlay"));
             if (!overlayResp.ok) { this._showError(`Fehler: ${overlayResp.status}`); return; }
             const overlayData = await overlayResp.json();
             if (overlayData.ok && overlayData.image) {
@@ -881,12 +984,21 @@ class DartApp {
 
         // B2: Fetch and render ring deviation table
         try {
-            const ringResp = await fetch("/api/calibration/verify-rings", { method: "POST" });
+            const ringResp = await fetch("/api/calibration/verify-rings", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(this._buildCalibrationBody()),
+            });
             if (!ringResp.ok) { this._showError(`Fehler: ${ringResp.status}`); return; }
             const ringData = await ringResp.json();
             this._renderRingDeviations(ringData);
         } catch (e) {
             console.error("Ring verify error:", e);
+        }
+
+        this._refreshCalibrationStatus();
+        if (this.multiCamRunning) {
+            this._refreshMultiCamStatus();
         }
     }
 
@@ -961,7 +1073,7 @@ class DartApp {
             const resp = await fetch("/api/calibration/optical-center/manual", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ x, y }),
+                body: JSON.stringify(this._buildCalibrationBody({ x, y })),
             });
             if (!resp.ok) { this._showError(`Fehler: ${resp.status}`); return; }
             const data = await resp.json();
@@ -1939,6 +2051,7 @@ class DartApp {
         if (stereoSection) {
             stereoSection.style.display = this.multiCamRunning ? "block" : "none";
         }
+        this._updateCalibrationCameraSelector();
     }
 
     _showMultiVideoGrid() {

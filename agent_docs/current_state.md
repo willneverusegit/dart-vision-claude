@@ -1,6 +1,6 @@
 # Current State
 
-Stand dieser Zusammenfassung: 2026-03-18 (Welle 1-4 + Auto-Agents: P22, P26, P27, P28, P30-P31, P33, P39-P43, P46-P49, P50-P56, P60-P65, P67-P70, Tier-2 #5-#7, #10-#14, P32, P35 erledigt)
+Stand dieser Zusammenfassung: 2026-03-19 (Welle 1-4 + Auto-Agents: P22, P26, P27, P28, P30-P31, P33, P39-P43, P46-P49, P50-P56, P60-P65, Tier-2 #5-#7, #10-#14, P32, P35 erledigt, Multi-Cam-Kalibriermodus repariert)
 
 ## Technischer Kern
 
@@ -30,6 +30,7 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 - Kalibrier-Qualitaetsmetrik (quality 0-100, Ringradien-Abweichung in mm)
 - Optische-Mittelpunkt-Erkennung mit Intensity-Fallback
 - Kalibrierungs-UX mit Statusanzeige und gefuehrten Schritten
+- Multi-Cam-Kalibrierung nutzt pro Kamera die aktive Sub-Pipeline statt nur den Single-Cam-Pfad (Frame, Info, Board, Lens, ROI, Overlay, Optical Center)
 - Telemetrie im Header (FPS, Dropped Frames, Queue-Druck, RAM)
 - Idempotentes Logging mit Session-ID, optionalem File-Rotation-Log (`DARTVISION_LOG_FILE`)
 - Windows-Startskript (`start.bat`) mit venv, Dependency-Check, Diagnose
@@ -96,10 +97,6 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 - 54 weitere Route-Tests fuer Pipeline-Start/Stop, Multi-Cam, WebSocket, Telemetrie (P64)
 - Ground-Truth-Validierungsskript und 32 Tests (P11)
 - Video-Replay-Testinfrastruktur: add_ground_truth.py Helper, verbessertes Fehler-Reporting, 29 Tests (P39)
-- Async Sleep Fix: alle time.sleep() in async Route-Handlern durch asyncio.sleep() ersetzt (P70)
-- Ring-Naming-Konsistenz: Mapping-Layer in E2E-Test-Helpers fuer bull_inner/outer Varianten (P69)
-- Timestamp-basiertes Detection Matching: Greedy-Matching GT-Timestamps gegen Detection-Frames, 10 Tests (P68)
-- Routes Factory Pattern: router innerhalb setup_routes() erzeugt statt module-level (P67)
 
 ## Was heute als fortgeschritten, aber noch sensibel gilt
 
@@ -111,9 +108,10 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 
 ## Verifizierte Kennzahlen
 
-- `1355` Tests bestanden (Stand 2026-03-18, +710 neue Tests)
+- `1203` Tests bestanden (Stand 2026-03-18, +558 neue Tests)
 - Gesamt-Coverage ~77%
 - Wichtige Module: main.py 78%, routes.py 74%, pipeline.py 68%, multi_camera.py 62%, capture.py 72%
+- Zusatzverifikation 2026-03-19: 256 fokussierte Tests gruen (Multi-Cam-Kalibrierung, Route-Coverage, Web/Hardening, Multi-Cam-Config); kein Vollsuite-Lauf
 - synthetische Pipeline-Benchmarks fuer `1`, `2` und `3` Kameras innerhalb der definierten KPI-Grenzen
 - E2E-Replay-Tests: 90% Hit Rate, 100% Score Accuracy auf synthetischen Clips (6 Tests)
 - Echte Video-Validierung: ~55% Hit Rate, 64% Sektor-Accuracy auf 2 echten Videos (rec_094311, rec_094521)

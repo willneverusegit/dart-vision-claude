@@ -9,7 +9,7 @@ board geometry, camera quality, multi-cam API endpoints.
 
 import threading
 import numpy as np
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 
 from src.main import app, app_state
@@ -619,6 +619,120 @@ class TestMultiCamCalibrationStatus:
                                    json={"cam_a": "cam_left", "cam_b": "cam_right"})
                 data = resp.json()
                 assert data["ready"] is True
+
+
+class TestCalibrationEndpointsWithMultiCam:
+    def _setup_multi(self):
+        left = _make_dummy_pipeline()
+        right = _make_dummy_pipeline()
+        multi = MagicMock()
+        multi.get_pipelines.return_value = {
+            "cam_left": left,
+            "cam_right": right,
+        }
+        return multi, left, right
+
+    def test_calibration_info_uses_selected_multi_camera(self):
+        with _SaveRestore("pipeline", "multi_pipeline", "active_camera_ids"):
+            multi, left, right = self._setup_multi()
+            left.board_calibration.get_config.return_value = {"valid": False, "method": None}
+            right.board_calibration.get_config.return_value = {
+                "valid": True,
+                "method": "aruco",
+                "mm_per_px": 0.85,
+                "radii_px": [10, 19, 106, 116, 188, 200],
+                "center_px": [200, 200],
+                "schema_version": 3,
+            }
+            right.camera_calibration.get_config.return_value = {
+                "lens_valid": True,
+                "lens_method": "charuco",
+            }
+            app_state["pipeline"] = None
+            app_state["multi_pipeline"] = multi
+            app_state["active_camera_ids"] = ["cam_left", "cam_right"]
+            with TestClient(app) as client:
+                resp = client.get("/api/calibration/info?camera_id=cam_right")
+                data = resp.json()
+                assert data["ok"] is True
+                assert data["camera_id"] == "cam_right"
+                assert data["board_valid"] is True
+                assert data["board_method"] == "aruco"
+                assert data["lens_valid"] is True
+
+    def test_board_manual_uses_selected_multi_camera(self):
+        with _SaveRestore("pipeline", "multi_pipeline", "active_camera_ids"):
+            multi, left, right = self._setup_multi()
+            right.board_calibration.manual_calibration.return_value = {"ok": True}
+            app_state["pipeline"] = None
+            app_state["multi_pipeline"] = multi
+            app_state["active_camera_ids"] = ["cam_left", "cam_right"]
+            with TestClient(app) as client:
+                resp = client.post(
+                    "/api/calibration/board/manual",
+                    json={
+                        "camera_id": "cam_right",
+                        "points": [[0, 0], [1, 0], [1, 1], [0, 1]],
+                    },
+                )
+                data = resp.json()
+                assert data["ok"] is True
+                assert data["camera_id"] == "cam_right"
+                right.board_calibration.manual_calibration.assert_called_once()
+                left.board_calibration.manual_calibration.assert_not_called()
+                right.refresh_remapper.assert_called_once()
+
+    def test_calibration_frame_uses_selected_multi_camera(self):
+        with _SaveRestore("pipeline", "multi_pipeline", "active_camera_ids"):
+            multi, _, right = self._setup_multi()
+            right.get_latest_raw_frame.return_value = np.full((24, 32, 3), 255, dtype=np.uint8)
+            app_state["pipeline"] = None
+            app_state["multi_pipeline"] = multi
+            app_state["active_camera_ids"] = ["cam_left", "cam_right"]
+            with TestClient(app) as client:
+                resp = client.get("/api/calibration/frame?camera_id=cam_right")
+                data = resp.json()
+                assert data["ok"] is True
+                assert data["camera_id"] == "cam_right"
+                assert data["image"].startswith("data:image/jpeg;base64,")
+
+    def test_board_aruco_uses_selected_multi_camera(self):
+        with _SaveRestore("pipeline", "multi_pipeline", "active_camera_ids"):
+            multi, left, right = self._setup_multi()
+            right.board_calibration.aruco_calibration_with_fallback.return_value = {"ok": True}
+            app_state["pipeline"] = None
+            app_state["multi_pipeline"] = multi
+            app_state["active_camera_ids"] = ["cam_left", "cam_right"]
+            with TestClient(app) as client:
+                resp = client.post("/api/calibration/board/aruco", json={"camera_id": "cam_right"})
+                data = resp.json()
+                assert data["ok"] is True
+                assert data["camera_id"] == "cam_right"
+                right.board_calibration.aruco_calibration_with_fallback.assert_called_once()
+                left.board_calibration.aruco_calibration_with_fallback.assert_not_called()
+
+    def test_lens_info_uses_selected_multi_camera(self):
+        with _SaveRestore("pipeline", "multi_pipeline", "active_camera_ids"):
+            multi, left, right = self._setup_multi()
+            board_spec = MagicMock()
+            board_spec.to_api_payload.return_value = {"preset": "40x20"}
+            right.camera_calibration.get_charuco_board_spec.return_value = board_spec
+            right.camera_calibration.get_config.return_value = {
+                "lens_valid": True,
+                "lens_method": "charuco",
+                "lens_image_size": [640, 480],
+                "lens_reprojection_error": 0.12,
+            }
+            app_state["pipeline"] = None
+            app_state["multi_pipeline"] = multi
+            app_state["active_camera_ids"] = ["cam_left", "cam_right"]
+            with TestClient(app) as client:
+                resp = client.get("/api/calibration/lens/info?camera_id=cam_right")
+                data = resp.json()
+                assert data["ok"] is True
+                assert data["camera_id"] == "cam_right"
+                assert data["valid"] is True
+                assert data["charuco_board"]["preset"] == "40x20"
 
 
 # ---- Optical Center Manual ----
