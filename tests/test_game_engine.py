@@ -129,6 +129,37 @@ class TestCricket:
         assert actual_keys == expected_keys
 
 
+    def test_sector_0_ignored(self, engine):
+        """Sector 0 (miss) should not affect cricket marks."""
+        engine.new_game(mode="cricket", players=["Alice"])
+        engine.register_throw(_throw(0, 0, 1, "miss"))
+        state = engine.get_state()
+        assert state["scores"]["Alice"] == 0
+
+    def test_sector_14_ignored(self, engine):
+        """Sector 14 is not a cricket number and should be ignored."""
+        engine.new_game(mode="cricket", players=["Alice"])
+        engine.register_throw(_throw(14, 14, 1, "single"))
+        state = engine.get_state()
+        assert state["scores"]["Alice"] == 0
+
+    def test_sector_21_ignored(self, engine):
+        """Sector 21 does not exist but should be handled gracefully."""
+        engine.new_game(mode="cricket", players=["Alice"])
+        engine.register_throw(_throw(21, 21, 1, "single"))
+        state = engine.get_state()
+        assert state["scores"]["Alice"] == 0
+
+    def test_inner_bull_maps_to_25(self, engine):
+        """Inner bull (sector 50) should map to 25 for cricket."""
+        engine.new_game(mode="cricket", players=["Alice"])
+        engine.register_throw(_throw(50, 50, 2, "inner_bull"))
+        state = engine.get_state()
+        marks = state["players"][0]["cricket_marks"]
+        bull_marks = marks.get(25, marks.get("25"))
+        assert bull_marks == 2
+
+
 class TestFreePlay:
     def test_score_accumulates(self, engine):
         engine.new_game(mode="free", players=["Alice"])
