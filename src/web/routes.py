@@ -712,6 +712,24 @@ def setup_routes(app_state: dict) -> APIRouter:
         result = pipeline.board_calibration.aruco_calibration_with_fallback(frame)
         if result.get("ok"):
             pipeline.refresh_remapper()
+            from src.cv.calibration_overlay import draw_aruco_result_overlay, encode_result_image
+            corners = result.get("corners_px", [])
+            radii = result.get("radii_px", [])
+            if corners and radii:
+                center_px = [
+                    sum(c[0] for c in corners) / len(corners),
+                    sum(c[1] for c in corners) / len(corners),
+                ]
+                overlay = draw_aruco_result_overlay(frame, corners, center_px, radii)
+                result["result_image"] = encode_result_image(overlay)
+                result["quality_info"] = {
+                    "markers_found": len(result.get("detected_ids", [])),
+                    "quality_pct": min(100, len(result.get("detected_ids", [])) * 25),
+                    "description": f"{len(result.get('detected_ids', []))} Marker erkannt",
+                }
+        else:
+            from src.cv.calibration_overlay import encode_result_image
+            result["result_image"] = encode_result_image(frame)
         if resolved_camera_id is not None:
             result.setdefault("camera_id", resolved_camera_id)
         return result

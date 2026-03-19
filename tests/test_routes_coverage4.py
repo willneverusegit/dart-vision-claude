@@ -784,3 +784,40 @@ class TestOpticalCenterManual:
                 data = resp.json()
                 assert data["ok"] is True
                 assert data["optical_center"] == [200.5, 200.5]
+
+
+class TestCalibrationResultImage:
+    def test_aruco_returns_result_image(self):
+        pipe = _make_dummy_pipeline()
+        pipe.board_calibration.aruco_calibration_with_fallback.return_value = {
+            "ok": True,
+            "homography": [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+            "mm_per_px": 0.5,
+            "corners_px": [[100, 100], [540, 100], [540, 380], [100, 380]],
+            "radii_px": [10, 20, 80, 100, 160, 170],
+            "detected_ids": [0, 1, 2, 3],
+            "detection_method": "raw",
+        }
+        save = {}
+        for k in ["pipeline", "pipeline_running", "multi_pipeline_running", "multi_pipeline"]:
+            save[k] = app_state.get(k)
+        try:
+            app_state["pipeline"] = pipe
+            app_state["pipeline_running"] = True
+            app_state["multi_pipeline_running"] = False
+            app_state["multi_pipeline"] = None
+            with TestClient(app) as client:
+                resp = client.post("/api/calibration/aruco")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["ok"] is True
+            assert "result_image" in data
+            assert data["result_image"].startswith("data:image/jpeg;base64,")
+            assert "quality_info" in data
+            assert data["quality_info"]["markers_found"] == 4
+        finally:
+            for k, v in save.items():
+                if v is None:
+                    app_state.pop(k, None)
+                else:
+                    app_state[k] = v
