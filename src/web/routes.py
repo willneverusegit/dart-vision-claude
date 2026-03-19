@@ -1686,16 +1686,19 @@ def setup_routes(app_state: dict) -> APIRouter:
                     # Auto-capture for ChArUco lens calibration (every 10th frame ~3fps)
                     _feed_frame_counter["n"] += 1
                     if _feed_frame_counter["n"] % 10 == 0:
-                        collectors = app_state.get("charuco_collectors", {})
-                        collector = collectors.get(camera_id)
-                        if collector and not collector.ready_to_calibrate:
-                            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                            dictionary = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_6X6_250)
-                            detector = cv2.aruco.ArucoDetector(dictionary)
-                            corners, ids, _ = detector.detectMarkers(gray)
-                            if ids is not None and len(ids) >= 4:
-                                all_corners = np.concatenate([c.reshape(-1, 2) for c in corners])
-                                collector.add_frame_if_diverse(all_corners, frame)
+                        try:
+                            collectors = app_state.get("charuco_collectors", {})
+                            collector = collectors.get(camera_id)
+                            if collector and not collector.ready_to_calibrate:
+                                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                                dictionary = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_6X6_250)
+                                detector = cv2.aruco.ArucoDetector(dictionary)
+                                corners, ids, _ = detector.detectMarkers(gray)
+                                if ids is not None and len(ids) >= 4:
+                                    all_corners = np.concatenate([c.reshape(-1, 2) for c in corners])
+                                    collector.add_frame_if_diverse(all_corners, frame)
+                        except Exception as exc:
+                            logger.warning("Auto-capture error for %s: %s", camera_id, exc)
                     jpeg = encode_frame_jpeg(frame)
                     yield make_mjpeg_frame(jpeg)
                 await asyncio.sleep(0.033)
