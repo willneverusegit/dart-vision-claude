@@ -3,11 +3,13 @@
 from src.game.models import GameState, GameMode, GamePhase, PlayerState, ThrowResult
 from src.game.engine import GameEngine
 from src.game.modes import (
-    get_checkout_suggestion,
     is_valid_x01_finish,
     format_score_display,
     CRICKET_NUMBERS,
+    VALID_RINGS,
+    VALID_SECTORS,
 )
+from src.game.checkout import get_checkout
 
 __all__ = [
     "GameState",
@@ -16,8 +18,10 @@ __all__ = [
     "PlayerState",
     "ThrowResult",
     "GameEngine",
-    "get_checkout_suggestion",
+    "get_checkout",
     "is_valid_x01_finish",
     "format_score_display",
     "CRICKET_NUMBERS",
+    "VALID_RINGS",
+    "VALID_SECTORS",
 ]

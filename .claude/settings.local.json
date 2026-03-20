@@ -38,7 +38,12 @@
       "Skill(commit-commands:commit:*)",
       "Skill(claude-md-management:revise-claude-md:*)",
       "Read(//c/Users/domes/OneDrive/Desktop/dart-vision-claude/**)",
-      "Read(//c/Users/domes/.claude/plugins/agentic-os/**)"
+      "Read(//c/Users/domes/.claude/plugins/agentic-os/**)",
+      "Bash(cp ~/.claude/plugins/agentic-os/hooks/hooks.json ~/.claude/plugins/marketplaces/local-desktop-app-uploads/agentic-os/hooks/hooks.json)",
+      "Bash(cp ~/.claude/plugins/agentic-os/hooks/session-start-context.txt ~/.claude/plugins/marketplaces/local-desktop-app-uploads/agentic-os/hooks/session-start-context.txt)",
+      "Bash(cp ~/.claude/plugins/agentic-os/skills/heartbeat/SKILL.md ~/.claude/plugins/marketplaces/local-desktop-app-uploads/agentic-os/skills/heartbeat/SKILL.md)",
+      "Bash(cp ~/.claude/plugins/agentic-os/skills/agent-orchestrator/SKILL.md ~/.claude/plugins/marketplaces/local-desktop-app-uploads/agentic-os/skills/agent-orchestrator/SKILL.md)",
+      "Bash(cp ~/.claude/plugins/agentic-os/skills/agent-handoff/SKILL.md ~/.claude/plugins/marketplaces/local-desktop-app-uploads/agentic-os/skills/agent-handoff/SKILL.md)"
     ]
   },
   "hooks": {

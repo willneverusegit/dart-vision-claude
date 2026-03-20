@@ -1,28 +1,42 @@
-"""Tests for game mode helpers."""
+"""Tests for game mode helpers and checkout logic."""
 
 from src.game.modes import (
-    get_checkout_suggestion,
     is_valid_x01_finish,
     format_score_display,
     CRICKET_NUMBERS,
 )
+from src.game.checkout import get_checkout
 
 
-class TestCheckoutSuggestion:
+class TestCheckout:
     def test_known_checkout_170(self):
-        assert get_checkout_suggestion(170) == "T20 T20 Bull"
+        result = get_checkout(170)
+        assert len(result) > 0
+        assert "T20 T20 D25" in result
 
     def test_known_checkout_40(self):
-        assert get_checkout_suggestion(40) == "D20"
+        result = get_checkout(40)
+        assert "D20" in result
 
     def test_known_checkout_50(self):
-        assert get_checkout_suggestion(50) == "Bull"
+        result = get_checkout(50)
+        assert "D25" in result
 
     def test_unknown_checkout(self):
-        assert get_checkout_suggestion(999) is None
+        assert get_checkout(999) == []
 
     def test_checkout_2(self):
-        assert get_checkout_suggestion(2) == "D1"
+        result = get_checkout(2)
+        assert "D1" in result
+
+    def test_checkout_respects_darts_left(self):
+        # 170 requires 3 darts (T20 T20 D25), should fail with 2
+        result = get_checkout(170, darts_left=2)
+        assert result == []
+
+    def test_checkout_returns_list(self):
+        result = get_checkout(100)
+        assert isinstance(result, list)
 
 
 class TestIsValidFinish:

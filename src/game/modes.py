@@ -1,54 +1,4 @@
-"""Game mode helpers and checkout tables."""
-
-
-# X01 checkout suggestions (common finishes)
-X01_CHECKOUTS: dict[int, str] = {
-    170: "T20 T20 Bull",
-    167: "T20 T19 Bull",
-    164: "T20 T18 Bull",
-    161: "T20 T17 Bull",
-    160: "T20 T20 D20",
-    158: "T20 T20 D19",
-    157: "T20 T19 D20",
-    156: "T20 T20 D18",
-    155: "T20 T19 D19",
-    154: "T20 T18 D20",
-    153: "T20 T19 D18",
-    152: "T20 T20 D16",
-    151: "T20 T17 D20",
-    150: "T20 T18 D18",
-    149: "T20 T19 D16",
-    148: "T20 T16 D20",
-    147: "T20 T17 D18",
-    146: "T20 T18 D16",
-    145: "T20 T15 D20",
-    144: "T20 T20 D12",
-    143: "T20 T17 D16",
-    142: "T20 T14 D20",
-    141: "T20 T19 D12",
-    140: "T20 T20 D10",
-    # Common lower finishes
-    100: "T20 D20",
-    99: "T19 S10 D16",
-    80: "T20 D10",
-    60: "20 D20",
-    50: "Bull",
-    40: "D20",
-    36: "D18",
-    32: "D16",
-    20: "D10",
-    16: "D8",
-    10: "D5",
-    8: "D4",
-    6: "D3",
-    4: "D2",
-    2: "D1",
-}
-
-
-def get_checkout_suggestion(remaining: int) -> str | None:
-    """Get a checkout suggestion for X01 remaining score."""
-    return X01_CHECKOUTS.get(remaining)
+"""Game mode helpers."""
 
 
 def is_valid_x01_finish(remaining: int) -> bool:
@@ -65,6 +15,10 @@ def is_valid_x01_finish(remaining: int) -> bool:
 
 
 CRICKET_NUMBERS: list[int] = [20, 19, 18, 17, 16, 15, 25]
+
+# Valid ring names and sector numbers for input validation
+VALID_RINGS: set[str] = {"single", "double", "triple", "inner_bull", "outer_bull", "miss"}
+VALID_SECTORS: set[int] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 25, 50}
 
 
 def format_score_display(score: int, multiplier: int, ring: str) -> str:

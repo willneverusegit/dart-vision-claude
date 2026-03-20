@@ -160,8 +160,7 @@ def setup_routes(app_state: dict) -> APIRouter:
             frame = app_state.get("latest_frame")
         return pipeline, frame, resolved_camera_id, None
 
-    VALID_RINGS = {"single", "double", "triple", "inner_bull", "outer_bull", "miss"}
-    VALID_SECTORS = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 25, 50}
+    from src.game.modes import VALID_RINGS, VALID_SECTORS
 
     def _validate_score_input(body: dict) -> tuple[dict | None, str | None]:
         """Validate score/sector/multiplier/ring from request body.
