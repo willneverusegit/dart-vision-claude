@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>DartVision Mobile</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+:root{
+  --bg:#1a1a2e;--bg2:#16213e;--panel:#0f3460;--accent:#e94560;
+  --accent2:#ff6b81;--text:#eee;--text2:#aab;--muted:#667;
+  --ok:#2ed573;--warn:#ffa502;--danger:#c0392b;
+}
+html,body{height:100%;overflow:hidden;font-family:-apple-system,system-ui,sans-serif;background:var(--bg);color:var(--text)}
+
+/* Layout */
+.app{display:flex;flex-direction:column;height:100dvh;position:relative}
+.camera-bg{position:absolute;inset:0;z-index:0}
+.camera-bg video{width:100%;height:100%;object-fit:cover;opacity:.25}
+.ui{position:relative;z-index:1;display:flex;flex-direction:column;height:100%}
+
+/* Header */
+.header{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:rgba(22,33,62,.92);backdrop-filter:blur(4px);gap:6px;flex-shrink:0}
+.header select,.header input,.header button{font-size:13px;padding:4px 8px;border-radius:6px;border:1px solid #334;background:var(--panel);color:var(--text)}
+.header button{background:var(--accent);border-color:var(--accent);font-weight:700;cursor:pointer}
+.header button:active{background:var(--accent2)}
+.player-input{width:100px}
+.score-select{width:62px}
+
+/* Scoreboard */
+.scoreboard{display:flex;gap:4px;padding:4px 8px;background:rgba(22,33,62,.88);backdrop-filter:blur(4px);flex-shrink:0;overflow-x:auto}
+.p-card{flex:1;min-width:0;padding:6px 8px;border-radius:8px;background:var(--panel);border:2px solid transparent;text-align:center}
+.p-card.active{border-color:var(--accent);box-shadow:0 0 12px rgba(233,69,96,.4)}
+.p-name{font-size:11px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.p-score{font-size:22px;font-weight:800;line-height:1.1}
+.p-card.active .p-score{color:var(--accent)}
+.p-turn{font-size:10px;color:var(--warn);margin-top:2px;min-height:14px}
+.p-cricket{font-size:9px;color:var(--text2);margin-top:1px;display:flex;flex-wrap:wrap;justify-content:center;gap:2px}
+.p-cricket span{background:rgba(255,255,255,.08);padding:0 3px;border-radius:3px}
+.p-cricket span.closed{color:var(--ok)}
+
+/* Dartboard area */
+.board-area{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:0;padding:4px}
+.board-wrap{position:relative;width:100%;max-width:380px;aspect-ratio:1}
+.board-wrap svg{width:100%;height:100%;filter:drop-shadow(0 2px 8px rgba(0,0,0,.5))}
+
+/* Turn info bar */
+.turn-bar{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:rgba(22,33,62,.92);backdrop-filter:blur(4px);flex-shrink:0;gap:8px}
+.turn-total{font-size:20px;font-weight:800;color:var(--accent);min-width:50px}
+.darts-left{font-size:16px;letter-spacing:2px}
+.checkout{font-size:13px;color:var(--ok);font-weight:600;flex:1;text-align:center}
+
+/* Controls */
+.controls{display:flex;gap:6px;padding:6px 8px;background:rgba(22,33,62,.95);flex-shrink:0}
+.controls button{flex:1;padding:10px 4px;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;color:#fff}
+.btn-next{background:var(--ok)}
+.btn-undo{background:var(--warn);color:#333}
+.btn-miss{background:var(--muted)}
+.btn-end{background:var(--danger)}
+.btn-cam{background:var(--panel);border:1px solid #445!important}
+.controls button:active{opacity:.7}
+
+/* Winner overlay */
+.winner-overlay{position:fixed;inset:0;z-index:99;background:rgba(0,0,0,.85);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px}
+.winner-overlay h1{font-size:28px;color:var(--ok)}
+.winner-overlay button{padding:12px 32px;font-size:16px;border:none;border-radius:10px;background:var(--accent);color:#fff;font-weight:700;cursor:pointer}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="camera-bg" id="camBg"><video id="camVideo" autoplay playsinline muted></video></div>
+  <div class="ui">
+    <!-- Header: Setup -->
+    <div class="header">
+      <select id="mode"><option value="x01">X01</option><option value="cricket">Cricket</option><option value="free">Free</option></select>
+      <select id="startScore" class="score-select"><option value="301">301</option><option value="501" selected>501</option><option value="701">701</option></select>
+      <input id="players" class="player-input" placeholder="P1, P2" value="Ich">
+      <button id="btnNew">Start</button>
+    </div>
+
+    <!-- Scoreboard -->
+    <div class="scoreboard" id="scoreboard"></div>
+
+    <!-- Dartboard -->
+    <div class="board-area">
+      <div class="board-wrap" id="boardWrap"></div>
+    </div>
+
+    <!-- Turn bar -->
+    <div class="turn-bar">
+      <div class="turn-total" id="turnTotal">0</div>
+      <div class="checkout" id="checkout"></div>
+      <div class="darts-left" id="dartsLeft">🎯🎯🎯</div>
+    </div>
+
+    <!-- Controls -->
+    <div class="controls">
+      <button class="btn-miss" id="btnMiss">Miss</button>
+      <button class="btn-undo" id="btnUndo">Undo</button>
+      <button class="btn-next" id="btnNext">Weiter ➜</button>
+      <button class="btn-cam" id="btnCam">📷</button>
+    </div>
+  </div>
+
+  <!-- Winner -->
+  <div class="winner-overlay hidden" id="winnerOverlay">
+    <h1 id="winnerText"></h1>
+    <button id="btnRestart">Neues Spiel</button>
+  </div>
+</div>
+
+<script>
+// ===== CHECKOUT TABLE (PDC Standard, 2-170) =====
+const CHECKOUTS={170:["T20 T20 D25"],167:["T20 T19 D25"],164:["T20 T18 D25"],161:["T20 T17 D25"],160:["T20 T20 D20"],158:["T20 T20 D19"],157:["T20 T19 D20"],156:["T20 T20 D18"],155:["T20 T19 D19"],154:["T20 T18 D20"],153:["T20 T19 D18"],152:["T20 T20 D16"],151:["T20 T17 D20"],150:["T20 T18 D18"],149:["T20 T19 D16"],148:["T20 T16 D20"],147:["T20 T17 D18"],146:["T20 T18 D16"],145:["T20 T15 D20"],144:["T20 T20 D12"],143:["T20 T17 D16"],142:["T20 T14 D20"],141:["T20 T19 D12"],140:["T20 T20 D10"],139:["T19 T14 D20"],138:["T20 T18 D12"],137:["T20 T15 D16"],136:["T20 T20 D8"],134:["T20 T14 D16"],132:["T20 T16 D12"],131:["T20 T13 D16"],130:["T20 T18 D8"],129:["T19 T16 D12"],128:["T18 T14 D16"],127:["T20 T17 D8"],126:["T19 T15 D12"],125:["T20 T15 D10"],124:["T20 T16 D8"],123:["T19 T16 D9"],122:["T18 T18 D7"],121:["T20 T11 D14"],120:["T20 S20 D20"],119:["T19 T12 D13"],118:["T20 S18 D20"],117:["T20 S17 D20"],116:["T20 S16 D20"],115:["T20 S15 D20"],114:["T20 S14 D20"],113:["T20 S13 D20"],112:["T20 S12 D20"],111:["T20 S19 D16"],110:["T20 S10 D20"],109:["T20 S9 D20"],108:["T20 S16 D16"],107:["T19 S10 D20"],106:["T20 S6 D20"],105:["T20 S13 D16"],104:["T18 S10 D20"],103:["T19 S6 D20"],102:["T20 S10 D16"],101:["T17 S10 D20"],100:["T20 D20"],99:["T19 S10 D16"],98:["T20 D19"],97:["T19 D20"],96:["T20 D18"],95:["T19 D19"],94:["T18 D20"],93:["T19 D18"],92:["T20 D16"],91:["T17 D20"],90:["T18 D18"],89:["T19 D16"],88:["T16 D20"],87:["T17 D18"],86:["T18 D16"],85:["T15 D20"],84:["T20 D12"],83:["T17 D16"],82:["T14 D20"],81:["T19 D12"],80:["T20 D10"],79:["T13 D20"],78:["T18 D12"],77:["T15 D16"],76:["T20 D8"],75:["T17 D12"],74:["T14 D16"],73:["T19 D8"],72:["T16 D12"],71:["T13 D16"],70:["T18 D8"],69:["T15 D12"],68:["T20 D4"],67:["T17 D8"],66:["T14 D12"],65:["T19 D4"],64:["T16 D8"],63:["T13 D12"],62:["T10 D16"],61:["T15 D8"],60:["S20 D20"],59:["S19 D20"],58:["S18 D20"],57:["S17 D20"],56:["S16 D20"],55:["S15 D20"],54:["S14 D20"],53:["S13 D20"],52:["S12 D20"],51:["S11 D20"],50:["D25"],49:["S9 D20"],48:["S16 D16"],47:["S15 D16"],46:["S14 D16"],45:["S13 D16"],44:["S12 D16"],43:["S11 D16"],42:["S10 D16"],41:["S9 D16"],40:["D20"],39:["S7 D16"],38:["D19"],36:["D18"],34:["D17"],32:["D16"],30:["D15"],28:["D14"],26:["D13"],24:["D12"],22:["D11"],20:["D10"],18:["D9"],16:["D8"],14:["D7"],12:["D6"],10:["D5"],8:["D4"],6:["D3"],4:["D2"],2:["D1"]};
+
+// ===== BOARD GEOMETRY =====
+const SECTORS=[20,1,18,4,13,6,10,15,2,17,3,19,7,16,8,11,14,9,12,5];
+const CX=200,CY=200;
+const R_DBULL=8,R_BULL=20,R_TRIPLE_IN=97,R_TRIPLE_OUT=107,R_DOUBLE_IN=162,R_DOUBLE_OUT=172,R_BOARD=178;
+const COLORS={even:["#e8323c","#2a8c37"],odd:["#222","#f5e6c8"]};
+
+function buildBoard(){
+  const ns="http://www.w3.org/2000/svg";
+  const svg=document.createElementNS(ns,"svg");
+  svg.setAttribute("viewBox","0 0 400 400");
+
+  // Wire color
+  const wire="#888";
+
+  for(let i=0;i<20;i++){
+    const a0=(i*18-99)*Math.PI/180, a1=((i+1)*18-99)*Math.PI/180;
+    const sec=SECTORS[i];
+    const ci=i%2;
+    // Double
+    addSeg(svg,ns,R_DOUBLE_IN,R_DOUBLE_OUT,a0,a1,COLORS.even[ci],sec,2,"double");
+    // Outer single
+    addSeg(svg,ns,R_TRIPLE_OUT,R_DOUBLE_IN,a0,a1,COLORS.odd[ci],sec,1,"single");
+    // Triple
+    addSeg(svg,ns,R_TRIPLE_IN,R_TRIPLE_OUT,a0,a1,COLORS.even[ci],sec,3,"triple");
+    // Inner single
+    addSeg(svg,ns,R_BULL,R_TRIPLE_IN,a0,a1,COLORS.odd[ci],sec,1,"single");
+    // Number labels
+    const la=(a0+a1)/2;
+    const lr=R_DOUBLE_OUT+11;
+    const tx=CX+lr*Math.cos(la), ty=CY+lr*Math.sin(la);
+    const t=document.createElementNS(ns,"text");
+    t.setAttribute("x",tx);t.setAttribute("y",ty);
+    t.setAttribute("text-anchor","middle");t.setAttribute("dominant-baseline","central");
+    t.setAttribute("fill","#ddd");t.setAttribute("font-size","11");t.setAttribute("font-weight","700");
+    t.setAttribute("pointer-events","none");
+    t.textContent=sec;
+    svg.appendChild(t);
+  }
+
+  // Bull
+  const bull=document.createElementNS(ns,"circle");
+  bull.setAttribute("cx",CX);bull.setAttribute("cy",CY);bull.setAttribute("r",R_BULL);
+  bull.setAttribute("fill","#2a8c37");bull.style.cursor="pointer";
+  bull.dataset.sector="25";bull.dataset.multi="1";bull.dataset.ring="outer_bull";
+  bull.addEventListener("click",()=>onHit(25,1,"outer_bull"));
+  svg.appendChild(bull);
+
+  const dbull=document.createElementNS(ns,"circle");
+  dbull.setAttribute("cx",CX);dbull.setAttribute("cy",CY);dbull.setAttribute("r",R_DBULL);
+  dbull.setAttribute("fill","#e8323c");dbull.style.cursor="pointer";
+  dbull.dataset.sector="25";dbull.dataset.multi="2";dbull.dataset.ring="inner_bull";
+  dbull.addEventListener("click",()=>onHit(25,2,"inner_bull"));
+  svg.appendChild(dbull);
+
+  // Wire rings
+  [R_DBULL,R_BULL,R_TRIPLE_IN,R_TRIPLE_OUT,R_DOUBLE_IN,R_DOUBLE_OUT].forEach(r=>{
+    const c=document.createElementNS(ns,"circle");
+    c.setAttribute("cx",CX);c.setAttribute("cy",CY);c.setAttribute("r",r);
+    c.setAttribute("fill","none");c.setAttribute("stroke",wire);c.setAttribute("stroke-width","0.5");
+    c.setAttribute("pointer-events","none");
+    svg.appendChild(c);
+  });
+  // Wire lines
+  for(let i=0;i<20;i++){
+    const a=(i*18-99)*Math.PI/180;
+    const l=document.createElementNS(ns,"line");
+    l.setAttribute("x1",CX+R_DBULL*Math.cos(a));l.setAttribute("y1",CY+R_DBULL*Math.sin(a));
+    l.setAttribute("x2",CX+R_DOUBLE_OUT*Math.cos(a));l.setAttribute("y2",CY+R_DOUBLE_OUT*Math.sin(a));
+    l.setAttribute("stroke",wire);l.setAttribute("stroke-width","0.5");l.setAttribute("pointer-events","none");
+    svg.appendChild(l);
+  }
+
+  document.getElementById("boardWrap").appendChild(svg);
+}
+
+function addSeg(svg,ns,r1,r2,a0,a1,fill,sector,multi,ring){
+  const d=descArc(r1,r2,a0,a1);
+  const p=document.createElementNS(ns,"path");
+  p.setAttribute("d",d);p.setAttribute("fill",fill);
+  p.setAttribute("stroke","#555");p.setAttribute("stroke-width","0.3");
+  p.style.cursor="pointer";
+  p.addEventListener("click",()=>onHit(sector,multi,ring));
+  // Hover
+  p.addEventListener("touchstart",e=>{p.setAttribute("fill","rgba(255,255,255,0.3)")},{passive:true});
+  p.addEventListener("touchend",()=>{p.setAttribute("fill",fill)},{passive:true});
+  p.addEventListener("mouseenter",()=>{p.setAttribute("fill","rgba(255,255,255,0.3)")});
+  p.addEventListener("mouseleave",()=>{p.setAttribute("fill",fill)});
+  svg.appendChild(p);
+}
+
+function descArc(r1,r2,a0,a1){
+  const x1i=CX+r1*Math.cos(a0),y1i=CY+r1*Math.sin(a0);
+  const x1o=CX+r2*Math.cos(a0),y1o=CY+r2*Math.sin(a0);
+  const x2i=CX+r1*Math.cos(a1),y2i=CY+r1*Math.sin(a1);
+  const x2o=CX+r2*Math.cos(a1),y2o=CY+r2*Math.sin(a1);
+  return`M${x1o},${y1o}A${r2},${r2} 0 0,1 ${x2o},${y2o}L${x2i},${y2i}A${r1},${r1} 0 0,0 ${x1i},${y1i}Z`;
+}
+
+// ===== GAME ENGINE =====
+let game=null;
+
+function newGame(){
+  const mode=document.getElementById("mode").value;
+  const startScore=parseInt(document.getElementById("startScore").value);
+  const names=document.getElementById("players").value.split(",").map(s=>s.trim()).filter(Boolean);
+  if(!names.length) names.push("Spieler 1");
+
+  game={
+    mode,startScore,
+    players:names.map(n=>({
+      name:n, score:mode==="x01"?startScore:0,
+      turns:[], currentTurn:[],
+      cricketMarks:{15:0,16:0,17:0,18:0,19:0,20:0,25:0}
+    })),
+    currentPlayer:0,
+    round:1,
+    winner:null,
+    turnScoreBefore:mode==="x01"?startScore:0
+  };
+  game.turnScoreBefore=game.players[0].score;
+  hideWinner();
+  render();
+}
+
+function onHit(sector,multi,ring){
+  if(!game||game.winner) return;
+  const p=game.players[game.currentPlayer];
+  if(p.currentTurn.length>=3) return;
+
+  const pts=sector*multi;
+  const dart={sector,multi,ring,score:pts};
+
+  if(game.mode==="x01"){
+    const newScore=p.score-pts;
+    if(newScore<0||(newScore===1)||(newScore===0&&multi!==2&&!(sector===25&&multi===2))){
+      // Bust
+      bust();return;
+    }
+    p.score=newScore;
+  } else if(game.mode==="cricket"){
+    const targets=[15,16,17,18,19,20,25];
+    if(targets.includes(sector)){
+      const marks=multi;
+      const before=p.cricketMarks[sector];
+      const after=Math.min(before+marks,3);
+      p.cricketMarks[sector]=after;
+      // Score points for marks beyond 3 if other players haven't closed
+      const excess=(before+marks)-3;
+      if(excess>0&&!allClosed(sector)){
+        p.score+=excess*sector;
+      }
+    }
+  } else {
+    // Free
+    p.score+=pts;
+  }
+
+  p.currentTurn.push(dart);
+
+  // Check win
+  if(game.mode==="x01"&&p.score===0){
+    game.winner=p.name;
+  } else if(game.mode==="cricket"){
+    const targets=[15,16,17,18,19,20,25];
+    const allDone=targets.every(t=>p.cricketMarks[t]>=3);
+    if(allDone){
+      const hasHighest=game.players.every(op=>op===p||p.score>=op.score);
+      if(hasHighest) game.winner=p.name;
+    }
+  }
+
+  render();
+
+  if(game.winner){
+    showWinner(game.winner);
+  } else if(p.currentTurn.length>=3){
+    setTimeout(()=>nextPlayer(),600);
+  }
+}
+
+function allClosed(sector){
+  return game.players.every(p=>p.cricketMarks[sector]>=3);
+}
+
+function bust(){
+  const p=game.players[game.currentPlayer];
+  p.score=game.turnScoreBefore;
+  p.currentTurn=[];
+  flash("BUST!");
+  setTimeout(()=>nextPlayer(),800);
+}
+
+function miss(){
+  if(!game||game.winner) return;
+  onHit(0,0,"miss");
+}
+
+function undo(){
+  if(!game||game.winner) return;
+  const p=game.players[game.currentPlayer];
+  if(!p.currentTurn.length) return;
+  const dart=p.currentTurn.pop();
+  if(game.mode==="x01"){
+    p.score+=dart.score;
+  } else if(game.mode==="cricket"){
+    // Simplified undo for cricket - just remove marks
+    const targets=[15,16,17,18,19,20,25];
+    if(targets.includes(dart.sector)){
+      p.cricketMarks[dart.sector]=Math.max(0,p.cricketMarks[dart.sector]-dart.multi);
+    }
+    // Note: point scoring undo is approximate
+  } else {
+    p.score-=dart.score;
+  }
+  render();
+}
+
+function nextPlayer(){
+  if(!game||game.winner) return;
+  const p=game.players[game.currentPlayer];
+  p.turns.push([...p.currentTurn]);
+  p.currentTurn=[];
+  game.currentPlayer=(game.currentPlayer+1)%game.players.length;
+  if(game.currentPlayer===0) game.round++;
+  game.turnScoreBefore=game.players[game.currentPlayer].score;
+  render();
+}
+
+// ===== CAMERA =====
+let camActive=false;
+async function toggleCam(){
+  const v=document.getElementById("camVideo");
+  if(camActive){
+    v.srcObject?.getTracks().forEach(t=>t.stop());
+    v.srcObject=null;
+    camActive=false;
+    document.getElementById("btnCam").textContent="📷";
+    return;
+  }
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"},audio:false});
+    v.srcObject=stream;
+    camActive=true;
+    document.getElementById("btnCam").textContent="📷✕";
+  }catch(e){
+    console.warn("Kamera nicht verfuegbar:",e);
+  }
+}
+
+// ===== FLASH =====
+function flash(msg){
+  const d=document.createElement("div");
+  d.textContent=msg;
+  d.style.cssText="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);font-size:36px;font-weight:900;color:var(--danger);text-shadow:0 0 20px rgba(0,0,0,.8);z-index:50;pointer-events:none;animation:fadeOut .8s ease-out forwards";
+  document.body.appendChild(d);
+  setTimeout(()=>d.remove(),900);
+}
+
+// ===== RENDER =====
+function render(){
+  if(!game) return;
+  const sb=document.getElementById("scoreboard");
+  const p=game.players[game.currentPlayer];
+
+  // Scoreboard
+  sb.innerHTML=game.players.map((pl,i)=>{
+    const active=i===game.currentPlayer?"active":"";
+    const turnStr=pl.currentTurn.map(d=>dartLabel(d)).join(" ");
+    let extra="";
+    if(game.mode==="cricket"){
+      const targets=[20,19,18,17,16,15,25];
+      extra='<div class="p-cricket">'+targets.map(t=>{
+        const m=pl.cricketMarks[t];
+        const label=t===25?"B":t;
+        const cls=m>=3?"closed":"";
+        return`<span class="${cls}">${label}:${m>=3?"✕":m}</span>`;
+      }).join("")+"</div>";
+    }
+    return`<div class="p-card ${active}"><div class="p-name">${pl.name}</div><div class="p-score">${pl.score}</div><div class="p-turn">${turnStr}</div>${extra}</div>`;
+  }).join("");
+
+  // Turn total
+  const turnPts=p.currentTurn.reduce((s,d)=>s+d.score,0);
+  document.getElementById("turnTotal").textContent=turnPts;
+
+  // Darts left
+  const left=3-p.currentTurn.length;
+  document.getElementById("dartsLeft").textContent="🎯".repeat(left)+"  ".repeat(3-left);
+
+  // Checkout
+  const co=document.getElementById("checkout");
+  if(game.mode==="x01"&&p.score>=2&&p.score<=170){
+    const sugg=CHECKOUTS[p.score];
+    co.textContent=sugg?sugg[0]:"";
+  } else {
+    co.textContent="";
+  }
+
+  // Show/hide start score
+  document.getElementById("startScore").style.display=game.mode==="x01"?"":"none";
+}
+
+function dartLabel(d){
+  if(d.score===0) return "M";
+  if(d.sector===25) return d.multi===2?"D25":"25";
+  const prefix=d.multi===3?"T":d.multi===2?"D":"";
+  return prefix+d.sector;
+}
+
+// Fix: miss dart object
+const origOnHit=onHit;
+// Override onHit for miss (sector=0)
+// Already handled: sector*multi = 0*0 = 0
+
+function showWinner(name){
+  document.getElementById("winnerText").textContent=name+" gewinnt!";
+  document.getElementById("winnerOverlay").classList.remove("hidden");
+}
+function hideWinner(){
+  document.getElementById("winnerOverlay").classList.add("hidden");
+}
+
+// ===== INIT =====
+document.getElementById("btnNew").addEventListener("click",newGame);
+document.getElementById("btnMiss").addEventListener("click",miss);
+document.getElementById("btnUndo").addEventListener("click",undo);
+document.getElementById("btnNext").addEventListener("click",nextPlayer);
+document.getElementById("btnCam").addEventListener("click",toggleCam);
+document.getElementById("btnRestart").addEventListener("click",newGame);
+document.getElementById("mode").addEventListener("change",()=>{
+  document.getElementById("startScore").style.display=document.getElementById("mode").value==="x01"?"":"none";
+});
+
+buildBoard();
+newGame();
+
+// Fade-out animation
+const style=document.createElement("style");
+style.textContent="@keyframes fadeOut{0%{opacity:1;transform:translate(-50%,-50%) scale(1)}100%{opacity:0;transform:translate(-50%,-50%) scale(1.5)}}";
+document.head.appendChild(style);
+</script>
+</body>
+</html>
