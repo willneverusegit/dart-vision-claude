@@ -121,6 +121,7 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 - Gesamt-Coverage ~77%
 - Wichtige Module: main.py 78%, routes.py 81%, pipeline.py 68%, multi_camera.py 62%, capture.py 72%
 - Zusatzverifikation 2026-03-20 (P64-Abschluss): 247 fokussierte Web/Route/Wizard/Preview/ChArUco-Tests gruen; `src/web/routes.py` 81% Coverage
+- Zusatzverifikation 2026-03-20 (Live-Check/Wrap-up): Multi-Cam-Guided-Capture im Browser gegen `http://127.0.0.1:8000/` verifiziert, `tests/test_wizard_flow.py` und `tests/test_stereo_wizard_api.py` (`11` Tests) gruen; lokaler Git-Bestand auf `main` plus drei aktive Neben-Worktrees bereinigt
 - Zusatzverifikation 2026-03-19: 256 fokussierte Tests gruen (Multi-Cam-Kalibrierung, Route-Coverage, Web/Hardening, Multi-Cam-Config); kein Vollsuite-Lauf
 - Zusatzverifikation 2026-03-19 (Kalibrier-UX): 35 weitere fokussierte Checks gruen (`node -c`, 30 Web/Route/WebSocket/Stereo-Tests, 5 Multi-Cam-Kalibrier-Tests)
 - Zusatzverifikation 2026-03-19 (ChArUco-Haertung): 160 fokussierte Tests gruen (`tests/test_calibration.py`, `tests/test_charuco_progress.py`, `tests/test_stereo_calibration.py`, `tests/test_stereo_wizard_api.py`, `tests/test_wizard_flow.py`, `tests/test_web.py`, `tests/test_routes_extra.py`, `tests/test_routes_coverage4.py`); lokale 1080p-Kalibrierclips `testvids/1.mp4` und `testvids/2.mp4` bestaetigen `7x5_40x20` -> 14 Rohmarker / 0 ChArUco-Ecken und `auto` -> `5x7_40x20` mit 18 Ecken
@@ -133,6 +134,7 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 
 - `config/calibration_config.yaml` enthaelt eine gueltige Kalibrierung fuer `default`
 - `config/multi_cam.yaml` speichert last_cameras, sync_depth Presets (tight/standard/loose), governor Config
+- Lokale Bilder/Videos sind repo-weit ignoriert; Git-/Worktree-Altlasten wurden aufgeraeumt, sodass nur aktive Neben-Worktrees erhalten bleiben
 - Print-Pack und Kalibrier-Notizen verwenden wieder konsistent `430 mm` Marker-Mitte-zu-Mitte statt der veralteten `410 mm`-Angabe
 - Telemetrie-Endpunkt `/api/stats` liefert FPS, Dropped Frames, Queue-Druck, RAM
 - Telemetrie-Historie-Endpunkt `/api/telemetry/history` liefert zeitliche Verlaeufe und Alerts

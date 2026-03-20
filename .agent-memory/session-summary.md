@@ -3,37 +3,30 @@
 *Datum: 2026-03-20*
 
 ## Was wurde gemacht
-- Multi-Cam live mit 2 Kameras (cam_left, cam_right) getestet und verifiziert
-- Kalibrierungs-UX analysiert: Wizard-Stepper war nie sichtbar (display:none nie aufgehoben) — Fix in `_wizardAdvance()`
-- mm/px-Warnung (3.470) analysiert: ArUco-Marker nur ~22px gross, Kamera zu weit weg oder Aufloesung zu niedrig
-- Inkonsistenz gefunden: cam_right hat Lens+Board im Backend, aber Frontend zeigte CAL: NONE (Stream-Overlay vs API-Status)
-- **Calibration Reset Feature** gebaut:
-  - `CalibrationManager.reset_calibration(lens_only, board_only)` in calibration.py
-  - `POST /api/calibration/reset` Endpoint in routes.py (mode: lens/board/all)
-  - 3 Reset-Buttons im Kalibrierungsmodal (Lens Reset, Board Reset, Alles Reset)
-  - `_resetCalibration(mode)` in app.js mit confirm-Dialog und Status-Refresh
-- Frontend-Design-Verbesserungen (aus vorheriger Iteration):
-  - Wizard-Stepper Glow/Checkmarks/Sub-Labels
-  - Kamera-Karten mit Status-Dots und Borders
-  - Progress-Bar fuer Gesamtfortschritt
-  - ChArUco-Guidance farbige Borders
+- Multi-Cam-Live-Check gegen `http://127.0.0.1:8000/` durchgefuehrt und Guided-Capture fuer `cam_left` im Browser verifiziert
+- Frontend-Haertung fuer laufende Multi-Cam-Kalibriersessions umgesetzt: `static/js/app.js` behaelt den gestarteten Kamera-Kontext jetzt ueber `_charucoPollingContext` und `_wizardState.currentCamera`, auch wenn `multiCamRunning` kurz wegkippt
+- Fokussierte Verifikation des Kalibrier-Fixes ausgefuehrt: `node -c static/js/app.js`, `python -m pytest tests/test_wizard_flow.py tests/test_stereo_wizard_api.py -q`, Live-DOM-/Network-Check in Playwright
+- Git-/Repo-Hygiene lokal bereinigt:
+  - verwaiste lokale `claude/*`- und `codex/*`-Branches geloescht
+  - `main` sauber auf `origin/main` gehalten
+  - verwaiste `.git/worktrees/*`-Metadaten und sieben detached Worktrees entfernt
+  - nur aktive Worktrees/Branches stehen gelassen
+- Medien-Ignores und gesammelte `.agent-memory`-Inhalte bleiben im Repo-Stand konsistent; lokale Bilder/Videos werden nicht mehr versehentlich indexiert
 
 ## Offene Punkte
-- Wizard-State-Machine (`_wizardState.currentCamera`) wird nie aktiviert — der Multi-Cam-Wizard-Flow ist tot
-- cam_left braucht noch Lens-Kalibrierung (ChArUco)
-- User hat 2 ChArUco-Boards: 40/20mm und 40/28mm — Board-Groesse muss beim Kalibrieren korrekt gewaehlt werden
-- `ready_for_multi: false` weil cam_left keine Intrinsics hat
-- Stream-Overlay CAL-Status und API-Status sind nicht konsistent
+- Reale Multi-Cam-Kalibrierung ist noch nicht abgeschlossen; `cam_left` braucht weiterhin eine saubere Lens-Kalibrierung mit dem korrekten ChArUco-Layout
+- Bei einem Live-Check meldete `/api/multi/status` einmal `running=false`, obwohl der kamera-spezifische Guided-Capture-Kontext noch lief; Ursache noch offen
+- Stream-Overlay und API-Status sollten bei Gelegenheit erneut gegen echten Kamerabetrieb gegengeprueft werden
+- Zwei physische ChArUco-Boards (`40/20mm`, `40/28mm`) bleiben ein reales Bedienrisiko, wenn im Lens-Setup das falsche Layout gewaehlt wird
 
 ## Naechste Schritte
-1. Kalibrierung zuruecksetzen (Alles Reset fuer beide Kameras)
-2. Lens Setup fuer cam_left mit korrektem ChArUco-Preset (40/20 oder 40/28)
-3. Lens Setup fuer cam_right wiederholen (dist_coeffs waren verdaechtig hoch)
-4. Board ArUco fuer beide Kameras
-5. Stereo-Kalibrierung wenn beide Kameras ready_for_multi=true
+1. `cam_left` mit dem korrekten ChArUco-Layout neu lens-kalibrieren und `ready_for_multi` wiederherstellen
+2. `cam_right`-Status im Live-Overlay gegen die API pruefen und bei Bedarf den Statuspfad angleichen
+3. Den einmal beobachteten Drift zwischen Guided-Capture-Kontext und `/api/multi/status` gezielt reproduzieren
+4. Danach Board-ArUco und Stereo-Kalibrierung mit beiden Kameras erneut end-to-end durchlaufen
 
 ## Statistik
-- Iterationen: 3 (Frontend-Design, Live-Analyse, Reset-Feature)
-- Fehler: 0 neue (16 bestehende E2E-Video-Tests)
-- Tests: 1425 passed
+- Iterationen: 5 (Live-Analyse, Kalibrier-Kontext-Fix, Push-/Branch-Bereinigung, Worktree-Cleanup, Wrap-up)
+- Fehler: 0 neue produktive Fehler eingefuehrt; ein moeglicher Status-Drift in Multi-Cam bleibt offen
+- Tests: 11 fokussierte Tests gruen (`tests/test_wizard_flow.py`, `tests/test_stereo_wizard_api.py`); fuer Git-/Worktree-Cleanup keine Tests erforderlich
 - Neue Patterns: 0

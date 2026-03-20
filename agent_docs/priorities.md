@@ -20,6 +20,14 @@ Wenn der User nur allgemein nach "weiterentwickeln" fragt und keine andere Richt
 Nummerierung wird NIEMALS geaendert. Neue Prioritaeten werden am Ende mit weiterführender Nummer angehaengt.
 Erledigte Prioritaeten werden nach `priorities_done.md` verschoben.
 
+## Session-Hinweis 2026-03-20: Lokale Repo-Hygiene
+
+**Umsetzung:** Lokale Git-Altlasten bereinigt: verwaiste `claude/*`- und `codex/*`-Branches entfernt, `main` sauber auf `origin/main` gehalten, tote `.git/worktrees/*`-Metadaten geloescht und sieben detached Worktrees entsorgt. Uebrig bleiben nur die aktiven Worktrees `main`, `codex/korrigiere-gemeldete-codeprobleme`, `codex/self-improvement-agend-skills` und `codex/from-main-agent-self-improvement-claude-status`.
+
+**Folgearbeit:** keine neue Produkt-Prioritaet entstanden; weitere Git-Bereinigung nur bei Bedarf an den verbleibenden aktiven Neben-Worktrees.
+
+Verknuepfte Entscheidungen: keine
+
 ## Prioritaet 9: Multi-Cam UX weiter verbessern (NIEDRIG — teilweise erledigt)
 
 **Teilfortschritt 2026-03-18:** Kamera-Vorschau-Thumbnails im Multi-Cam-Setup-Modal implementiert. Neuer Endpunkt `GET /api/camera/preview/{source}` liefert einzelnes JPEG-Bild von beliebiger Kamera-Quelle. Jede Kamera-Zeile zeigt 200x150px Vorschau mit Refresh-Button. Funktioniert unabhaengig von laufender Pipeline. Geaenderte Dateien: `src/web/routes.py`, `templates/index.html`, `static/js/app.js`, `static/css/style.css`.
