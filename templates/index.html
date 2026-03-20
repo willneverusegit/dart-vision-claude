@@ -326,6 +326,20 @@
                     </label>
                     <p class="charuco-board-note">Auto ist empfohlen und loest das konkrete Layout erst waehrend der Kalibrierung auf.</p>
                 </div>
+                <div class="charuco-mode-panel">
+                    <p class="charuco-mode-panel__title">Lens Capture</p>
+                    <div class="mode-chip-group" id="lens-capture-mode-group">
+                        <label class="mode-chip">
+                            <input type="radio" id="lens-capture-mode-auto" name="lens-capture-mode" value="auto" checked>
+                            <span>Automatisch</span>
+                        </label>
+                        <label class="mode-chip">
+                            <input type="radio" id="lens-capture-mode-manual" name="lens-capture-mode" value="manual">
+                            <span>Manuell</span>
+                        </label>
+                    </div>
+                    <p class="charuco-board-note">Automatisch sammelt Frames selbststaendig. Manuell nimmt nur auf Klick neue Frames auf.</p>
+                </div>
                 <p class="modal__text"><strong>Schritt 1:</strong> Lens-Kalibrierung — korrigiert Verzerrung der Kamera.</p>
                 <p class="modal__text cal-hint-text">ChArUco-Board vor die Kamera halten und gut sichtbar positionieren.</p>
                 <div class="cal-mode-buttons">
@@ -370,6 +384,15 @@
             <div id="cal-step-auto" class="cal-step" style="display: none;">
                 <p id="cal-auto-status" class="modal__text">Kalibrierung laeuft...</p>
                 <div id="cal-auto-spinner" class="cal-spinner"></div>
+                <div id="cal-auto-capture-controls" class="modal__actions" style="display:none;">
+                    <button id="btn-cal-capture-frame" class="btn btn--accent">Frame aufnehmen</button>
+                </div>
+                <div id="cal-auto-stats" class="charuco-status-strip" style="display:none;">
+                    <span id="cal-auto-frame-count" class="charuco-status-pill">0 / 0 Frames</span>
+                    <span id="cal-auto-sharpness" class="charuco-status-pill">Schaerfe: -</span>
+                    <span id="cal-auto-reject" class="charuco-status-pill">Status: bereit</span>
+                </div>
+                <div id="cal-auto-feedback" class="charuco-feedback" style="display:none;"></div>
             </div>
 
             <!-- Step 4: Result / Preview -->
@@ -454,6 +477,24 @@
                 <div id="multi-setup-guide" class="multi-setup-guide" style="display:none;">
                     <p class="modal__text" style="margin-bottom:8px;"><strong>Setup-Schritte:</strong></p>
                     <div id="setup-checklist" class="setup-checklist"></div>
+                    <div id="multi-wizard-entry" class="charuco-mode-panel charuco-mode-panel--wide" style="margin-top:12px;">
+                        <p class="charuco-mode-panel__title">Gefuehrter Multi-Cam Wizard</p>
+                        <div class="mode-chip-group" id="wizard-entry-mode-group">
+                            <label class="mode-chip">
+                                <input type="radio" name="wizard-entry-mode" value="handheld" checked>
+                                <span>Kalibrierboard bewegen</span>
+                            </label>
+                            <label class="mode-chip">
+                                <input type="radio" name="wizard-entry-mode" value="stationary">
+                                <span>Kalibrierboard bleibt fest</span>
+                            </label>
+                        </div>
+                        <p id="wizard-entry-note" class="charuco-board-note">Handheld fuehrt Schritt fuer Schritt durch Lens, Board und Stereo.</p>
+                        <div class="modal__actions" style="margin-top:12px;">
+                            <button id="btn-setup-wizard" class="btn btn--accent">Gefuehrten Wizard starten</button>
+                            <button id="btn-setup-stereo-direct" class="btn btn--secondary">Direkt zur Stereo-Kalibrierung</button>
+                        </div>
+                    </div>
                     <div class="modal__actions" style="margin-top:8px;">
                         <button id="btn-setup-refresh" class="btn btn--secondary btn--tiny">Status aktualisieren</button>
                     </div>
@@ -463,6 +504,20 @@
             <!-- Step 2: Stereo Calibration -->
             <div id="multi-step-stereo" class="cal-step" style="display:none;">
                 <p class="modal__text">Stereo-Kalibrierung zwischen zwei Kameras:</p>
+                <div class="charuco-mode-panel charuco-mode-panel--wide">
+                    <p class="charuco-mode-panel__title">Kalibriermodus</p>
+                    <div class="mode-chip-group" id="stereo-mode-group">
+                        <label class="mode-chip">
+                            <input type="radio" id="stereo-mode-handheld" name="stereo-mode" value="handheld" checked>
+                            <span>Kalibrierboard bewegen</span>
+                        </label>
+                        <label class="mode-chip">
+                            <input type="radio" id="stereo-mode-stationary" name="stereo-mode" value="stationary">
+                            <span>Kalibrierboard bleibt fest</span>
+                        </label>
+                    </div>
+                    <p id="stereo-mode-note" class="charuco-board-note">Handheld fuehrt die volle Stereo-Kalibrierung mit echter Lens-Basis aus.</p>
+                </div>
                 <label class="charuco-board-control charuco-board-control--inline">
                     <span class="modal__text" style="margin: 0;">ChArUco-Board</span>
                     <select id="stereo-charuco-board-preset" class="select charuco-board-select">
@@ -517,22 +572,22 @@
             <div id="wizard-stepper" class="wizard-stepper" style="display:none;">
                 <div class="wizard-stepper__camera-label" id="wizard-camera-label"></div>
                 <div class="wizard-stepper__steps">
-                    <div class="wizard-step" id="wizard-step-lens" data-step="lens">
+                    <div class="wizard-step" id="wizard-step-mode" data-step="mode">
                         <div class="wizard-step__circle">1</div>
+                        <div class="wizard-step__label">Modus</div>
+                        <div class="wizard-step__sublabel">Workflow</div>
+                    </div>
+                    <div class="wizard-step__line"></div>
+                    <div class="wizard-step" id="wizard-step-lens" data-step="lens">
+                        <div class="wizard-step__circle">2</div>
                         <div class="wizard-step__label">Objektiv</div>
                         <div class="wizard-step__sublabel">Entzerrung</div>
                     </div>
                     <div class="wizard-step__line"></div>
                     <div class="wizard-step" id="wizard-step-board" data-step="board">
-                        <div class="wizard-step__circle">2</div>
+                        <div class="wizard-step__circle">3</div>
                         <div class="wizard-step__label">Board</div>
                         <div class="wizard-step__sublabel">Erkennung</div>
-                    </div>
-                    <div class="wizard-step__line"></div>
-                    <div class="wizard-step" id="wizard-step-pose" data-step="pose">
-                        <div class="wizard-step__circle">3</div>
-                        <div class="wizard-step__label">Position</div>
-                        <div class="wizard-step__sublabel">3D-Lage</div>
                     </div>
                     <div class="wizard-step__line"></div>
                     <div class="wizard-step" id="wizard-step-stereo" data-step="stereo">
@@ -547,6 +602,7 @@
             <div id="wizard-result" class="wizard-result" style="display:none;">
                 <img id="wizard-result-img" class="wizard-result__img" alt="Kalibrier-Ergebnis">
                 <p id="wizard-result-text" class="wizard-result__text"></p>
+                <div id="wizard-result-quality"></div>
                 <div id="wizard-result-actions" class="wizard-result__actions">
                     <button id="wizard-btn-next" class="btn btn--accent">Weiter</button>
                     <button id="wizard-btn-retry" class="btn btn--secondary">Nochmal</button>
@@ -562,6 +618,35 @@
 
             <!-- ChArUco guidance panel -->
             <div id="charuco-guidance" class="charuco-guidance" style="display:none;">
+                <div class="charuco-guidance__controls">
+                    <div class="charuco-guidance__control-group">
+                        <span class="charuco-guidance__control-title">Modus</span>
+                        <div class="mode-chip-group mode-chip-group--compact">
+                            <label class="mode-chip mode-chip--compact">
+                                <input type="radio" name="wizard-calibration-mode" value="handheld" checked>
+                                <span>Bewegen</span>
+                            </label>
+                            <label class="mode-chip mode-chip--compact">
+                                <input type="radio" name="wizard-calibration-mode" value="stationary">
+                                <span>Fest</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="charuco-guidance__control-group">
+                        <span class="charuco-guidance__control-title">Capture</span>
+                        <div class="mode-chip-group mode-chip-group--compact">
+                            <label class="mode-chip mode-chip--compact">
+                                <input type="radio" name="wizard-capture-mode" value="auto" checked>
+                                <span>Auto</span>
+                            </label>
+                            <label class="mode-chip mode-chip--compact">
+                                <input type="radio" name="wizard-capture-mode" value="manual">
+                                <span>Manuell</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div id="charuco-status-badge" class="charuco-status-badge">Handheld</div>
+                </div>
                 <div class="charuco-guidance__instructions">
                     <p class="charuco-guidance__title">Anleitung:</p>
                     <ol id="charuco-guidance-steps"></ol>
@@ -575,6 +660,9 @@
                     <div class="charuco-progress-bar">
                         <div id="charuco-progress-fill" class="charuco-progress-bar__fill"></div>
                     </div>
+                    <span id="charuco-sharpness" class="charuco-status-pill">Schaerfe: -</span>
+                    <span id="charuco-reject-reason" class="charuco-status-pill">Status: bereit</span>
+                    <button id="charuco-capture-btn" class="btn btn--secondary" style="display:none;">Frame aufnehmen</button>
                     <button id="charuco-calibrate-btn" class="btn btn--accent" disabled>Kalibrieren</button>
                 </div>
             </div>

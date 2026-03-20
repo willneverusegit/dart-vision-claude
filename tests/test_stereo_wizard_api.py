@@ -42,6 +42,7 @@ class TestCalibrationStatus:
         assert "cameras" in data
         assert "pairs" in data
         assert "ready_for_multi" in data
+        assert data["calibration_quality"] == "full"
         assert data["ready_for_multi"] is True
 
         assert "cam0" in data["cameras"]
@@ -65,6 +66,7 @@ class TestCalibrationStatus:
         assert data["cameras"] == {}
         assert data["pairs"] == {}
         assert data["ready_for_multi"] is False
+        assert data["calibration_quality"] == "none"
 
 
 class TestCalibrationValidate:

@@ -60,6 +60,8 @@ class TestReadinessEndpoint:
                 assert data["ok"] is True
                 assert data["running"] is True
                 assert data["all_ready"] is False
+                assert data["ready_full"] is False
+                assert data["ready_provisional"] is False
                 assert data["triangulation_possible"] is False
                 # Each camera should have issues
                 for cam in data["cameras"]:
@@ -85,6 +87,8 @@ class TestReadinessEndpoint:
                 resp = client.get("/api/multi/readiness")
                 data = resp.json()
                 assert data["all_ready"] is True
+                assert data["ready_full"] is True
+                assert data["ready_provisional"] is True
                 assert data["triangulation_possible"] is True
                 for cam in data["cameras"]:
                     assert cam["ready"] is True

@@ -1,11 +1,13 @@
 """Additional route tests for coverage."""
 
 import numpy as np
+import pytest
 from fastapi.testclient import TestClient
 
 from src.cv.stereo_calibration import (
     DEFAULT_CHARUCO_BOARD_SPEC,
     LARGE_MARKER_CHARUCO_BOARD_SPEC,
+    ProvisionalStereoResult,
     StereoResult,
 )
 from src.main import app
@@ -201,6 +203,102 @@ class TestRoutesCoverage:
                 assert data["charuco_board"]["preset"] == "7x5_40x28"
                 assert captured["pairs"] == 5
                 assert captured["board_spec"] == LARGE_MARKER_CHARUCO_BOARD_SPEC
+        finally:
+            if saved is None:
+                app_state.pop("multi_pipeline", None)
+            else:
+                app_state["multi_pipeline"] = saved
+
+    def test_stationary_stereo_calibration_marks_provisional(self, monkeypatch):
+        from src.main import app_state
+
+        captured = {}
+
+        class DummyCameraCalibration:
+            def get_intrinsics(self):
+                return None
+
+            def get_charuco_board_candidates(self, **_kwargs):
+                return [DEFAULT_CHARUCO_BOARD_SPEC]
+
+        class DummyPipeline:
+            camera_calibration = DummyCameraCalibration()
+
+            def get_latest_raw_frame(self):
+                frame = np.zeros((64, 64, 3), dtype=np.uint8)
+                frame[::8, :] = 255
+                frame[:, ::8] = 255
+                return frame
+
+        class DummyMultiPipeline:
+            def __init__(self):
+                self._pipelines = {"cam_a": DummyPipeline(), "cam_b": DummyPipeline()}
+                self.reloaded = False
+
+            def get_pipelines(self):
+                return self._pipelines
+
+            def reload_stereo_params(self):
+                self.reloaded = True
+
+        monkeypatch.setattr(
+            "src.cv.stereo_calibration.detect_charuco_board",
+            lambda _frame, **_kwargs: type(
+                "Detection",
+                (),
+                {
+                    "board_spec": DEFAULT_CHARUCO_BOARD_SPEC,
+                    "charuco_corners": np.zeros((8, 1, 2), dtype=np.float32),
+                    "charuco_ids": np.arange(8, dtype=np.int32).reshape(-1, 1),
+                    "markers_found": 4,
+                    "charuco_corners_found": 8,
+                    "interpolation_ok": True,
+                    "warning": None,
+                },
+            )(),
+        )
+        monkeypatch.setattr(
+            "src.cv.stereo_calibration.provisional_stereo_calibrate",
+            lambda *args, **kwargs: ProvisionalStereoResult(
+                ok=True,
+                R=np.eye(3, dtype=np.float64),
+                T=np.array([[0.1], [0.0], [0.0]], dtype=np.float64),
+                reprojection_error=0.9,
+                pose_consistency_px=0.9,
+                pairs_used=3,
+                error_message=None,
+            ),
+        )
+        monkeypatch.setattr("src.web.routes._time.sleep", lambda _seconds: None)
+        monkeypatch.setattr(
+            "src.utils.config.save_stereo_pair",
+            lambda *args, **kwargs: captured.update({"args": args, "kwargs": kwargs}),
+        )
+
+        saved = app_state.get("multi_pipeline")
+        app_state["multi_pipeline"] = DummyMultiPipeline()
+        try:
+            with TestClient(app) as client:
+                resp = client.post(
+                    "/api/calibration/stereo",
+                    json={
+                        "camera_a": "cam_a",
+                        "camera_b": "cam_b",
+                        "mode": "stationary",
+                        "num_pairs": 3,
+                        "capture_delay": 0,
+                        "preset": "auto",
+                    },
+                )
+                data = resp.json()
+                assert data["ok"] is True
+                assert data["mode"] == "stationary"
+                assert data["quality_level"] == "provisional"
+                assert data["calibration_method"] == "board_pose_provisional"
+                assert data["intrinsics_source"] == "estimated"
+                assert data["pose_consistency_px"] == pytest.approx(0.9)
+                assert captured["kwargs"]["quality_level"] == "provisional"
+                assert captured["kwargs"]["intrinsics_source"] == "estimated"
         finally:
             if saved is None:
                 app_state.pop("multi_pipeline", None)

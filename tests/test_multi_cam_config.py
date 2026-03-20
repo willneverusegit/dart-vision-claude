@@ -50,6 +50,29 @@ class TestStereoPairRoundtrip:
         cfg = load_multi_cam_config(path)
         assert cfg["schema_version"] >= 2  # v2 added cameras + board_transform sections
 
+    def test_metadata_roundtrip(self, tmp_path):
+        path = str(tmp_path / "multi.yaml")
+        save_stereo_pair(
+            "cam_left",
+            "cam_right",
+            np.eye(3).tolist(),
+            [0.1, 0.0, 0.0],
+            0.42,
+            calibration_method="board_pose_provisional",
+            quality_level="provisional",
+            intrinsics_source="estimated",
+            pose_consistency_px=0.73,
+            warning="Provisorisch - Verfeinerung empfohlen",
+            path=path,
+        )
+
+        pair = get_stereo_pair("cam_left", "cam_right", path=path)
+        assert pair["calibration_method"] == "board_pose_provisional"
+        assert pair["quality_level"] == "provisional"
+        assert pair["intrinsics_source"] == "estimated"
+        assert pair["pose_consistency_px"] == pytest.approx(0.73)
+        assert "Verfeinerung" in pair["warning"]
+
 
 class TestCalibrationManagerCameraId:
     def test_default_camera_id(self, tmp_path):

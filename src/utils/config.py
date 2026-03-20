@@ -195,7 +195,12 @@ def get_stereo_pair(cam_a: str, cam_b: str,
 
 
 def save_stereo_pair(cam_a: str, cam_b: str, R: list, T: list,
-                     reprojection_error: float,
+                     reprojection_error: float, *,
+                     calibration_method: str | None = None,
+                     quality_level: str | None = None,
+                     intrinsics_source: str | None = None,
+                     pose_consistency_px: float | None = None,
+                     warning: str | None = None,
                      path: str = MULTI_CAM_CONFIG_PATH) -> None:
     """Save extrinsics for a camera pair."""
     err = validate_matrix_shape(R, 3, 3, "R")
@@ -215,12 +220,23 @@ def save_stereo_pair(cam_a: str, cam_b: str, R: list, T: list,
     if "pairs" not in cfg:
         cfg["pairs"] = {}
     key = f"{cam_a}--{cam_b}"
-    cfg["pairs"][key] = {
+    pair_payload = {
         "R": R,
         "T": T,
         "reprojection_error": reprojection_error,
         "calibrated_utc": datetime.now(timezone.utc).isoformat(),
     }
+    if calibration_method is not None:
+        pair_payload["calibration_method"] = calibration_method
+    if quality_level is not None:
+        pair_payload["quality_level"] = quality_level
+    if intrinsics_source is not None:
+        pair_payload["intrinsics_source"] = intrinsics_source
+    if pose_consistency_px is not None:
+        pair_payload["pose_consistency_px"] = float(pose_consistency_px)
+    if warning is not None:
+        pair_payload["warning"] = warning
+    cfg["pairs"][key] = pair_payload
     cfg.setdefault("schema_version", 2)
     save_multi_cam_config(cfg, path)
 

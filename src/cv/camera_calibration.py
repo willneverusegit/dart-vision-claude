@@ -10,6 +10,7 @@ import numpy as np
 
 from src.cv.calibration import CalibrationManager
 from src.cv.geometry import CameraIntrinsics
+from src.cv.sharpness import compute_sharpness
 from src.cv.stereo_calibration import (
     CharucoBoardSpec,
     detect_charuco_board,
@@ -18,6 +19,29 @@ from src.cv.stereo_calibration import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def estimate_intrinsics(width: int, height: int) -> CameraIntrinsics:
+    """Return a conservative provisional camera model for bootstrap workflows."""
+    width = max(int(width), 1)
+    height = max(int(height), 1)
+    focal = float(max(width, height))
+    camera_matrix = np.array(
+        [
+            [focal, 0.0, width / 2.0],
+            [0.0, focal, height / 2.0],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+    dist_coeffs = np.zeros((5, 1), dtype=np.float64)
+    return CameraIntrinsics(
+        camera_matrix=camera_matrix,
+        dist_coeffs=dist_coeffs,
+        valid=False,
+        method="estimated",
+        image_size=(width, height),
+    )
 
 
 class CameraCalibrationManager:
@@ -314,13 +338,21 @@ class CharucoFrameCollector:
     def __init__(
         self,
         frames_needed: int = 15,
-        min_position_diff: float = 0.15,
-        min_rotation_diff_deg: float = 10.0,
+        min_position_diff: float = 0.05,
         board_specs: list[CharucoBoardSpec] | None = None,
+        calibration_mode: str = "handheld",
+        capture_mode: str = "auto",
+        manual_min_position_diff: float = 0.02,
+        min_corners_required: int = 6,
+        min_sharpness: float = 50.0,
     ):
         self.frames_needed = frames_needed
         self._min_pos_diff = min_position_diff
-        self._min_rot_diff = min_rotation_diff_deg
+        self._manual_min_pos_diff = manual_min_position_diff
+        self._min_corners_required = min_corners_required
+        self._min_sharpness = min_sharpness
+        self._calibration_mode = calibration_mode
+        self._capture_mode = capture_mode
         self._frames: list[np.ndarray] = []
         self._corner_sets: list[np.ndarray] = []
         self._frame_board_specs: list[CharucoBoardSpec | None] = []
@@ -330,6 +362,8 @@ class CharucoFrameCollector:
         self._last_markers_found = 0
         self._last_charuco_corners_found = 0
         self._last_interpolation_ok = False
+        self._last_sharpness = 0.0
+        self._last_reject_reason: str | None = None
         self._last_warning: str | None = None
 
     @staticmethod
@@ -344,6 +378,14 @@ class CharucoFrameCollector:
     @property
     def candidate_specs(self) -> list[CharucoBoardSpec]:
         return list(self._board_specs)
+
+    @property
+    def calibration_mode(self) -> str:
+        return self._calibration_mode
+
+    @property
+    def capture_mode(self) -> str:
+        return self._capture_mode
 
     @property
     def frames_captured(self) -> int:
@@ -395,6 +437,14 @@ class CharucoFrameCollector:
         return self._last_interpolation_ok
 
     @property
+    def last_sharpness(self) -> float:
+        return self._last_sharpness
+
+    @property
+    def last_reject_reason(self) -> str | None:
+        return self._last_reject_reason
+
+    @property
     def last_warning(self) -> str | None:
         return self._last_warning
 
@@ -405,13 +455,37 @@ class CharucoFrameCollector:
         markers_found: int = 0,
         charuco_corners_found: int = 0,
         interpolation_ok: bool = False,
+        sharpness: float | None = None,
         warning: str | None = None,
     ) -> None:
         self._last_board_spec = board_spec
         self._last_markers_found = int(markers_found)
         self._last_charuco_corners_found = int(charuco_corners_found)
         self._last_interpolation_ok = bool(interpolation_ok)
+        if sharpness is not None:
+            self._last_sharpness = float(sharpness)
         self._last_warning = warning
+
+    def _evaluate_reject_reason(
+        self,
+        *,
+        normalized: np.ndarray | None,
+        board_spec: CharucoBoardSpec | None,
+        interpolation_ok: bool,
+        charuco_corners_found: int,
+        sharpness: float,
+    ) -> str | None:
+        if normalized is None:
+            return "keine_charuco_ecken"
+        if board_spec is None:
+            return "layout_unbekannt"
+        if not interpolation_ok:
+            return "interpolation_fehlgeschlagen"
+        if charuco_corners_found < self._min_corners_required:
+            return "zu_wenige_ecken"
+        if sharpness < self._min_sharpness:
+            return "bild_unscharf"
+        return None
 
     def add_frame_if_diverse(
         self,
@@ -423,22 +497,28 @@ class CharucoFrameCollector:
         charuco_corners_found: int = 0,
         interpolation_ok: bool = True,
         warning: str | None = None,
+        min_position_diff_override: float | None = None,
     ) -> bool:
         """Add a frame only after successful ChArUco interpolation."""
         normalized = self._normalize_corners(corners)
+        sharpness = compute_sharpness(frame)
         self.update_detection(
             board_spec=board_spec,
             markers_found=markers_found,
             charuco_corners_found=charuco_corners_found,
             interpolation_ok=interpolation_ok,
+            sharpness=sharpness,
             warning=warning,
         )
-        if (
-            normalized is None
-            or board_spec is None
-            or not interpolation_ok
-            or charuco_corners_found < 4
-        ):
+        reject_reason = self._evaluate_reject_reason(
+            normalized=normalized,
+            board_spec=board_spec,
+            interpolation_ok=interpolation_ok,
+            charuco_corners_found=charuco_corners_found,
+            sharpness=sharpness,
+        )
+        if reject_reason is not None:
+            self._last_reject_reason = reject_reason
             return False
 
         if len(self._corner_sets) == 0:
@@ -446,20 +526,30 @@ class CharucoFrameCollector:
             self._frames.append(frame.copy())
             self._frame_board_specs.append(board_spec)
             self._frame_corner_counts.append(int(charuco_corners_found))
+            self._last_reject_reason = None
             return True
 
         new_centroid = normalized.mean(axis=0)
+        min_position_diff = (
+            self._manual_min_pos_diff
+            if min_position_diff_override is None and self._capture_mode == "manual"
+            else self._min_pos_diff
+        )
+        if min_position_diff_override is not None:
+            min_position_diff = float(min_position_diff_override)
         for existing in self._corner_sets:
             old_centroid = existing.mean(axis=0)
             ref = max(frame.shape[1] if frame.ndim >= 2 else 640, 1)
             dist = np.linalg.norm(new_centroid - old_centroid) / ref
-            if dist < self._min_pos_diff:
+            if dist < min_position_diff:
+                self._last_reject_reason = "zu_aehnlich"
                 return False
 
         self._corner_sets.append(normalized.copy())
         self._frames.append(frame.copy())
         self._frame_board_specs.append(board_spec)
         self._frame_corner_counts.append(int(charuco_corners_found))
+        self._last_reject_reason = None
         return True
 
     def get_frames(self, board_spec: CharucoBoardSpec | None = None) -> list[np.ndarray]:
@@ -481,6 +571,12 @@ class CharucoFrameCollector:
         usable_frames = self.usable_frames
         if self._last_warning:
             tips.append(self._last_warning)
+        if self._last_reject_reason == "bild_unscharf":
+            tips.append("Bild zu unscharf - Kamera stabilisieren oder Fokus verbessern")
+        elif self._last_reject_reason == "zu_aehnlich":
+            tips.append("Mehr Positionsvariation noetig")
+        elif self._last_reject_reason == "zu_wenige_ecken":
+            tips.append("Mehr ChArUco-Ecken sichtbar machen")
         if self.resolved_board_spec is not None:
             tips.append(f"Erkanntes Layout: {self.resolved_board_spec.preset_name}")
         if usable_frames < self.frames_needed:
@@ -526,4 +622,6 @@ class CharucoFrameCollector:
         self._last_markers_found = 0
         self._last_charuco_corners_found = 0
         self._last_interpolation_ok = False
+        self._last_sharpness = 0.0
+        self._last_reject_reason = None
         self._last_warning = None

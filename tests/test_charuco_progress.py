@@ -7,6 +7,27 @@ from src.web.routes import setup_routes
 from src.cv.stereo_calibration import DEFAULT_CHARUCO_BOARD_SPEC
 
 
+def _sharp_frame():
+    frame = np.zeros((480, 640, 3), dtype=np.uint8)
+    frame[::16, :] = 255
+    frame[:, ::16] = 255
+    return frame
+
+
+def _corners(offset_x: float = 0.0, offset_y: float = 0.0):
+    return np.array(
+        [
+            [100 + offset_x, 100 + offset_y],
+            [200 + offset_x, 100 + offset_y],
+            [300 + offset_x, 120 + offset_y],
+            [120 + offset_x, 220 + offset_y],
+            [220 + offset_x, 240 + offset_y],
+            [320 + offset_x, 260 + offset_y],
+        ],
+        dtype=np.float32,
+    )
+
+
 @pytest.fixture
 def app_state():
     from src.game.engine import GameEngine
@@ -38,13 +59,13 @@ class TestCharucoFrameCollector:
     def test_add_diverse_frame(self):
         from src.cv.camera_calibration import CharucoFrameCollector
         c = CharucoFrameCollector(frames_needed=15)
-        corners = np.array([[100, 100], [200, 100], [200, 200], [100, 200]], dtype=np.float32)
+        corners = _corners()
         accepted = c.add_frame_if_diverse(
             corners,
-            np.zeros((480, 640, 3), dtype=np.uint8),
+            _sharp_frame(),
             board_spec=DEFAULT_CHARUCO_BOARD_SPEC,
             markers_found=4,
-            charuco_corners_found=4,
+            charuco_corners_found=6,
             interpolation_ok=True,
         )
         assert accepted is True
@@ -53,14 +74,14 @@ class TestCharucoFrameCollector:
     def test_reject_duplicate_frame(self):
         from src.cv.camera_calibration import CharucoFrameCollector
         c = CharucoFrameCollector(frames_needed=2)
-        corners = np.array([[100, 100], [200, 100], [200, 200], [100, 200]], dtype=np.float32)
-        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        corners = _corners()
+        frame = _sharp_frame()
         c.add_frame_if_diverse(
             corners,
             frame,
             board_spec=DEFAULT_CHARUCO_BOARD_SPEC,
             markers_found=4,
-            charuco_corners_found=4,
+            charuco_corners_found=6,
             interpolation_ok=True,
         )
         accepted = c.add_frame_if_diverse(
@@ -68,7 +89,7 @@ class TestCharucoFrameCollector:
             frame,
             board_spec=DEFAULT_CHARUCO_BOARD_SPEC,
             markers_found=4,
-            charuco_corners_found=4,
+            charuco_corners_found=6,
             interpolation_ok=True,
         )
         assert accepted is False
@@ -77,21 +98,21 @@ class TestCharucoFrameCollector:
     def test_ready_when_enough_frames(self):
         from src.cv.camera_calibration import CharucoFrameCollector
         c = CharucoFrameCollector(frames_needed=2)
-        f = np.zeros((480, 640, 3), dtype=np.uint8)
+        f = _sharp_frame()
         c.add_frame_if_diverse(
-            np.array([[100, 100], [200, 100]], dtype=np.float32),
+            _corners(),
             f,
             board_spec=DEFAULT_CHARUCO_BOARD_SPEC,
             markers_found=4,
-            charuco_corners_found=4,
+            charuco_corners_found=6,
             interpolation_ok=True,
         )
         c.add_frame_if_diverse(
-            np.array([[300, 300], [400, 300]], dtype=np.float32),
+            _corners(180, 120),
             f,
             board_spec=DEFAULT_CHARUCO_BOARD_SPEC,
             markers_found=4,
-            charuco_corners_found=4,
+            charuco_corners_found=6,
             interpolation_ok=True,
         )
         assert c.ready_to_calibrate is True
@@ -99,15 +120,15 @@ class TestCharucoFrameCollector:
     def test_get_tips_returns_list(self):
         from src.cv.camera_calibration import CharucoFrameCollector
         c = CharucoFrameCollector(frames_needed=15)
-        f = np.zeros((480, 640, 3), dtype=np.uint8)
+        f = _sharp_frame()
         for i in range(3):
-            corners = np.array([[100 + i, 100], [200 + i, 100]], dtype=np.float32)
+            corners = _corners(i * 60, 0)
             c.add_frame_if_diverse(
                 corners,
                 f,
                 board_spec=DEFAULT_CHARUCO_BOARD_SPEC,
                 markers_found=4,
-                charuco_corners_found=4,
+                charuco_corners_found=6,
                 interpolation_ok=True,
             )
         tips = c.get_tips(image_shape=(480, 640))
@@ -116,13 +137,13 @@ class TestCharucoFrameCollector:
     def test_reset_clears_state(self):
         from src.cv.camera_calibration import CharucoFrameCollector
         c = CharucoFrameCollector(frames_needed=2)
-        f = np.zeros((480, 640, 3), dtype=np.uint8)
+        f = _sharp_frame()
         c.add_frame_if_diverse(
-            np.array([[100, 100]], dtype=np.float32),
+            _corners(),
             f,
             board_spec=DEFAULT_CHARUCO_BOARD_SPEC,
             markers_found=4,
-            charuco_corners_found=4,
+            charuco_corners_found=6,
             interpolation_ok=True,
         )
         assert c.frames_captured == 1
@@ -132,13 +153,13 @@ class TestCharucoFrameCollector:
     def test_get_frames_returns_copies(self):
         from src.cv.camera_calibration import CharucoFrameCollector
         c = CharucoFrameCollector(frames_needed=15)
-        f = np.zeros((480, 640, 3), dtype=np.uint8)
+        f = _sharp_frame()
         c.add_frame_if_diverse(
-            np.array([[100, 100]], dtype=np.float32),
+            _corners(),
             f,
             board_spec=DEFAULT_CHARUCO_BOARD_SPEC,
             markers_found=4,
-            charuco_corners_found=4,
+            charuco_corners_found=6,
             interpolation_ok=True,
         )
         frames = c.get_frames()
@@ -182,17 +203,21 @@ class TestCharucoProgressEndpoint:
         assert data["charuco_corners_found"] == 0
         assert data["interpolation_ok"] is False
         assert data["usable_frames"] == 0
+        assert data["mode"] is None
+        assert data["capture_mode"] is None
+        assert data["sharpness"] == 0.0
+        assert data["reject_reason"] is None
 
     def test_charuco_progress_endpoint_with_collector(self, client, app_state):
         from src.cv.camera_calibration import CharucoFrameCollector
         collector = CharucoFrameCollector(frames_needed=15)
-        f = np.zeros((480, 640, 3), dtype=np.uint8)
+        f = _sharp_frame()
         collector.add_frame_if_diverse(
-            np.array([[100, 100], [200, 100]], dtype=np.float32),
+            _corners(),
             f,
             board_spec=DEFAULT_CHARUCO_BOARD_SPEC,
             markers_found=4,
-            charuco_corners_found=4,
+            charuco_corners_found=6,
             interpolation_ok=True,
         )
         app_state.setdefault("charuco_collectors", {})["cam_right"] = collector
@@ -210,6 +235,9 @@ class TestCharucoProgressEndpoint:
         assert isinstance(data["board_visible"], bool)
         assert isinstance(data["corners_found"], int)
         assert data["resolved_preset"] == DEFAULT_CHARUCO_BOARD_SPEC.preset_name
+        assert data["mode"] == "handheld"
+        assert data["capture_mode"] == "auto"
+        assert data["sharpness"] > 0
 
     def test_charuco_progress_preserves_raw_marker_warning(self, client, app_state):
         from src.cv.camera_calibration import CharucoFrameCollector
@@ -238,15 +266,15 @@ class TestCharucoAutoCapture:
         """Collector should accumulate diverse frames."""
         from src.cv.camera_calibration import CharucoFrameCollector
         c = CharucoFrameCollector(frames_needed=3)
-        f = np.zeros((480, 640, 3), dtype=np.uint8)
+        f = _sharp_frame()
         for i in range(3):
-            corners = np.array([[100 * i, 100], [200 + 100 * i, 200]], dtype=np.float32)
+            corners = _corners(i * 140, 0)
             c.add_frame_if_diverse(
                 corners,
                 f,
                 board_spec=DEFAULT_CHARUCO_BOARD_SPEC,
                 markers_found=4,
-                charuco_corners_found=4,
+                charuco_corners_found=6,
                 interpolation_ok=True,
             )
         assert c.frames_captured == 3
@@ -267,18 +295,65 @@ class TestCharucoAutoCapture:
         data = resp.json()
         assert data["ok"] is True
         assert data["frames_needed"] == 15
+        assert data["mode"] == "handheld"
+        assert data["capture_mode"] == "auto"
+
+    def test_manual_capture_endpoint_records_frame(self, client, app_state, monkeypatch):
+        class DummyCameraCalibration:
+            def get_charuco_board_candidates(self, **_kwargs):
+                return [DEFAULT_CHARUCO_BOARD_SPEC]
+
+        class DummyPipeline:
+            camera = object()
+            camera_calibration = DummyCameraCalibration()
+
+            def get_latest_raw_frame(self):
+                return _sharp_frame()
+
+        app_state["pipeline"] = DummyPipeline()
+        start = client.post(
+            "/api/calibration/charuco-start/default",
+            json={"preset": "auto", "mode": "stationary"},
+        )
+        assert start.status_code == 200
+
+        monkeypatch.setattr(
+            "src.cv.stereo_calibration.detect_charuco_board",
+            lambda _frame, **_kwargs: type(
+                "Detection",
+                (),
+                {
+                    "board_spec": DEFAULT_CHARUCO_BOARD_SPEC,
+                    "charuco_corners": _corners().reshape(-1, 1, 2),
+                    "charuco_ids": np.arange(6, dtype=np.int32).reshape(-1, 1),
+                    "markers_found": 4,
+                    "charuco_corners_found": 6,
+                    "interpolation_ok": True,
+                    "warning": None,
+                },
+            )(),
+        )
+
+        resp = client.post("/api/calibration/capture-frame/default")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["ok"] is True
+        assert data["accepted"] is True
+        assert data["mode"] == "stationary"
+        assert data["capture_mode"] == "manual"
+        assert data["frames_captured"] == 1
 
     def test_charuco_start_resets_existing_collector(self, client, app_state):
         from src.cv.camera_calibration import CharucoFrameCollector
         # Pre-populate a collector with some frames
         collector = CharucoFrameCollector(frames_needed=15)
-        f = np.zeros((480, 640, 3), dtype=np.uint8)
+        f = _sharp_frame()
         collector.add_frame_if_diverse(
-            np.array([[100, 100]], dtype=np.float32),
+            _corners(),
             f,
             board_spec=DEFAULT_CHARUCO_BOARD_SPEC,
             markers_found=4,
-            charuco_corners_found=4,
+            charuco_corners_found=6,
             interpolation_ok=True,
         )
         app_state.setdefault("charuco_collectors", {})["default"] = collector
@@ -294,11 +369,15 @@ class TestCharucoAutoCapture:
         app_state["pipeline"] = DummyPipeline()
 
         # Start should reset it
-        resp = client.post("/api/calibration/charuco-start/default", json={"preset": "auto"})
+        resp = client.post(
+            "/api/calibration/charuco-start/default",
+            json={"preset": "auto", "mode": "stationary"},
+        )
         assert resp.status_code == 200
         # The new collector in app_state should be fresh
         new_collector = app_state["charuco_collectors"]["default"]
         assert new_collector.frames_captured == 0
+        assert new_collector.capture_mode == "manual"
 
 
 class TestCharucoOverlay:
@@ -310,13 +389,13 @@ class TestCharucoOverlay:
         from src.cv.camera_calibration import CharucoFrameCollector
 
         collector = CharucoFrameCollector(frames_needed=15)
-        f = np.zeros((480, 640, 3), dtype=np.uint8)
+        f = _sharp_frame()
         collector.add_frame_if_diverse(
-            np.array([[100, 100], [200, 100]], dtype=np.float32),
+            _corners(),
             f,
             board_spec=DEFAULT_CHARUCO_BOARD_SPEC,
             markers_found=4,
-            charuco_corners_found=4,
+            charuco_corners_found=6,
             interpolation_ok=True,
         )
 
@@ -336,21 +415,21 @@ class TestCharucoOverlay:
         from src.cv.camera_calibration import CharucoFrameCollector
 
         collector = CharucoFrameCollector(frames_needed=2)
-        f = np.zeros((480, 640, 3), dtype=np.uint8)
+        f = _sharp_frame()
         collector.add_frame_if_diverse(
-            np.array([[100, 100], [200, 100]], dtype=np.float32),
+            _corners(),
             f,
             board_spec=DEFAULT_CHARUCO_BOARD_SPEC,
             markers_found=4,
-            charuco_corners_found=4,
+            charuco_corners_found=6,
             interpolation_ok=True,
         )
         collector.add_frame_if_diverse(
-            np.array([[300, 300], [400, 300]], dtype=np.float32),
+            _corners(180, 120),
             f,
             board_spec=DEFAULT_CHARUCO_BOARD_SPEC,
             markers_found=4,
-            charuco_corners_found=4,
+            charuco_corners_found=6,
             interpolation_ok=True,
         )
 

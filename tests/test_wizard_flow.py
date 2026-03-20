@@ -84,12 +84,14 @@ class TestCollectorLifecycle:
         from src.cv.camera_calibration import CharucoFrameCollector
         c = CharucoFrameCollector(frames_needed=2)
         f = np.zeros((480, 640, 3), dtype=np.uint8)
+        for offset in range(0, 640, 32):
+            f[:, offset:offset + 16] = 255
         c.add_frame_if_diverse(
-            np.array([[100, 100]], dtype=np.float32),
+            np.array([[100, 100], [160, 140], [220, 180], [280, 220], [340, 260], [400, 300]], dtype=np.float32),
             f,
             board_spec=DEFAULT_CHARUCO_BOARD_SPEC,
             markers_found=4,
-            charuco_corners_found=4,
+            charuco_corners_found=6,
             interpolation_ok=True,
         )
         assert c.frames_captured == 1

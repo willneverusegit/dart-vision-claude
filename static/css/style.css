@@ -996,6 +996,77 @@ body {
     margin-bottom: 12px;
 }
 
+.charuco-mode-panel {
+    max-width: 520px;
+    margin: 0 auto 16px;
+    padding: 14px 16px;
+    background: var(--bg-panel-translucent);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+
+.charuco-mode-panel--wide {
+    max-width: none;
+}
+
+.charuco-mode-panel__title {
+    font-size: 0.82rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    margin-bottom: 10px;
+}
+
+.mode-chip-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.mode-chip {
+    position: relative;
+    cursor: pointer;
+}
+
+.mode-chip input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.mode-chip span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 40px;
+    padding: 8px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--bg-inset);
+    color: var(--text-secondary);
+    font-size: 0.86rem;
+    font-weight: 600;
+    transition: all 0.2s ease;
+}
+
+.mode-chip input:checked + span {
+    background: var(--accent-bg-2);
+    border-color: var(--accent);
+    color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent-glow-strong);
+}
+
+.mode-chip-group--compact {
+    gap: 8px;
+}
+
+.mode-chip--compact span {
+    min-height: 34px;
+    padding: 6px 12px;
+    font-size: 0.8rem;
+}
+
 .cal-mode-btn {
     min-width: 180px;
     padding: 16px 24px;
@@ -1006,6 +1077,37 @@ body {
     border-color: var(--accent);
     box-shadow: 0 0 0 1px var(--accent), 0 10px 24px var(--accent-glow);
     background: var(--accent-bg-2);
+}
+
+.charuco-status-strip {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.charuco-status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+    font-weight: 600;
+}
+
+.charuco-feedback {
+    margin-top: 12px;
+    padding: 12px 14px;
+    border-radius: var(--radius);
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-size: 0.84rem;
 }
 
 .cal-spinner {
@@ -1935,6 +2037,13 @@ a:focus-visible,
     transition: background 0.4s;
 }
 .wizard-step--done + .wizard-step__line { background: var(--success); }
+.wizard-step--hidden { display: none; }
+.wizard-step--skipped {
+    opacity: 0.45;
+}
+.wizard-step--skipped .wizard-step__circle {
+    border-style: dashed;
+}
 
 /* === Overall Calibration Progress === */
 .cal-progress-overview {
@@ -2041,6 +2150,41 @@ a:focus-visible,
     gap: 12px;
     padding: 16px 0;
 }
+.charuco-guidance__controls {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 12px;
+    padding: 14px 16px;
+    background: var(--bg-inset);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+}
+.charuco-guidance__control-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.charuco-guidance__control-title {
+    font-size: 0.74rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+}
+.charuco-status-badge {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: var(--accent-bg-2);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-size: 0.78rem;
+    font-weight: 700;
+}
 .charuco-guidance__instructions {
     flex: 1;
     min-width: 200px;
@@ -2077,6 +2221,7 @@ a:focus-visible,
     width: 100%;
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 12px;
     padding: 12px 16px;
     background: var(--bg-inset);
@@ -2095,6 +2240,29 @@ a:focus-visible,
     background: linear-gradient(90deg, var(--accent), var(--success));
     border-radius: 5px;
     transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.stereo-result__badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 10px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 700;
+}
+
+.stereo-result__badge--full {
+    background: var(--success-bg);
+    border: 1px solid var(--success-border);
+    color: var(--success);
+}
+
+.stereo-result__badge--provisional {
+    background: var(--warning-bg);
+    border: 1px solid rgba(255, 165, 0, 0.3);
+    color: var(--warning);
 }
 
 /* === Ghost Button (P9) === */

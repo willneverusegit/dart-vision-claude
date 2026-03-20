@@ -9,6 +9,8 @@ from typing import NamedTuple
 import cv2
 import numpy as np
 
+from src.cv.geometry import CameraIntrinsics
+
 logger = logging.getLogger(__name__)
 
 # ChArUco board parameters for stereo calibration
@@ -135,6 +137,19 @@ class CharucoDetectionResult:
     charuco_corners_found: int
     interpolation_ok: bool
     warning: str | None = None
+
+
+@dataclass(frozen=True)
+class BoardPoseEstimate:
+    """PnP pose of the ChArUco board in one camera."""
+
+    R: np.ndarray
+    t: np.ndarray
+    rvec: np.ndarray
+    tvec: np.ndarray
+    reprojection_error_px: float
+    corner_count: int
+    board_spec: CharucoBoardSpec
 
 
 def _canonical_preset_name(spec: CharucoBoardSpec) -> str:
@@ -446,6 +461,16 @@ class StereoResult(NamedTuple):
     error_message: str | None
 
 
+class ProvisionalStereoResult(NamedTuple):
+    ok: bool
+    R: np.ndarray | None
+    T: np.ndarray | None
+    reprojection_error: float
+    pose_consistency_px: float
+    pairs_used: int
+    error_message: str | None
+
+
 def detect_charuco_corners(
     frame: np.ndarray,
     dictionary=None,
@@ -460,6 +485,167 @@ def detect_charuco_corners(
         board_spec = resolve_charuco_board_spec(board_spec=board_spec)
     result = detect_charuco_board(frame, board_spec=board_spec)
     return result.charuco_corners, result.charuco_ids
+
+
+def estimate_charuco_board_pose(
+    detection: CharucoDetectionResult,
+    intrinsics: CameraIntrinsics,
+    *,
+    board_spec: CharucoBoardSpec | None = None,
+) -> BoardPoseEstimate | None:
+    """Estimate a board pose from a successful ChArUco detection."""
+    if intrinsics is None:
+        return None
+    resolved_board_spec = board_spec or detection.board_spec
+    if (
+        resolved_board_spec is None
+        or not detection.interpolation_ok
+        or detection.charuco_corners is None
+        or detection.charuco_ids is None
+    ):
+        return None
+
+    ids = detection.charuco_ids.reshape(-1)
+    if len(ids) < 4:
+        return None
+
+    board = resolved_board_spec.create_board()
+    object_points = board.getChessboardCorners()[ids].reshape(-1, 3).astype(np.float64)
+    image_points = detection.charuco_corners.reshape(-1, 2).astype(np.float64)
+
+    try:
+        success, rvec, tvec = cv2.solvePnP(
+            object_points,
+            image_points,
+            intrinsics.camera_matrix,
+            intrinsics.dist_coeffs,
+            flags=cv2.SOLVEPNP_ITERATIVE,
+        )
+    except cv2.error:
+        return None
+    if not success:
+        return None
+
+    R, _ = cv2.Rodrigues(rvec)
+    proj, _ = cv2.projectPoints(
+        object_points,
+        rvec,
+        tvec,
+        intrinsics.camera_matrix,
+        intrinsics.dist_coeffs,
+    )
+    reprojection_error_px = float(
+        np.mean(np.linalg.norm(proj.reshape(-1, 2) - image_points, axis=1))
+    )
+    return BoardPoseEstimate(
+        R=R.astype(np.float64),
+        t=tvec.reshape(3).astype(np.float64),
+        rvec=rvec.reshape(3, 1).astype(np.float64),
+        tvec=tvec.reshape(3, 1).astype(np.float64),
+        reprojection_error_px=reprojection_error_px,
+        corner_count=int(len(ids)),
+        board_spec=resolved_board_spec,
+    )
+
+
+def stereo_from_board_poses(
+    pose_a: BoardPoseEstimate,
+    pose_b: BoardPoseEstimate,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Convert two board poses into camera-a -> camera-b extrinsics."""
+    R = pose_b.R @ pose_a.R.T
+    T = pose_b.t.reshape(3, 1) - R @ pose_a.t.reshape(3, 1)
+    return R.astype(np.float64), T.astype(np.float64)
+
+
+def _average_stereo_extrinsics(
+    relative_rotations: list[np.ndarray],
+    relative_translations: list[np.ndarray],
+) -> tuple[np.ndarray, np.ndarray]:
+    rotation_sum = np.zeros((3, 3), dtype=np.float64)
+    for rotation in relative_rotations:
+        rotation_sum += rotation
+    U, _s, Vt = np.linalg.svd(rotation_sum)
+    averaged_rotation = U @ Vt
+    if np.linalg.det(averaged_rotation) < 0:
+        U[:, -1] *= -1
+        averaged_rotation = U @ Vt
+    averaged_translation = np.mean(
+        np.stack([t.reshape(3, 1) for t in relative_translations], axis=0),
+        axis=0,
+    )
+    return averaged_rotation.astype(np.float64), averaged_translation.astype(np.float64)
+
+
+def provisional_stereo_calibrate(
+    detections_cam1: list[CharucoDetectionResult],
+    detections_cam2: list[CharucoDetectionResult],
+    intrinsics_1: CameraIntrinsics,
+    intrinsics_2: CameraIntrinsics,
+    *,
+    board_spec: CharucoBoardSpec | None = None,
+) -> ProvisionalStereoResult:
+    """Estimate stereo extrinsics from paired board poses when intrinsics are provisional."""
+    if len(detections_cam1) != len(detections_cam2):
+        return ProvisionalStereoResult(
+            False,
+            None,
+            None,
+            0.0,
+            0.0,
+            0,
+            f"Frame count mismatch: {len(detections_cam1)} vs {len(detections_cam2)}",
+        )
+
+    relative_rotations: list[np.ndarray] = []
+    relative_translations: list[np.ndarray] = []
+    pose_errors: list[float] = []
+
+    for detection_a, detection_b in zip(detections_cam1, detections_cam2):
+        pose_a = estimate_charuco_board_pose(
+            detection_a,
+            intrinsics_1,
+            board_spec=board_spec,
+        )
+        pose_b = estimate_charuco_board_pose(
+            detection_b,
+            intrinsics_2,
+            board_spec=board_spec,
+        )
+        if pose_a is None or pose_b is None:
+            continue
+        relative_rotation, relative_translation = stereo_from_board_poses(pose_a, pose_b)
+        relative_rotations.append(relative_rotation)
+        relative_translations.append(relative_translation)
+        pose_errors.append(
+            float((pose_a.reprojection_error_px + pose_b.reprojection_error_px) / 2.0)
+        )
+
+    if len(relative_rotations) < 3:
+        return ProvisionalStereoResult(
+            False,
+            None,
+            None,
+            0.0,
+            0.0,
+            len(relative_rotations),
+            f"Only {len(relative_rotations)} usable pose pairs (need 3+)",
+        )
+
+    averaged_rotation, averaged_translation = _average_stereo_extrinsics(
+        relative_rotations,
+        relative_translations,
+    )
+    pose_consistency_px = float(np.mean(pose_errors)) if pose_errors else 0.0
+    return ProvisionalStereoResult(
+        True,
+        averaged_rotation,
+        averaged_translation,
+        pose_consistency_px,
+        pose_consistency_px,
+        len(relative_rotations),
+        None,
+    )
 
 
 def stereo_calibrate(

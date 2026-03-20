@@ -32,12 +32,16 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 - Kalibrierungs-UX mit Statusanzeige und gefuehrten Schritten
 - Multi-Cam-Kalibrierung nutzt pro Kamera die aktive Sub-Pipeline statt nur den Single-Cam-Pfad (Frame, Info, Board, Lens, ROI, Overlay, Optical Center)
 - Multi-Cam-Kalibrierdialog fuehrt per Kamera durch den naechsten Schritt (Statuskarten, Empfehlungspanel, Button-Highlight, Weiter-CTA mit direktem Start des empfohlenen Standardpfads)
-- Wizard-Stepper (Lens→Board→Pose→Stereo) mit Auto-Advance, Result-Preview nach jedem Kalibrierungsschritt, automatischer Board-Pose-Berechnung
-- ChArUco-Guidance-Panel mit Schritt-fuer-Schritt-Anleitung, Live-Fortschrittsbalken, Qualitaets-Tipps, automatischer Frame-Collection im MJPEG-Feed
+- Multi-Cam-Kalibrierung V1 trennt jetzt Handheld (`full`) und Stationaer (`provisional`) sauber; der Stationaer-Pfad nutzt geschaetzte Intrinsics nur transient und speichert Stereo-Metadaten additiv im bestehenden `pairs`-Schema
+- Wizard-/Dialog-UX zeigt Modusauswahl (`Kalibrierboard bewegen` vs. `Kalibrierboard bleibt fest`), Lens-Capture-Modus (`auto`/`manual`), Schaerfe, Reject-Grund und Ergebnis-Badges (`Kalibriert`/`Provisorisch`)
+- Der Multi-Cam-Setup-Guide besitzt jetzt einen expliziten Wizard-CTA; das Frontend baut daraus eine echte Task-Queue ueber fehlende Lens-/Board-/Stereo-Schritte, synchronisiert Entry-/Wizard-/Stereo-Modus und fuehrt bei `Back`/`Abbrechen` sauber in die Config-Ansicht zurueck
+- ChArUco-Guidance- und Lens-Capture-Flow besitzen jetzt manuelle Frame-Aufnahme, niedrigere Manual-Diversity, explizite Reject-Gruende und Live-Status fuer Schaerfe und nutzbare Frames
 - Lens- und Stereo-Kalibrierung loesen ChArUco-Layouts jetzt zur Laufzeit zwischen `7x5_40x20`, `7x5_40x28`, `5x7_40x20`, `5x7_40x28` auf; `auto` ist der empfohlene UI/API-Standard
 - Guided Capture zaehlt nur noch Frames mit erfolgreicher ChArUco-Interpolation; Rohmarker alleine machen den Collector oder die Progress-API nicht mehr "bereit"
 - `/api/calibration/charuco-progress/{camera_id}` liefert jetzt explizit `markers_found`, `charuco_corners_found`, `interpolation_ok`, `resolved_preset`, `resolved_board`, `usable_frames`, `warning`; der normale Lens-Button startet erst Guided Capture und kalibriert erst nach genuegend nutzbaren Frames
+- `/api/calibration/charuco-start/{camera_id}` akzeptiert `mode` und `capture_mode`, `POST /api/calibration/capture-frame/{camera_id}` erlaubt manuelle Aufnahmen, und `charuco-progress` liefert zusaetzlich `sharpness`, `reject_reason`, `mode` und `capture_mode`
 - Laufende Multi-Cam-Guided-Capture-/Wizard-Sessions behalten ihren Kamera-Kontext jetzt auch dann, wenn das Frontend den Multi-Cam-Flag temporaer verliert; Statusmeldungen und Folge-Requests fallen waehrend der Session nicht mehr irrefuhrend auf `Single-Cam` zurueck
+- `/api/multi/readiness` und `/api/multi-cam/calibration/status` sind additiv erweitert: bestehende Felder bleiben erhalten, hinzu kommen `ready_full`, `ready_provisional`, `calibration_quality` und pro Stereo-Paar `quality_level`, `calibration_method`, `intrinsics_source`, `pose_consistency_px`, `warning`
 - Kalibrier-Ergebnisbilder (result_image) mit Overlay (Marker-Ecken, Scoring-Ringe, 3D-Achsen, Epipolar-Linien) in allen 4 Endpoints
 - Telemetrie im Header (FPS, Dropped Frames, Queue-Druck, RAM)
 - Idempotentes Logging mit Session-ID, optionalem File-Rotation-Log (`DARTVISION_LOG_FILE`)
@@ -122,6 +126,8 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 - Wichtige Module: main.py 78%, routes.py 81%, pipeline.py 68%, multi_camera.py 62%, capture.py 72%
 - Zusatzverifikation 2026-03-20 (P64-Abschluss): 247 fokussierte Web/Route/Wizard/Preview/ChArUco-Tests gruen; `src/web/routes.py` 81% Coverage
 - Zusatzverifikation 2026-03-20 (Live-Check/Wrap-up): Multi-Cam-Guided-Capture im Browser gegen `http://127.0.0.1:8000/` verifiziert, `tests/test_wizard_flow.py` und `tests/test_stereo_wizard_api.py` (`11` Tests) gruen; lokaler Git-Bestand auf `main` plus drei aktive Neben-Worktrees bereinigt
+- Zusatzverifikation 2026-03-20 (Multi-Cam Calibration V1): `node -c static/js/app.js`, `python -m pytest tests/test_charuco_progress.py tests/test_routes_extra.py tests/test_stereo_wizard_api.py tests/test_multi_hardening.py tests/test_wizard_flow.py -q` (`52` Tests) und `python -m pytest tests/test_collector_quality.py tests/test_provisional_stereo.py tests/test_multi_cam_config.py -q` (`18` Tests) gruen
+- Zusatzverifikation 2026-03-20 (Wizard Entry UX): `node -c static/js/app.js` sowie `python -m pytest tests/test_wizard_flow.py tests/test_stereo_wizard_api.py -q` (`11` Tests) gruen
 - Zusatzverifikation 2026-03-19: 256 fokussierte Tests gruen (Multi-Cam-Kalibrierung, Route-Coverage, Web/Hardening, Multi-Cam-Config); kein Vollsuite-Lauf
 - Zusatzverifikation 2026-03-19 (Kalibrier-UX): 35 weitere fokussierte Checks gruen (`node -c`, 30 Web/Route/WebSocket/Stereo-Tests, 5 Multi-Cam-Kalibrier-Tests)
 - Zusatzverifikation 2026-03-19 (ChArUco-Haertung): 160 fokussierte Tests gruen (`tests/test_calibration.py`, `tests/test_charuco_progress.py`, `tests/test_stereo_calibration.py`, `tests/test_stereo_wizard_api.py`, `tests/test_wizard_flow.py`, `tests/test_web.py`, `tests/test_routes_extra.py`, `tests/test_routes_coverage4.py`); lokale 1080p-Kalibrierclips `testvids/1.mp4` und `testvids/2.mp4` bestaetigen `7x5_40x20` -> 14 Rohmarker / 0 ChArUco-Ecken und `auto` -> `5x7_40x20` mit 18 Ecken
@@ -133,12 +139,12 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 ## Wichtige Projektfakten
 
 - `config/calibration_config.yaml` enthaelt eine gueltige Kalibrierung fuer `default`
-- `config/multi_cam.yaml` speichert last_cameras, sync_depth Presets (tight/standard/loose), governor Config
+- `config/multi_cam.yaml` speichert last_cameras, sync_depth Presets (tight/standard/loose), governor Config sowie additive Stereo-Metadaten (`calibration_method`, `quality_level`, `intrinsics_source`, `pose_consistency_px`, `warning`) unter dem bestehenden `pairs`-Schema
 - Lokale Bilder/Videos sind repo-weit ignoriert; Git-/Worktree-Altlasten wurden aufgeraeumt, sodass nur aktive Neben-Worktrees erhalten bleiben
 - Print-Pack und Kalibrier-Notizen verwenden wieder konsistent `430 mm` Marker-Mitte-zu-Mitte statt der veralteten `410 mm`-Angabe
 - Telemetrie-Endpunkt `/api/stats` liefert FPS, Dropped Frames, Queue-Druck, RAM
 - Telemetrie-Historie-Endpunkt `/api/telemetry/history` liefert zeitliche Verlaeufe und Alerts
-- `/api/multi/readiness` liefert pro-Kamera-Diagnose fuer Multi-Cam-Setup
+- `/api/multi/readiness` liefert pro-Kamera-Diagnose fuer Multi-Cam-Setup und unterscheidet jetzt zwischen `ready_full` und `ready_provisional`
 - Alle API-Fehlermeldungen sind deutsch und handlungsorientiert
 
 ## Arbeitsannahmen fuer Agents
