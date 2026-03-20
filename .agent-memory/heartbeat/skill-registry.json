@@ -1,0 +1,16 @@
+{
+  "last_scan": "2026-03-20",
+  "skills": [
+    {"name": "run-diagnostics", "path": ".claude/skills/run-diagnostics/SKILL.md", "status": "active"},
+    {"name": "task-splitter", "path": ".claude/skills/task-splitter/SKILL.md", "status": "active"},
+    {"name": "game-scoring", "path": ".claude/skills/game-scoring/SKILL.md", "status": "active"},
+    {"name": "web-ui", "path": ".claude/skills/web-ui/SKILL.md", "status": "active"},
+    {"name": "stats-telemetry", "path": ".claude/skills/stats-telemetry/SKILL.md", "status": "active"},
+    {"name": "meta-infra", "path": ".claude/skills/meta-infra/SKILL.md", "status": "active"},
+    {"name": "update-progress", "path": ".claude/skills/update-progress/SKILL.md", "status": "active"},
+    {"name": "multi-cam", "path": ".claude/skills/multi-cam/SKILL.md", "status": "active"},
+    {"name": "vision", "path": ".claude/skills/vision/SKILL.md", "status": "active"},
+    {"name": "save-session", "path": ".claude/skills/save-session/SKILL.md", "status": "active"},
+    {"name": "session-log", "path": ".claude/skills/session-log/SKILL.md", "status": "active"}
+  ]
+}
