@@ -26,7 +26,7 @@ Agents sollen den aktuellen Stand **stabil weiterentwickeln**, nicht unnoetig ne
 Bevor du an Code arbeitest, lies in dieser Reihenfolge:
 
 1. `README.md`
-2. `PROJEKTSTAND_2026-03-16.md`
+2. `agent_docs/current_state.md`
 3. `agent_docs/INDEX.md`
 4. `agent_docs/codex.md`, wenn du als Codex arbeitest
 5. die fuer deine Aufgabe relevanten Dateien in `agent_docs/`
@@ -90,6 +90,7 @@ Wenn keine andere Priorisierung vom User kommt, arbeite in dieser Reihenfolge:
 - suche vorhandene Tests
 - lies die dazugehoerigen Agent-Dokumente
 - identifiziere, ob Single-Cam, Multi-Cam, Kalibrierung, UI oder Spiel-Engine betroffen sind
+- bei Multi-Cam-Arbeit zusaetzlich `MULTI_CAM_INSTRUCTIONS.md` lesen
 
 ### Beim Coden
 

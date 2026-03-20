@@ -20,6 +20,10 @@ ruff check src/ tests/                 # Linting
 scripts/pre_commit_check.sh            # Pre-Commit Quality Gate
 python scripts/record_camera.py --duration 30 --show  # Kamera-Aufnahme fuer Testvideos
 python scripts/test_all_videos.py --marker-size 100 --marker-spacing 365  # Batch-Video-Test
+python scripts/add_ground_truth.py testvids/video.mp4       # Ground-Truth interaktiv erfassen
+python scripts/validate_ground_truth.py                      # Ground-Truth-Eintraege validieren
+python scripts/validate_tip_detection.py                     # Tip-Detection gegen Diagnostik-Captures pruefen
+python scripts/generate_calibration_prints.py                # Kalibrierungs-Druckvorlagen erzeugen
 ```
 
 ## Umgebung
