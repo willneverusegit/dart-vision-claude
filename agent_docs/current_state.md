@@ -37,6 +37,7 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 - Lens- und Stereo-Kalibrierung loesen ChArUco-Layouts jetzt zur Laufzeit zwischen `7x5_40x20`, `7x5_40x28`, `5x7_40x20`, `5x7_40x28` auf; `auto` ist der empfohlene UI/API-Standard
 - Guided Capture zaehlt nur noch Frames mit erfolgreicher ChArUco-Interpolation; Rohmarker alleine machen den Collector oder die Progress-API nicht mehr "bereit"
 - `/api/calibration/charuco-progress/{camera_id}` liefert jetzt explizit `markers_found`, `charuco_corners_found`, `interpolation_ok`, `resolved_preset`, `resolved_board`, `usable_frames`, `warning`; der normale Lens-Button startet erst Guided Capture und kalibriert erst nach genuegend nutzbaren Frames
+- Laufende Multi-Cam-Guided-Capture-/Wizard-Sessions behalten ihren Kamera-Kontext jetzt auch dann, wenn das Frontend den Multi-Cam-Flag temporaer verliert; Statusmeldungen und Folge-Requests fallen waehrend der Session nicht mehr irrefuhrend auf `Single-Cam` zurueck
 - Kalibrier-Ergebnisbilder (result_image) mit Overlay (Marker-Ecken, Scoring-Ringe, 3D-Achsen, Epipolar-Linien) in allen 4 Endpoints
 - Telemetrie im Header (FPS, Dropped Frames, Queue-Druck, RAM)
 - Idempotentes Logging mit Session-ID, optionalem File-Rotation-Log (`DARTVISION_LOG_FILE`)

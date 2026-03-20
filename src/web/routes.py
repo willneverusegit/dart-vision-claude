@@ -964,6 +964,31 @@ def setup_routes(app_state: dict) -> APIRouter:
             "schema_version": config.get("schema_version", 1),
         }
 
+    @router.post("/api/calibration/reset")
+    async def calibration_reset(request: Request) -> dict:
+        """Reset calibration for a camera.
+
+        Body JSON:
+            camera_id: str (optional, defaults to active single-cam)
+            mode: "all" | "lens" | "board" (default: "all")
+        """
+        body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+        mode = body.get("mode", "all")
+        camera_id = body.get("camera_id")
+
+        pipeline, resolved_camera_id, error = _resolve_live_calibration_pipeline(
+            camera_id,
+            required_attr="board_calibration",
+        )
+        if pipeline is None:
+            return JSONResponse({"ok": False, "error": error or "Keine Pipeline aktiv"})
+
+        result = pipeline.board_calibration.reset_calibration(
+            lens_only=(mode == "lens"),
+            board_only=(mode == "board"),
+        )
+        return result
+
     @router.post("/api/calibration/stereo")
     async def stereo_calibration(request: Request) -> dict:
         """Run stereo calibration between two cameras.

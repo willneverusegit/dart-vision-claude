@@ -673,6 +673,46 @@ class CalibrationManager:
         """
         return self._config.get("radii_px", [10, 19, 106, 116, 188, 200])
 
+    def reset_calibration(self, *, lens_only: bool = False, board_only: bool = False) -> dict:
+        """Reset calibration data for this camera.
+
+        Args:
+            lens_only: Only reset lens/intrinsics data (camera_matrix, dist_coeffs).
+            board_only: Only reset board/homography data.
+            If neither is set, reset everything.
+        """
+        lens_keys = [
+            "camera_matrix", "dist_coeffs", "lens_valid", "lens_method",
+            "lens_reprojection_error", "lens_last_update_utc", "lens_image_size",
+            "charuco_preset", "charuco_squares_x", "charuco_squares_y",
+            "charuco_square_length_m", "charuco_marker_length_m",
+        ]
+        board_keys = [
+            "homography", "center_px", "mm_per_px", "radii_px", "valid",
+            "method", "last_update_utc", "marker_corners_px",
+            "marker_spacing_mm", "rotation_deg", "optical_center_roi_px",
+        ]
+
+        if lens_only:
+            removed = [k for k in lens_keys if k in self._config]
+            for k in lens_keys:
+                self._config.pop(k, None)
+        elif board_only:
+            removed = [k for k in board_keys if k in self._config]
+            for k in board_keys:
+                self._config.pop(k, None)
+        else:
+            removed = list(self._config.keys())
+            keep = {"aruco_marker_size_mm", "board_crop_mm", "schema_version"}
+            self._config = {k: v for k, v in self._config.items() if k in keep}
+
+        self._atomic_save()
+        mode = "lens" if lens_only else ("board" if board_only else "all")
+        logger.info("Calibration reset (%s) for camera_id=%s, removed: %s",
+                     mode, self.camera_id, removed)
+        return {"ok": True, "camera_id": self.camera_id, "mode": mode,
+                "removed_keys": removed}
+
     def _atomic_save(self) -> None:
         """Atomic config write with file lock and multi-camera format.
 
