@@ -42,7 +42,7 @@ P30 (Error Reporting), P31 (Intrinsics Validation), P32 (Triangulation Telemetri
 
 | P-Nr | Titel | Kritikalität |
 |------|-------|-------------|
-| P29 | Stereo Calibration UI Wizard | KRITISCH |
+| P29 | Stereo Calibration UI Wizard | KRITISCH (V1 groesstenteils erledigt, 3 UI-Features offen: Verfeinern-Button, Modus-Wechsel-Link, Flash-Overlay) |
 | P33 | Multi-Cam FPS/Buffer Governors (i5-Laptop CPU-Schutz) | HOCH |
 | P34 | 3+ Camera Fusion | HOCH |
 | P36 | Multi-Cam Hardware E2E Test | MITTEL |
@@ -51,6 +51,15 @@ P30 (Error Reporting), P31 (Intrinsics Validation), P32 (Triangulation Telemetri
 
 ## Neue Features seit letztem Update
 
+- **Multi-Cam Calibration V1 (2026-03-20)**: Zwei-Modi-Wizard (Handheld + Stationaer/Provisional)
+  - `CharucoFrameCollector`: Qualitaets-Gate (Schaerfe via `compute_sharpness()`, min 6 Ecken), `min_position_diff=0.05` (war 0.15), `last_reject_reason`
+  - `estimate_intrinsics()` in `camera_calibration.py:24` — provisorischer Seed, `valid=False`, nie als `lens_valid` speichern
+  - `provisional_stereo_calibrate()` in `stereo_calibration.py:580` — Board-Pose-basierte Extrinsics mit `ProvisionalStereoResult`
+  - `save_stereo_pair()` akzeptiert `calibration_method`, `quality_level`, `intrinsics_source`, `pose_consistency_px`, `warning`
+  - Readiness-API: `ready_full`, `ready_provisional`, `calibration_quality`
+  - UI: Mode-Auswahl (Bewegen/Fest), Manual-Capture, Schaerfe-Anzeige, Provisorisch-Badge
+  - Spec: `docs/superpowers/specs/2026-03-20-multi-cam-calibration-design.md`
+  - Plan (verbleibende Tasks): `docs/superpowers/plans/2026-03-20-multi-cam-calibration-v1.md`
 - **Error Recovery (P56)**: Auto-Reconnect nach 50 Frame-Fehlern, exp. Backoff (2-30s), graceful Degradation, API: `POST /api/multi/camera/{id}/reconnect`, `GET /api/multi/degraded`
 - **Stereo Progress (P54)**: `frame_progress()` liefert `both_detected`, `valid_pairs`, deutsche Fehlermeldungen, Frontend-Fehleranzeige
 

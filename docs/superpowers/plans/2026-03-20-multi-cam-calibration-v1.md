@@ -12,26 +12,41 @@
 
 ---
 
-## Already Implemented (Backend)
+## Already Implemented
 
-The following backend features are already in place:
+The following features are already in place, verified against the current codebase:
 
-- **Quality gate** in `CharucoFrameCollector` — sharpness check via `compute_sharpness()`, `MIN_CHARUCO_CORNERS=6`, `last_reject_reason` property, `_last_sharpness` tracking (`src/cv/camera_calibration.py`)
+### Backend (src/cv/)
+- **Quality gate** in `CharucoFrameCollector` — sharpness check via `compute_sharpness()`, `MIN_CHARUCO_CORNERS=6`, `last_reject_reason` property, `_last_sharpness` tracking (`camera_calibration.py:311+`)
 - **Lowered diversity threshold** — `min_position_diff` default is `0.05` (was `0.15`)
-- **`min_rotation_diff_deg` removal** — dead code already removed from constructor
-- **Manual capture endpoint** — `POST /api/calibration/capture-frame/{camera_id}` (`routes.py:2652`)
-- **`calibration_mode` and `capture_mode`** — stored on `CharucoFrameCollector` directly
-- **`estimate_intrinsics()`** — exists at `camera_calibration.py:24`, returns `CameraIntrinsics(valid=False, method="estimated")`
+- **`min_rotation_diff_deg`** — dead code already removed from constructor
+- **`estimate_intrinsics()`** — exists at `camera_calibration.py:24`, returns `CameraIntrinsics(valid=False)`
 - **`stereo_from_board_poses()`** — exists at `stereo_calibration.py:551`, takes `BoardPoseEstimate` objects
 - **`provisional_stereo_calibrate()`** — exists at `stereo_calibration.py:580`, full provisional flow with `ProvisionalStereoResult`
-- **`save_stereo_pair()` metadata** — accepts `calibration_method`, `quality_level`, `intrinsics_source`, `pose_consistency_px`, `warning`
-- **Readiness API** — `ready_full`, `ready_provisional` in `/api/multi/readiness`; `calibration_quality` in calibration status
-- **Stereo endpoint stationary mode** — `mode=stationary` triggers `provisional_stereo_calibrate()` path
+- **`save_stereo_pair()` metadata** — accepts `calibration_method`, `quality_level`, `intrinsics_source`, `pose_consistency_px`, `warning` (`config.py:197+`)
+
+### Backend (src/web/routes.py)
+- **Manual capture endpoint** — `POST /api/calibration/capture-frame/{camera_id}` (line 2652)
+- **`calibration_mode` and `capture_mode`** — stored on `CharucoFrameCollector` directly, used in charuco-start/progress
 - **Auto-capture guard** — only active in `handheld+auto` mode
+- **Stereo endpoint stationary mode** — `mode=stationary` triggers `provisional_stereo_calibrate()` (line 1289)
+- **Readiness API** — `ready_full`, `ready_provisional` in `/api/multi/readiness` (line 1734+); `calibration_quality` in calibration status (line 2602+)
+
+### Frontend (static/js/app.js, templates/index.html, static/css/style.css)
+- **Mode selection** — radio buttons "Bewegen" / "Fest" (`index.html:626-631`)
+- **Capture mode toggle** — "Auto" / "Manuell" radio buttons (`index.html:638-645`)
+- **Manual capture button** — `btn-cal-capture-frame` with event handler (`app.js:134-149`)
+- **Capture feedback** — `_setCalibrationAutoFeedback()` method (`app.js:713`)
+- **Sharpness display** — `charuco-sharpness` pill in UI (`index.html:663`, `app.js:4028-4040`)
+- **Provisional badges** — "Provisorisch" / "Kalibriert" badges (`app.js:747-748, 786-789`)
+- **Stepper mode handling** — `_updateStepperVisuals()` skips lens for stationary (`app.js:3840-3842`)
+- **Status badge** — "Stationaer / Provisorisch" vs "Handheld / Voll" (`app.js:449`)
 
 ---
 
 ## Remaining Tasks
+
+Only 2 small backend gaps plus tests and docs remain.
 
 ### File Map
 
@@ -39,9 +54,6 @@ The following backend features are already in place:
 |------|------|--------|
 | `src/utils/config.py` | `get_stereo_pair()` backward-compat defaults | Modify |
 | `src/web/routes.py` | Board-pose endpoint `estimate_intrinsics` fallback | Modify |
-| `static/js/app.js` | Wizard mode selection, manual capture, provisional badges | Modify |
-| `templates/index.html` | Wizard HTML: mode step, capture controls, badges | Modify |
-| `static/css/style.css` | Mode cards, capture feedback, badge styling | Modify |
 | `tests/test_provisional_stereo.py` | New: backward-compat and integration tests | Create |
 | `agent_docs/current_state.md` | Document V1 features | Modify |
 | `agent_docs/priorities.md` | Mark P9/P29 progress | Modify |
@@ -110,6 +122,24 @@ class TestGetStereoPairBackwardCompat:
             assert pair["quality_level"] == "provisional"
         finally:
             os.unlink(path)
+
+    def test_existing_callers_still_work(self):
+        """Code that only reads R, T, reprojection_error should not break."""
+        with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False, mode="w") as f:
+            yaml.dump({"pairs": {"x--y": {
+                "R": [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+                "T": [0.2, 0, 0],
+                "reprojection_error": 0.3,
+            }}}, f)
+            path = f.name
+        try:
+            from src.utils.config import get_stereo_pair
+            pair = get_stereo_pair("x", "y", path=path)
+            assert pair["R"] == [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+            assert pair["T"] == [0.2, 0, 0]
+            assert pair["reprojection_error"] == pytest.approx(0.3)
+        finally:
+            os.unlink(path)
 ```
 
 - [ ] **Step 1.2: Run test to verify it fails**
@@ -163,39 +193,41 @@ git commit -m "feat: add backward-compat defaults in get_stereo_pair() for pre-V
 
 **Files:**
 - Modify: `src/web/routes.py` — `board_pose_calibration()` (line 1436)
+- Modify: `tests/test_provisional_stereo.py` — add unit test
 
-The board-pose endpoint currently returns an error if `intr is None`. In stationary mode, there may be no lens calibration. The fallback uses `estimate_intrinsics()` as a transient seed.
+The board-pose endpoint currently returns an error if `intr is None` (line 1466-1467). In stationary mode, there may be no lens calibration. The fallback uses `estimate_intrinsics()` as a transient seed for `solvePnP`.
 
-- [ ] **Step 2.1: Write failing test for fallback**
+- [ ] **Step 2.1: Write test for estimate_intrinsics usability**
 
 Add to `tests/test_provisional_stereo.py`:
 
 ```python
-from unittest.mock import MagicMock, patch
-
-
-class TestBoardPoseEstimateIntrinsicsFallback:
-    def test_board_pose_uses_estimated_intrinsics_when_none(self):
-        """Board-pose endpoint should fall back to estimate_intrinsics when no lens cal."""
+class TestEstimateIntrinsicsForBoardPose:
+    def test_produces_usable_intrinsics(self):
+        """estimate_intrinsics must produce a CameraIntrinsics usable by solvePnP."""
         from src.cv.camera_calibration import estimate_intrinsics
         intr = estimate_intrinsics(640, 480)
         assert intr is not None
         assert intr.valid is False
-        assert intr.camera_matrix[0, 0] == pytest.approx(640.0)
-        # The route-level test requires a running pipeline which is heavy.
-        # This unit test verifies that estimate_intrinsics produces a usable
-        # CameraIntrinsics object that solvePnP can consume.
+        assert intr.method == "estimated"
         assert intr.camera_matrix.shape == (3, 3)
-        assert intr.dist_coeffs.shape[0] >= 4
+        assert intr.camera_matrix[0, 0] > 0  # fx > 0
+        assert intr.dist_coeffs.shape[0] >= 4  # solvePnP needs at least 4
+
+    def test_1280x720(self):
+        from src.cv.camera_calibration import estimate_intrinsics
+        intr = estimate_intrinsics(1280, 720)
+        assert intr.camera_matrix[0, 2] == pytest.approx(640.0)  # cx = width/2
+        assert intr.camera_matrix[1, 2] == pytest.approx(360.0)  # cy = height/2
 ```
 
-- [ ] **Step 2.2: Run test**
+- [ ] **Step 2.2: Run test to verify it passes**
 
-Run: `cd C:/Users/domes/OneDrive/Desktop/dart-vision-claude && .venv/Scripts/python.exe -m pytest tests/test_provisional_stereo.py::TestBoardPoseEstimateIntrinsicsFallback -v`
+Run: `cd C:/Users/domes/OneDrive/Desktop/dart-vision-claude && .venv/Scripts/python.exe -m pytest tests/test_provisional_stereo.py::TestEstimateIntrinsicsForBoardPose -v`
 
-Expected: PASS (this validates the intrinsics object is well-formed for solvePnP)
+Expected: PASS (estimate_intrinsics already exists and works)
 
-- [ ] **Step 2.3: Implement fallback**
+- [ ] **Step 2.3: Implement fallback in board-pose endpoint**
 
 In `board_pose_calibration()` (`routes.py`, around line 1465-1467), change:
 
@@ -236,168 +268,121 @@ git commit -m "feat: add estimate_intrinsics fallback to board-pose endpoint for
 
 ---
 
-## Task 3: Wizard UI — Mode Selection
+## Task 3: Missing UI Features — Verfeinern, Modus-Wechsel, Flash-Overlay
 
 **Files:**
-- Modify: `templates/index.html` — add mode selection step
-- Modify: `static/js/app.js` — wizard mode logic
-- Modify: `static/css/style.css` — mode card styling
+- Modify: `static/js/app.js` — add Verfeinern flow, Modus-Wechsel link, flash overlay
+- Modify: `templates/index.html` — add Verfeinern button, Modus-Wechsel link
+- Modify: `static/css/style.css` — flash overlay animation
 
-- [ ] **Step 3.1: Add mode selection HTML**
+These 3 spec UI features (Paket 5) are not yet implemented.
 
-In `templates/index.html`, inside the calibration modal (after the stepper, before the lens section), add:
+- [ ] **Step 3.1: Add "Verfeinern" button after provisional stereo result**
 
-```html
-<div id="wizard-mode-select" class="wizard-step" style="display:none">
-  <h3>Kalibrierungsmodus waehlen</h3>
-  <div class="mode-cards">
-    <div class="mode-card" data-mode="handheld" onclick="window.dartApp._selectCalibrationMode('handheld')">
-      <h4>Kalibrierboard bewegen</h4>
-      <p>Volle Kalibrierung, bessere Genauigkeit</p>
-    </div>
-    <div class="mode-card" data-mode="stationary" onclick="window.dartApp._selectCalibrationMode('stationary')">
-      <h4>Kalibrierboard bleibt fest</h4>
-      <p>Schnellstart, spaeter verfeinerbar</p>
-    </div>
-  </div>
-</div>
-```
-
-- [ ] **Step 3.2: Add capture toggle and manual button HTML**
-
-In the guidance panel section of `templates/index.html`:
+In the stereo result display area of `templates/index.html`, add:
 
 ```html
-<div id="capture-mode-toggle" style="display:none">
-  <label class="toggle-label">
-    <input type="checkbox" id="capture-mode-switch" onchange="window.dartApp._toggleCaptureMode()">
-    <span>Manuell</span>
-  </label>
-  <button id="manual-capture-btn" class="btn btn-secondary" style="display:none"
-          onclick="window.dartApp._manualCapture()">
-    Frame aufnehmen
-  </button>
-</div>
-<div id="capture-feedback" class="capture-feedback" style="display:none"></div>
+<button id="btn-cal-refine" class="btn btn-secondary" style="display:none"
+        onclick="window.dartApp._refineCalibration()">
+  Verfeinern (Handheld-Modus starten)
+</button>
 ```
 
-- [ ] **Step 3.3: Add CSS for mode cards and capture feedback**
-
-Add to `static/css/style.css`:
-
-```css
-/* Calibration mode cards */
-.mode-cards {
-  display: flex; gap: 1rem; margin: 1rem 0;
-}
-.mode-card {
-  flex: 1; padding: 1.5rem; border: 2px solid var(--border-color, #444);
-  border-radius: 8px; cursor: pointer; transition: border-color 0.2s, background 0.2s;
-  text-align: center;
-}
-.mode-card:hover {
-  border-color: var(--accent-color, #4fc3f7);
-  background: var(--hover-bg, rgba(79, 195, 247, 0.1));
-}
-.mode-card.selected {
-  border-color: var(--accent-color, #4fc3f7);
-  background: var(--selected-bg, rgba(79, 195, 247, 0.15));
-}
-
-/* Capture feedback flash */
-.capture-feedback {
-  padding: 0.5rem 1rem; border-radius: 4px; margin-top: 0.5rem;
-  font-size: 0.9rem; transition: opacity 0.3s;
-}
-.capture-feedback.accept { background: rgba(76, 175, 80, 0.2); color: #4caf50; }
-.capture-feedback.reject { background: rgba(244, 67, 54, 0.2); color: #f44336; }
-
-/* Provisional badge */
-.badge-provisional { background: #ff9800; color: #000; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; }
-.badge-calibrated { background: #4caf50; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; }
-```
-
-- [ ] **Step 3.4: Add JS wizard mode logic**
-
-In `static/js/app.js`, add methods to the DartApp class:
+In `static/js/app.js`, add to the DartApp class:
 
 ```javascript
-_selectCalibrationMode(mode) {
-  this._wizardState.calibrationMode = mode;  // 'handheld' | 'stationary'
-  // Update stepper: skip lens step if stationary
-  if (mode === 'stationary') {
-    this._wizardAdvance('board_running');
-  } else {
-    this._wizardAdvance('lens_running');
-  }
-}
-
-_toggleCaptureMode() {
-  const manual = document.getElementById('capture-mode-switch')?.checked;
-  this._wizardState.captureMode = manual ? 'manual' : 'auto';
-  const btn = document.getElementById('manual-capture-btn');
-  if (btn) btn.style.display = manual ? '' : 'none';
-}
-
-async _manualCapture() {
-  const camId = this._wizardState.currentCamera;
-  if (!camId) return;
-  try {
-    const resp = await fetch(`/api/calibration/capture-frame/${camId}`, { method: 'POST' });
-    const data = await resp.json();
-    this._showCaptureFeedback(data.accepted, data.reason);
-  } catch (e) {
-    this._showCaptureFeedback(false, 'Netzwerkfehler');
-  }
-}
-
-_showCaptureFeedback(accepted, reason) {
-  const el = document.getElementById('capture-feedback');
-  if (!el) return;
-  el.className = 'capture-feedback ' + (accepted ? 'accept' : 'reject');
-  el.textContent = accepted ? 'Frame aufgenommen!' : (reason || 'Abgelehnt');
-  el.style.display = '';
-  setTimeout(() => { el.style.display = 'none'; }, 2000);
+_refineCalibration() {
+    // Reset collector and restart in handheld mode for full calibration
+    this._wizardState.mode = 'handheld';
+    this._wizardState.captureMode = 'auto';
+    this._syncWizardModeControls();
+    // Re-enter the wizard from lens step
+    var cameraId = this._wizardState.currentCamera;
+    if (cameraId) {
+        this._startGuidedCapture(cameraId);
+    }
 }
 ```
 
-- [ ] **Step 3.5: Update stepper to handle mode step**
+Show the button when `data.quality_level === 'provisional'` in `_showWizardResult()` or `_renderWizardResultQuality()`.
 
-Modify the existing `_updateStepperVisuals()` and `_wizardNext()` methods to:
-- Include 'mode' as the first step
-- Show/hide the mode selection panel
-- Skip lens step when `calibrationMode === 'stationary'`
-- Show capture toggle only during lens step in handheld mode
-- After provisional stereo: show yellow "Provisorisch" badge and "Verfeinern" button
-- "Verfeinern" button calls `_selectCalibrationMode('handheld')` to restart in handheld mode with full lens calibration. This overwrites the provisional data on success.
+- [ ] **Step 3.2: Add "Modus aendern" link in stepper**
 
-- [ ] **Step 3.6: Syntax check**
+In `templates/index.html`, add a link near the stepper:
+
+```html
+<a id="wizard-change-mode" href="#" style="display:none; font-size:0.85rem;"
+   onclick="event.preventDefault(); window.dartApp._changeCalibrationMode()">Modus aendern</a>
+```
+
+In `static/js/app.js`:
+
+```javascript
+_changeCalibrationMode() {
+    // Reset collector and go back to mode selection
+    this._resetCalibration('all');
+    this._showCalStep('cal-step-mode');
+}
+```
+
+Show the link when wizard step is not 'idle' and not already on mode step.
+
+- [ ] **Step 3.3: Add flash overlay for accept/reject**
+
+In `static/css/style.css`:
+
+```css
+/* Frame capture flash overlay */
+.capture-flash {
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+  pointer-events: none; opacity: 0;
+  transition: opacity 0.15s ease-out;
+}
+.capture-flash--accept { background: rgba(76, 175, 80, 0.3); }
+.capture-flash--reject { background: rgba(244, 67, 54, 0.3); }
+.capture-flash.active { opacity: 1; }
+```
+
+In `templates/index.html`, add inside the video feed container:
+
+```html
+<div id="capture-flash" class="capture-flash"></div>
+```
+
+In `static/js/app.js`, add flash trigger to the capture feedback path:
+
+```javascript
+_flashCapture(accepted) {
+    var el = document.getElementById('capture-flash');
+    if (!el) return;
+    el.className = 'capture-flash ' + (accepted ? 'capture-flash--accept' : 'capture-flash--reject') + ' active';
+    setTimeout(function() { el.classList.remove('active'); }, 300);
+}
+```
+
+Call `this._flashCapture(data.accepted)` in the capture-frame response handler and auto-capture callback.
+
+- [ ] **Step 3.4: Syntax check**
 
 Run: `node -c static/js/app.js`
 
 Expected: No syntax errors
 
-- [ ] **Step 3.7: Run frontend-related tests**
-
-Run: `cd C:/Users/domes/OneDrive/Desktop/dart-vision-claude && .venv/Scripts/python.exe -m pytest tests/test_wizard_flow.py tests/test_web.py -v -x`
-
-Expected: All PASS
-
-- [ ] **Step 3.8: Commit**
+- [ ] **Step 3.5: Commit**
 
 ```bash
 git add static/js/app.js templates/index.html static/css/style.css
-git commit -m "feat: wizard mode selection UI with manual capture and provisional badges"
+git commit -m "feat: add Verfeinern button, Modus-Wechsel link, and capture flash overlay"
 ```
 
 ---
 
-## Task 4: Integration Tests and Validation
+## Task 4: Integration Tests and Real-Video Validation
 
 **Files:**
 - Modify: `tests/test_provisional_stereo.py` — add integration tests
 
-- [ ] **Step 4.1: Write integration test for provisional round-trip**
+- [ ] **Step 3.1: Write integration tests**
 
 Add to `tests/test_provisional_stereo.py`:
 
@@ -409,7 +394,6 @@ class TestProvisionalRoundTrip:
         with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as f:
             path = f.name
         try:
-            # Save provisional
             save_stereo_pair("a", "b", R=[[1,0,0],[0,1,0],[0,0,1]], T=[0.1,0,0],
                            reprojection_error=0.0, path=path,
                            calibration_method="board_pose_provisional",
@@ -418,9 +402,10 @@ class TestProvisionalRoundTrip:
             pair = get_stereo_pair("a", "b", path=path)
             assert pair["quality_level"] == "provisional"
 
-            # Overwrite with full
             save_stereo_pair("a", "b", R=[[1,0,0],[0,1,0],[0,0,1]], T=[0.1,0,0],
-                           reprojection_error=0.5, path=path)
+                           reprojection_error=0.5, path=path,
+                           calibration_method="stereoCalibrate",
+                           quality_level="full")
             pair = get_stereo_pair("a", "b", path=path)
             assert pair["quality_level"] == "full"
         finally:
@@ -440,7 +425,7 @@ class TestCollectorWithNewThresholds:
         frame = rng.randint(0, 255, (480, 640, 3), dtype=np.uint8)
         accepted = 0
         for i in range(30):
-            cx = 250 + i * 15  # shift ~15px per frame
+            cx = 250 + i * 15
             corners = rng.uniform([cx - 25, 215], [cx + 25, 265], (8, 2)).astype(np.float32)
             if collector.add_frame_if_diverse(
                 corners, frame,
@@ -452,25 +437,24 @@ class TestCollectorWithNewThresholds:
         assert accepted >= 5, f"Expected >= 5 accepted frames, got {accepted}"
 ```
 
-- [ ] **Step 4.2: Run all new tests**
+- [ ] **Step 3.2: Run all new tests**
 
 Run: `cd C:/Users/domes/OneDrive/Desktop/dart-vision-claude && .venv/Scripts/python.exe -m pytest tests/test_provisional_stereo.py -v`
 
 Expected: All PASS
 
-- [ ] **Step 4.3: Run full focused test suite**
+- [ ] **Step 3.3: Run full focused test suite**
 
 Run: `cd C:/Users/domes/OneDrive/Desktop/dart-vision-claude && .venv/Scripts/python.exe -m pytest tests/test_calibration.py tests/test_stereo_calibration.py tests/test_charuco_progress.py tests/test_wizard_flow.py tests/test_routes_coverage4.py tests/test_web.py tests/test_multi_cam_config.py -v -x`
 
 Expected: All PASS
 
-- [ ] **Step 4.4: Validate with real videos**
+- [ ] **Step 3.4: Validate with real videos (manual, not CI)**
 
 Run: `cd C:/Users/domes/OneDrive/Desktop/dart-vision-claude && .venv/Scripts/python.exe -c "
-from src.cv.camera_calibration import CharucoFrameCollector, estimate_intrinsics
+from src.cv.camera_calibration import CharucoFrameCollector
 from src.cv.stereo_calibration import detect_charuco_board, resolve_charuco_board_candidates
-from src.cv.sharpness import compute_sharpness
-import cv2, numpy as np
+import cv2
 
 specs = resolve_charuco_board_candidates()
 collector = CharucoFrameCollector(frames_needed=15, min_position_diff=0.05, board_specs=specs)
@@ -494,8 +478,7 @@ for i in range(0, 104, 3):
         print(f'Frame {i}: REJECTED - {collector.last_reject_reason}')
 cap.release()
 print(f'Total usable: {collector.usable_frames}/{collector.frames_needed}')
-"
-`
+"`
 
 Expected: More than 1 frame accepted (vs. exactly 1 with old 0.15 threshold)
 
