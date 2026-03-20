@@ -1,0 +1,1 @@
+{"auto_log_iterations": true, "auto_review_code": true, "auto_run_tests": true, "pattern_check_interval": 5, "min_severity_for_log": "minor", "auto_context_on_decisions": true, "retrospective_interval_sessions": 5, "verbose_orchestrator_log": false}

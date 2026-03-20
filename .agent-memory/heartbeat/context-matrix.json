@@ -1,0 +1,11 @@
+{
+  "timestamp": "2026-03-20",
+  "total_context_tokens_estimate": 15000,
+  "budget_warning": false,
+  "sections": [
+    {"category": "project-context", "files": ["project-context.md", "session-summary.md"], "estimated_tokens": 2500, "priority": "high", "loaded": true},
+    {"category": "patterns", "files": ["patterns.md"], "estimated_tokens": 2000, "priority": "medium", "loaded": false},
+    {"category": "current-state", "files": ["current_state.md"], "estimated_tokens": 4000, "priority": "high", "loaded": true},
+    {"category": "skills", "files": ["11 SKILL.md files"], "estimated_tokens": 6000, "priority": "medium", "loaded": false, "note": "On-demand"}
+  ]
+}
