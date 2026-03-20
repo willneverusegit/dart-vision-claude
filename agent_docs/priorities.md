@@ -215,28 +215,6 @@ Typische Arbeiten:
 
 Warum sinnvoll: P26 kompensiert Schaerfe-Unterschiede, aber Helligkeits-Unterschiede zwischen Kameras koennen ebenso zu unterschiedlichen Diff-Ergebnissen fuehren. Auto-Exposure-Harmonisierung wuerde die Multi-Cam-Triangulation robuster machen.
 
-## Prioritaet 64: routes.py Test-Coverage auf 80%+ heben (ERLEDIGT 2026-03-20)
-
-**Umsetzung:** Die bestehende P64-Vorarbeit wurde mit dem breiteren Route-nahen Testset final verifiziert. Fuer die Abschlussmessung liefen `tests/test_routes_coverage.py`, `tests/test_routes_p64.py`, `tests/test_routes_coverage4.py`, `tests/test_routes_extra.py`, `tests/test_web.py`, `tests/test_websocket.py`, `tests/test_modes.py`, `tests/test_charuco_progress.py`, `tests/test_wizard_flow.py` und `tests/test_camera_preview_lock.py` gemeinsam; damit sind Single-Start/Stop, Multi-Start/Stop, WebSocket, Kamera-Preview-Locking sowie ChArUco-/Wizard-Pfade gemeinsam abgesichert. `src/web/routes.py` erreicht damit 81% Coverage.
-
-Kritikalitaet: NIEDRIG
-
-Ziel:
-
-- routes.py Coverage von 74% auf mindestens 80% bringen
-- Fehlende Pfade: single/start, single/stop (mit echtem Pipeline-Mock), multi/start Erfolgsfall, stereo calibration Erfolgsfall, charuco calibration, board-pose Erfolgsfall, WebSocket endpoint
-
-Typische Arbeiten:
-
-- Tests fuer Pipeline-Start/Stop-Endpunkte mit gemockten start_single_pipeline / _run_multi_pipeline
-- Stereo-Calibration Erfolgspfad testen (aufwaendig wegen cv2-Abhaengigkeiten)
-- WebSocket-Verbindungstests
-- Dateien: tests/test_routes_coverage4.py
-
-Warum sinnvoll: Weitere Absicherung der API-Endpunkte gegen Regressionen. 74% durch P64-Vorarbeit erreicht, letzte 6-10% erfordern tiefere Mocks.
-
-Verknuepfte Entscheidungen: keine
-
 ## Prioritaet 66: Telemetrie-Dashboard Langzeit-Trends
 
 (reserviert)
