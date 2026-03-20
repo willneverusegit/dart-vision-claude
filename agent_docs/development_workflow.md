@@ -102,7 +102,7 @@ Wenn du einen Workflow, eine Prioritaet oder einen grundlegenden Betriebsweg ver
 
 - `AGENTS.md` falls die generelle Repo-Anweisung betroffen ist
 - passende Datei in `agent_docs/`
-- optional `PROJEKTSTAND_2026-03-16.md`, wenn die Aenderung den dokumentierten Ist-Stand klar ueberholt
+- optional `agent_docs/current_state.md`, wenn die Aenderung den dokumentierten Ist-Stand klar ueberholt
 
 ## Was ein Agent in der finalen Antwort benennen sollte
 
@@ -110,4 +110,3 @@ Wenn du einen Workflow, eine Prioritaet oder einen grundlegenden Betriebsweg ver
 - welche Tests gelaufen sind
 - was nicht verifiziert wurde
 - welche Restrisiken bleiben
-

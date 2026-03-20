@@ -1,31 +1,28 @@
 # Session Summary
 
-*Date: 2026-03-19*
+*Date: 2026-03-20*
 *Agent: GPT-5 Codex*
 
 ## Completed
 
-- Multi-Cam-Kalibriermodus repariert
-  - Root Cause: Kalibrier-Endpunkte ausserhalb des manuellen Pfads verwendeten nur `app_state["pipeline"]`; im Multi-Cam-Betrieb liegen die aktiven Live-Pipelines in `app_state["multi_pipeline"]`
-  - `src/web/routes.py` waehlt jetzt die passende Sub-Pipeline pro `camera_id` fuer Frame, Info, Board-Alignment, Lens-Setup, ROI/Overlay, Ring-Check und optischen Mittelpunkt
-  - `static/js/app.js` und `templates/index.html` erweitern den Kalibrierdialog um Kamera-Auswahl, zielbezogene Statusmeldungen und per-Kamera-Requests
-  - `tests/test_routes_coverage4.py` um 5 Multi-Cam-Kalibrier-Regressionen erweitert
-- Debug-Aufraeumen in `src/web/routes.py`
-  - Unerreichbare Single-Cam-Altpfade aus den betroffenen Kalibrierfunktionen entfernt
-  - Syntax erneut verifiziert mit `python -m py_compile src/web/routes.py` und `node -c static/js/app.js`
-- Fokussierte Verifikation nach Wiederaufnahme der Session
-  - 20 Kalibrier-/Stereo-API-Tests gruen
-  - 163 Route-Coverage-Tests gruen
-  - Zusaetzlich zuvor in derselben Session: 23 Web/Hardening-Tests, 35 Multi-Cam-Konfigurations-Tests und 15 weitere Route/Stereo-Tests gruen
+- Checkpoint-Commit `8e6e23f` fuer den vorhandenen lokalen Arbeitsstand erstellt
+- Prioritaet 64 abgeschlossen
+  - fokussierte Route-/Wizard-/Preview-/ChArUco-Tests gemeinsam verifiziert
+  - `src/web/routes.py` erreicht 81% Coverage
+  - `agent_docs/priorities.md` und `agent_docs/current_state.md` auf den verifizierten Stand gebracht
+- Doku-Einstieg repariert
+  - `README.md`, `AGENTS.md` und `agent_docs/development_workflow.md` zeigen jetzt auf `agent_docs/current_state.md` statt auf geloeschte `PROJEKTSTAND_*`-Dateien
+- Workflow-Fund dokumentiert
+  - `agent_docs/pitfalls.md` enthaelt jetzt den lokalen Workaround fuer den `pytest-cov`-Importfehler unter Python 3.14 + NumPy 2.4
 
 ## Open Items
 
-- Prioritaet 9 bleibt offen: Drag-and-Drop Kamera-Anordnung, Board-Pose-Feedback und weiter gefuehrter Setup-Wizard fehlen noch
-- Reale Browser-/Hardware-E2E-Pruefung des Multi-Cam-Kalibrierdialogs steht noch aus
-- Kein kompletter Vollsuite-Lauf in dieser Session
+- Prioritaet 9 bleibt offen: reale Browser-/Hardware-Verifikation des Multi-Cam-Kalibrierflows steht noch aus
+- Prioritaet 11 bleibt offen: echte Videoclips weiter annotieren und als Regressionsbasis ausbauen
+- `pytest-cov` ist in der aktuellen lokalen Toolchain weiterhin unzuverlaessig; fuer Coverage bleibt `coverage run` der Workaround
 
 ## Recommended Next Steps
 
-1. Multi-Cam-Kalibrierflow einmal am echten Setup durchspielen: Lens -> Board -> ROI/Overlay -> optischer Mittelpunkt
-2. Wenn stabil, Prioritaet 9 mit den verbleibenden UX-Fuehrungsschritten weiterziehen
-3. Optional eine hoehere E2E-Abdeckung fuer den Kalibrierdialog aufbauen, damit Frontend- und Route-Kontext kuenftig gemeinsam regressionssicher sind
+1. Entweder Prioritaet 11 mit weiteren echten Clips/Ground-Truth weiterziehen oder den offenen Hardware-Check aus Prioritaet 9 durchspielen
+2. Wenn wieder Route-Coverage gemessen werden soll, direkt den dokumentierten `coverage run`-Pfad nutzen
+3. Spaeter die untracked Laufzeitartefakte und Testvideos separat einsortieren oder ignorieren

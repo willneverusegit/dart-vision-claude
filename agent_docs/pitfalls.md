@@ -43,6 +43,7 @@ Jeder Moduswechsel (Single→Multi, Multi→Single, Restart) MUSS `_full_state_r
 - **Multi-Cam-Tests:** Sind fragiler als Single-Cam — bei Aenderungen immer separat laufen lassen
 - **E2E-Replay-Tests:** Pipeline laedt automatisch die echte Kalibrierung aus config/ — fuer synthetische Tests muss Remapper und Geometry explizit auf Identity/Default ueberschrieben werden nach pipeline.start()
 - **MOG2 Background Model:** Braucht ~15-20 Frames Warmup auf schwarzem Hintergrund bevor Motion zuverlaessig erkannt wird
+- **`pytest-cov` auf Python 3.14 + NumPy 2.4:** `pytest --cov` kann schon beim Import von `tests/conftest.py` mit `ImportError: cannot load module more than once per process` abbrechen. Fuer Coverage-Messungen lokal stattdessen `python -m coverage run -m pytest ...` und danach `python -m coverage report -m` verwenden.
 
 ## Windows-spezifisch
 

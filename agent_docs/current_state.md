@@ -1,6 +1,6 @@
 # Current State
 
-Stand dieser Zusammenfassung: 2026-03-19 (Welle 1-4 + Auto-Agents: P22, P26, P27, P28, P30-P31, P33, P39-P43, P46-P49, P50-P56, P60-P65, Tier-2 #5-#7, #10-#14, P32, P35, P73, P75-P77 erledigt, Multi-Cam-Kalibriermodus repariert, P9 Wizard implementiert)
+Stand dieser Zusammenfassung: 2026-03-20 (Welle 1-4 + Auto-Agents: P22, P26, P27, P28, P30-P31, P33, P39-P43, P46-P49, P50-P56, P60-P65, Tier-2 #5-#7, #10-#14, P32, P35, P64, P73, P75-P77 erledigt, Multi-Cam-Kalibriermodus repariert, P9 Wizard implementiert)
 
 ## Technischer Kern
 
@@ -102,6 +102,7 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 - 48 neue Route-Tests, routes.py Coverage 66%→74% (P64-Vorarbeit)
 - Camera Preview Locking: asyncio.Lock pro Source, TTL-Cache 2.5s, Timeout 5s (P65)
 - 54 weitere Route-Tests fuer Pipeline-Start/Stop, Multi-Cam, WebSocket, Telemetrie (P64)
+- P64 abgeschlossen: fokussiertes Route-/Wizard-/Preview-/ChArUco-Testset bringt `src/web/routes.py` auf 81% Coverage
 - Ground-Truth-Validierungsskript und 32 Tests (P11)
 - Video-Replay-Testinfrastruktur: add_ground_truth.py Helper, verbessertes Fehler-Reporting, 29 Tests (P39)
 
@@ -117,7 +118,8 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 
 - `1348` Tests bestanden (Stand 2026-03-19, ohne e2e/scripts)
 - Gesamt-Coverage ~77%
-- Wichtige Module: main.py 78%, routes.py 74%, pipeline.py 68%, multi_camera.py 62%, capture.py 72%
+- Wichtige Module: main.py 78%, routes.py 81%, pipeline.py 68%, multi_camera.py 62%, capture.py 72%
+- Zusatzverifikation 2026-03-20 (P64-Abschluss): 247 fokussierte Web/Route/Wizard/Preview/ChArUco-Tests gruen; `src/web/routes.py` 81% Coverage
 - Zusatzverifikation 2026-03-19: 256 fokussierte Tests gruen (Multi-Cam-Kalibrierung, Route-Coverage, Web/Hardening, Multi-Cam-Config); kein Vollsuite-Lauf
 - Zusatzverifikation 2026-03-19 (Kalibrier-UX): 35 weitere fokussierte Checks gruen (`node -c`, 30 Web/Route/WebSocket/Stereo-Tests, 5 Multi-Cam-Kalibrier-Tests)
 - Zusatzverifikation 2026-03-19 (ChArUco-Haertung): 160 fokussierte Tests gruen (`tests/test_calibration.py`, `tests/test_charuco_progress.py`, `tests/test_stereo_calibration.py`, `tests/test_stereo_wizard_api.py`, `tests/test_wizard_flow.py`, `tests/test_web.py`, `tests/test_routes_extra.py`, `tests/test_routes_coverage4.py`); lokale 1080p-Kalibrierclips `testvids/1.mp4` und `testvids/2.mp4` bestaetigen `7x5_40x20` -> 14 Rohmarker / 0 ChArUco-Ecken und `auto` -> `5x7_40x20` mit 18 Ecken

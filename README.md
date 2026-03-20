@@ -7,7 +7,7 @@ CPU-optimiertes Computer-Vision-System zur automatischen Dart-Treffererkennung u
 - Single-Camera ist der stabile Hauptpfad.
 - Multi-Camera ist bereits weit entwickelt, aber noch sensibler im Betrieb.
 - Das System ist bewusst auf **CPU-only** ausgelegt.
-- Der aktuelle Projektstatus ist dokumentiert in `PROJEKTSTAND_2026-03-16.md`.
+- Der aktuelle Projektstatus ist dokumentiert in `agent_docs/current_state.md`.
 
 ## Quickstart
 
@@ -45,7 +45,7 @@ Dann im Browser oeffnen:
 
 ### Fuer Menschen
 
-- `PROJEKTSTAND_2026-03-16.md` - verifizierter Projektstatus, Hardware-Abgleich, Risiken, Prioritaeten
+- `agent_docs/current_state.md` - verifizierter Projektstatus, Hardware-Abgleich, Risiken, Prioritaeten
 - `MULTI_CAM_INSTRUCTIONS.md` - detaillierte Multi-Cam-Hinweise
 - `MULTI_CAM_WORKFLOW.md` - Multi-Cam-Workflow und Kalibrierungsablauf
 
@@ -99,4 +99,3 @@ python -m pytest tests/test_pipeline.py tests/test_web.py -q
 python -m pytest tests/test_multi_camera.py tests/test_multi_cam_config.py -q
 python -m tests.benchmark_pipeline --duration 5 --cameras 1
 ```
-
