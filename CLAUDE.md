@@ -60,13 +60,23 @@ Vor Arbeit an Code: `agent_docs/current_state.md` lesen fuer den aktuellen Stand
 - `/save-session` — Kompletter Session-Abschluss (alle Protokolle gebuendelt)
 - `/task-splitter` — Aufgaben in parallele Agenten zerlegen
 - `.claude/agents/calibration-reviewer.md` — Review-Agent fuer Kalibrierung
-- `/agentic-os:init` — Memory-System in neuem Projekt initialisieren
-- `/agentic-os:status` — System-Health und Memory-Status anzeigen
-- `/agentic-os:sync` — Learnings zwischen Projekt und Global synchronisieren
+- `/agentic-os-init` — Memory-System in neuem Projekt initialisieren
+- `/agentic-os-status` — System-Health und Memory-Status anzeigen
+- `/agentic-os-sync` — Learnings zwischen Projekt und Global synchronisieren
+- `/agentic-os-heartbeat` — Session-Start Health-Check und Briefing
+- `/agentic-os-iteration-logger` — Bug/Fix-Iteration protokollieren
+- `/agentic-os-pattern-extractor` — Patterns aus Iterationen erkennen
+- `/agentic-os-wrap-up` — Session-Ende Context sichern
+- `/agentic-os-agent-handoff` — Arbeitsstand bei Abbruch sichern
+- `/agentic-os-code-reviewer` — Selbst-Review geaenderter Dateien
+- `/agentic-os-test-validator` — Test-Ergebnisse und Trends tracken
+- `/agentic-os-skill-generator` — Skills aus Patterns generieren
+- `/agentic-os-retrospective` — Tiefenanalyse ueber mehrere Sessions
+- `/agentic-os-sync-context` — Cross-Project-Learning nach Milestones
 
 ## Session-Start Prioritaet
 
-Bei jedem Session-Start ZUERST `agentic-os:heartbeat` ausfuehren — noch vor anderen Skill-Checks.
+Bei jedem Session-Start ZUERST `/agentic-os-heartbeat` ausfuehren — noch vor anderen Skill-Checks.
 Dies hat Vorrang vor dem superpowers:using-superpowers Hook.
 Danach den normalen superpowers-Workflow befolgen.
 

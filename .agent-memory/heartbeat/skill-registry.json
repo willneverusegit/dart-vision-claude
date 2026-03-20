@@ -11,6 +11,19 @@
     {"name": "multi-cam", "path": ".claude/skills/multi-cam/SKILL.md", "status": "active"},
     {"name": "vision", "path": ".claude/skills/vision/SKILL.md", "status": "active"},
     {"name": "save-session", "path": ".claude/skills/save-session/SKILL.md", "status": "active"},
-    {"name": "session-log", "path": ".claude/skills/session-log/SKILL.md", "status": "active"}
+    {"name": "session-log", "path": ".claude/skills/session-log/SKILL.md", "status": "active"},
+    {"name": "agentic-os-init", "path": ".claude/skills/agentic-os-init/SKILL.md", "status": "active"},
+    {"name": "agentic-os-status", "path": ".claude/skills/agentic-os-status/SKILL.md", "status": "active"},
+    {"name": "agentic-os-sync", "path": ".claude/skills/agentic-os-sync/SKILL.md", "status": "active"},
+    {"name": "agentic-os-heartbeat", "path": ".claude/skills/agentic-os-heartbeat/SKILL.md", "status": "active"},
+    {"name": "agentic-os-iteration-logger", "path": ".claude/skills/agentic-os-iteration-logger/SKILL.md", "status": "active"},
+    {"name": "agentic-os-pattern-extractor", "path": ".claude/skills/agentic-os-pattern-extractor/SKILL.md", "status": "active"},
+    {"name": "agentic-os-wrap-up", "path": ".claude/skills/agentic-os-wrap-up/SKILL.md", "status": "active"},
+    {"name": "agentic-os-agent-handoff", "path": ".claude/skills/agentic-os-agent-handoff/SKILL.md", "status": "active"},
+    {"name": "agentic-os-code-reviewer", "path": ".claude/skills/agentic-os-code-reviewer/SKILL.md", "status": "active"},
+    {"name": "agentic-os-test-validator", "path": ".claude/skills/agentic-os-test-validator/SKILL.md", "status": "active"},
+    {"name": "agentic-os-skill-generator", "path": ".claude/skills/agentic-os-skill-generator/SKILL.md", "status": "active"},
+    {"name": "agentic-os-retrospective", "path": ".claude/skills/agentic-os-retrospective/SKILL.md", "status": "active"},
+    {"name": "agentic-os-sync-context", "path": ".claude/skills/agentic-os-sync-context/SKILL.md", "status": "active"}
   ]
 }

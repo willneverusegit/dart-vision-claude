@@ -29,11 +29,11 @@ Fuehre den vollstaendigen Session-Abschluss durch. Alle Schritte sind Pflicht.
 - Neue Faehigkeiten oder behobene Schwachstellen eintragen
 
 ### 5. Context-Keeper aktivieren
-- Aktiviere `agentic-os:wrap-up` fuer Architektur-Entscheidungen und Statusaenderungen
+- Aktiviere `/agentic-os-wrap-up` fuer Architektur-Entscheidungen und Statusaenderungen
 
 ### 6. Pattern-Analyse (optional)
 - Wenn mindestens 3 Iterationen via `iteration-logger` erfasst wurden:
-  - Aktiviere `agentic-os:pattern-extractor`
+  - Aktiviere `/agentic-os-pattern-extractor`
 
 ### 7. CLAUDE.md pruefen
 - Waren Lesepfade oder Instruktionen unklar? → Anpassen

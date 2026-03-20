@@ -10,22 +10,22 @@ Fuehre alle Session-End-Protokolle gebuendelt aus. Jeder Schritt ist Pflicht.
 ## Schritte
 
 ### 1. Iteration Logger
-- Aktiviere `agentic-os:iteration-logger`
+- Aktiviere `/agentic-os-iteration-logger`
 - Nur wenn in dieser Session Bugs gefunden/gefixt wurden
 - Wenn keine Iterationen: diesen Schritt ueberspringen
 
 ### 2. Pattern Extractor
-- Aktiviere `agentic-os:pattern-extractor` (Lightweight Mode)
+- Aktiviere `/agentic-os-pattern-extractor` (Lightweight Mode)
 - Nur wenn Schritt 1 einen neuen Eintrag erzeugt hat
 - Wenn keine neuen Iterationen: diesen Schritt ueberspringen
 
 ### 3. Skill Generator
-- Aktiviere `agentic-os:skill-generator`
+- Aktiviere `/agentic-os-skill-generator`
 - Nur wenn ein Pattern `skill_candidate: true` hat
 - Wenn kein Kandidat: kurz bestaetigen und ueberspringen
 
 ### 4. Context Keeper
-- Aktiviere `agentic-os:wrap-up`
+- Aktiviere `/agentic-os-wrap-up`
 - Immer ausfuehren — mindestens project-context.md Status aktualisieren
 
 ### 5. Commit
