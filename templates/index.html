@@ -338,6 +338,14 @@
                     <button id="btn-cal-aruco" class="btn btn--primary cal-mode-btn">Board ArUco (Auto)</button>
                 </div>
                 <p class="modal__text cal-hint-text" style="margin-top: 12px; font-size: 0.85em; color: #aaa;">Tipp: Helle, kontrastreiche Flights verbessern die Erkennung.</p>
+                <div class="cal-reset-section" style="margin-top: 20px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.1);">
+                    <p class="modal__text" style="font-size: 0.85em; color: #aaa; margin-bottom: 8px;">Kalibrierung zuruecksetzen:</p>
+                    <div class="cal-mode-buttons" style="gap: 8px;">
+                        <button id="btn-reset-lens" class="btn btn--warning" style="font-size: 0.8em; padding: 6px 12px;">Lens Reset</button>
+                        <button id="btn-reset-board" class="btn btn--warning" style="font-size: 0.8em; padding: 6px 12px;">Board Reset</button>
+                        <button id="btn-reset-all" class="btn btn--warning" style="font-size: 0.8em; padding: 6px 12px;">Alles Reset</button>
+                    </div>
+                </div>
                 <div id="cal-stereo-section" style="display:none;">
                     <p class="modal__text" style="margin-top:16px;">Stereo-Kalibrierung (nur bei Multi-Kamera):</p>
                     <div class="cal-mode-buttons">
@@ -411,6 +419,7 @@
                 <p class="modal__text">Kameras konfigurieren (min. 2). Quelle = Kamera-Index (0, 1, 2, ...):</p>
                 <div id="multi-cam-list" class="multi-cam-list">
                     <div class="multi-cam-entry">
+                        <div class="multi-cam-entry__status" title="Nicht verbunden"></div>
                         <div class="multi-cam-entry__fields">
                             <input type="text" class="input multi-cam-id" placeholder="Kamera-ID" value="cam_left">
                             <input type="number" class="input multi-cam-src" placeholder="Quelle (0,1,...)" value="0" min="0">
@@ -422,6 +431,7 @@
                         </div>
                     </div>
                     <div class="multi-cam-entry">
+                        <div class="multi-cam-entry__status" title="Nicht verbunden"></div>
                         <div class="multi-cam-entry__fields">
                             <input type="text" class="input multi-cam-id" placeholder="Kamera-ID" value="cam_right">
                             <input type="number" class="input multi-cam-src" placeholder="Quelle (0,1,...)" value="2" min="0">
@@ -480,16 +490,26 @@
                     </div>
                 </div>
                 <div id="stereo-result" class="stereo-result" style="display:none;"></div>
-                <div id="stereo-progress-container" style="display:none;margin-top:12px">
-                    <div style="background:var(--bg-tertiary,#333);border-radius:4px;overflow:hidden;height:20px">
-                        <div id="stereo-progress-bar" style="height:100%;background:var(--accent-color,#4caf50);width:0%;transition:width 0.3s"></div>
+                <div id="stereo-progress-container" class="stereo-progress" style="display:none;">
+                    <div class="stereo-progress__track">
+                        <div id="stereo-progress-bar" class="stereo-progress__bar"></div>
                     </div>
-                    <div id="stereo-progress-text" style="font-size:0.85em;margin-top:4px;color:var(--text-secondary,#aaa)"></div>
+                    <div id="stereo-progress-text" class="stereo-progress__text"></div>
                 </div>
                 <div id="stereo-result-info"></div>
                 <div class="modal__actions">
                     <button id="btn-stereo-calibrate" class="btn btn--accent">Stereo kalibrieren</button>
                     <button id="btn-stereo-back" class="btn btn--secondary">Zurueck</button>
+                </div>
+            </div>
+
+            <!-- Overall Calibration Progress -->
+            <div id="cal-progress-overview" class="cal-progress-overview" style="display:none;">
+                <div class="cal-progress-overview__text">
+                    Fortschritt: <span id="cal-progress-fraction" class="cal-progress-overview__fraction">0/0</span>
+                </div>
+                <div class="cal-progress-overview__bar">
+                    <div id="cal-progress-fill" class="cal-progress-overview__fill" style="width:0%"></div>
                 </div>
             </div>
 
@@ -499,22 +519,26 @@
                 <div class="wizard-stepper__steps">
                     <div class="wizard-step" id="wizard-step-lens" data-step="lens">
                         <div class="wizard-step__circle">1</div>
-                        <div class="wizard-step__label">Lens</div>
+                        <div class="wizard-step__label">Objektiv</div>
+                        <div class="wizard-step__sublabel">Entzerrung</div>
                     </div>
                     <div class="wizard-step__line"></div>
                     <div class="wizard-step" id="wizard-step-board" data-step="board">
                         <div class="wizard-step__circle">2</div>
                         <div class="wizard-step__label">Board</div>
+                        <div class="wizard-step__sublabel">Erkennung</div>
                     </div>
                     <div class="wizard-step__line"></div>
                     <div class="wizard-step" id="wizard-step-pose" data-step="pose">
                         <div class="wizard-step__circle">3</div>
-                        <div class="wizard-step__label">Pose</div>
+                        <div class="wizard-step__label">Position</div>
+                        <div class="wizard-step__sublabel">3D-Lage</div>
                     </div>
                     <div class="wizard-step__line"></div>
                     <div class="wizard-step" id="wizard-step-stereo" data-step="stereo">
                         <div class="wizard-step__circle">4</div>
                         <div class="wizard-step__label">Stereo</div>
+                        <div class="wizard-step__sublabel">Abgleich</div>
                     </div>
                 </div>
             </div>

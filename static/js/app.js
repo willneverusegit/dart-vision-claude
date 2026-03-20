@@ -129,6 +129,14 @@ class DartApp {
         const btnCalNext = document.getElementById("btn-cal-next-camera");
         if (btnCalNext) btnCalNext.addEventListener("click", () => this._continueCalibrationFlow());
 
+        // Calibration reset buttons
+        const btnResetLens = document.getElementById("btn-reset-lens");
+        if (btnResetLens) btnResetLens.addEventListener("click", () => this._resetCalibration("lens"));
+        const btnResetBoard = document.getElementById("btn-reset-board");
+        if (btnResetBoard) btnResetBoard.addEventListener("click", () => this._resetCalibration("board"));
+        const btnResetAll = document.getElementById("btn-reset-all");
+        if (btnResetAll) btnResetAll.addEventListener("click", () => this._resetCalibration("all"));
+
         // B1: Manual optical center override
         const btnSetCenter = document.getElementById("btn-cal-set-center");
         if (btnSetCenter) btnSetCenter.addEventListener("click", () => this._startManualCenterPick());
@@ -325,10 +333,19 @@ class DartApp {
         }
     }
 
+    _getCalibrationContextCameraId() {
+        const contextualCameraId = this._charucoPollingContext?.cameraId ||
+            this._wizardState?.currentCamera ||
+            null;
+        return contextualCameraId && contextualCameraId !== "default"
+            ? contextualCameraId
+            : null;
+    }
+
     _getCalibrationCameraId() {
-        if (!this.multiCamRunning) return null;
+        if (!this.multiCamRunning) return this._getCalibrationContextCameraId();
         const activeIds = (this.activeCameraIds || []).filter(Boolean);
-        if (!activeIds.length) return null;
+        if (!activeIds.length) return this._getCalibrationContextCameraId();
         const select = document.getElementById("calibration-camera-select");
         const selected = select?.value;
         return activeIds.includes(selected) ? selected : activeIds[0];
@@ -348,9 +365,9 @@ class DartApp {
         return body;
     }
 
-    _getCalibrationTargetLabel() {
-        const cameraId = this._getCalibrationCameraId();
-        return cameraId ? "Kamera " + cameraId : "Single-Cam";
+    _getCalibrationTargetLabel(cameraId = null) {
+        const resolvedCameraId = cameraId || this._getCalibrationCameraId();
+        return resolvedCameraId ? "Kamera " + resolvedCameraId : "Single-Cam";
     }
 
     _setCalibrationCameraValue(cameraId) {
@@ -1351,6 +1368,28 @@ class DartApp {
         this._startManualCalibration();
     }
 
+    async _resetCalibration(mode) {
+        var cameraId = this._getCalibrationCameraId();
+        var label = mode === "lens" ? "Lens-Kalibrierung" : mode === "board" ? "Board-Kalibrierung" : "gesamte Kalibrierung";
+        if (!confirm("Sicher? " + label + " fuer " + (cameraId || "aktive Kamera") + " zuruecksetzen?")) return;
+        try {
+            var resp = await fetch("/api/calibration/reset", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({camera_id: cameraId, mode: mode || "all"}),
+            });
+            var data = await resp.json();
+            if (data.ok) {
+                this._showError(label + " zurueckgesetzt (" + (data.removed_keys || []).length + " Keys entfernt)");
+                await this._refreshCalibrationStatus({preferredCameraId: cameraId});
+            } else {
+                this._showError("Reset fehlgeschlagen: " + (data.error || "Unbekannter Fehler"));
+            }
+        } catch (e) {
+            this._showError("Reset-Fehler: " + e.message);
+        }
+    }
+
     async _submitCalibration() {
         if (this.calibrationPoints.length !== 4) return;
         try {
@@ -2060,6 +2099,10 @@ class DartApp {
                         placeholder.textContent = "Kein Bild";
                         previewWrap.appendChild(previewImg);
                         previewWrap.appendChild(placeholder);
+                        var statusDot = document.createElement("div");
+                        statusDot.className = "multi-cam-entry__status";
+                        statusDot.title = "Nicht verbunden";
+                        entry.appendChild(statusDot);
                         entry.appendChild(fields);
                         entry.appendChild(previewWrap);
                         list.appendChild(entry);
@@ -2128,6 +2171,11 @@ class DartApp {
         previewWrap.appendChild(previewImg);
         previewWrap.appendChild(placeholder);
 
+        const statusDot = document.createElement("div");
+        statusDot.className = "multi-cam-entry__status";
+        statusDot.title = "Nicht verbunden";
+
+        entry.appendChild(statusDot);
         entry.appendChild(fields);
         entry.appendChild(previewWrap);
         list.appendChild(entry);
@@ -2153,15 +2201,25 @@ class DartApp {
             if (!resp.ok) {
                 if (placeholder) placeholder.textContent = "Nicht verfuegbar";
                 img.style.display = "none";
+                entry.classList.remove("multi-cam-entry--connected");
+                entry.classList.add("multi-cam-entry--error");
+                var statusDot = entry.querySelector(".multi-cam-entry__status");
+                if (statusDot) statusDot.title = "Nicht erreichbar";
                 return;
             }
             const blob = await resp.blob();
             img.src = URL.createObjectURL(blob);
             img.style.display = "block";
             if (placeholder) placeholder.style.display = "none";
+            entry.classList.remove("multi-cam-entry--error");
+            entry.classList.add("multi-cam-entry--connected");
+            var statusDot2 = entry.querySelector(".multi-cam-entry__status");
+            if (statusDot2) statusDot2.title = "Verbunden";
         } catch (e) {
             if (placeholder) placeholder.textContent = "Fehler";
             img.style.display = "none";
+            entry.classList.remove("multi-cam-entry--connected");
+            entry.classList.add("multi-cam-entry--error");
         } finally {
             if (btn) { btn.disabled = false; btn.textContent = "Vorschau"; }
         }
@@ -2431,6 +2489,9 @@ class DartApp {
                     "Stereo fehlt — Voting-Fallback wird verwendet", null);
             }
 
+            // Update overall progress indicator
+            this._updateCalibrationProgress(cameras, stereoPairs, data.triangulation_possible);
+
             // Fetch detailed calibration validation
             this._fetchCalibrationDetails(checklist);
         } catch (e) {
@@ -2462,6 +2523,37 @@ class DartApp {
         }
 
         container.appendChild(step);
+    }
+
+    _updateCalibrationProgress(cameras, stereoPairs, triangulationPossible) {
+        var overview = document.getElementById("cal-progress-overview");
+        var fraction = document.getElementById("cal-progress-fraction");
+        var fill = document.getElementById("cal-progress-fill");
+        if (!overview || !fraction || !fill) return;
+
+        var total = 0;
+        var done = 0;
+        cameras.forEach(function(cam) {
+            total += 3; // lens, board, pose
+            if (cam.lens_calibrated) done++;
+            if (cam.board_calibrated) done++;
+            if (cam.board_pose) done++;
+        });
+        stereoPairs.forEach(function(pair) {
+            total++;
+            if (pair.calibrated) done++;
+        });
+        if (total > 0) total++; // triangulation as final step
+        if (triangulationPossible) done++;
+
+        if (total === 0) {
+            overview.style.display = "none";
+            return;
+        }
+        overview.style.display = "flex";
+        fraction.textContent = done + "/" + total;
+        var pct = Math.round((done / total) * 100);
+        fill.style.width = pct + "%";
     }
 
     async _fetchCalibrationDetails(checklist) {
@@ -3094,6 +3186,18 @@ class DartApp {
 
     _wizardAdvance(nextStep) {
         this._wizardState.step = nextStep;
+        // Show stepper and camera label when wizard is active
+        var stepper = document.getElementById('wizard-stepper');
+        if (stepper) {
+            stepper.style.display = 'block';
+            var camLabel = document.getElementById('wizard-camera-label');
+            if (camLabel && this._wizardState.currentCamera) {
+                camLabel.textContent = this._wizardState.currentCamera;
+            }
+        }
+        // Show overall progress
+        var overview = document.getElementById('cal-progress-overview');
+        if (overview) overview.style.display = 'flex';
         this._updateStepperVisuals();
         var computing = document.getElementById('wizard-computing');
         var result = document.getElementById('wizard-result');
@@ -3283,8 +3387,12 @@ class DartApp {
         this._stopCharucoGuidance();
         var computing = document.getElementById('wizard-computing');
         var result = document.getElementById('wizard-result');
+        var stepper = document.getElementById('wizard-stepper');
+        var overview = document.getElementById('cal-progress-overview');
         if (computing) computing.style.display = 'none';
         if (result) result.style.display = 'none';
+        if (stepper) stepper.style.display = 'none';
+        if (overview) overview.style.display = 'none';
         this._updateStepperVisuals();
     }
 
