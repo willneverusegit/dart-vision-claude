@@ -51,6 +51,8 @@ Vor Arbeit an Code: `agent_docs/current_state.md` lesen fuer den aktuellen Stand
 - `testvids/*.mp4` nicht committen, nur `ground_truth.yaml`
 - Frontend: nur `_showError()` in app.js, kein `_showToast`
 - Sensible Dateien (`main.py`, `routes.py`, `multi_camera.py`): defensiv aendern
+- Kalibrierungs-Kette beachten: Lens → Board Pose → Stereo (jeder Schritt invalidiert nachfolgende)
+- Detection-Koordinaten: `center`/`tip` = ROI-Raum, `raw_center`/`raw_tip` = Kamera-Frame-Raum
 - Vollstaendige Regeln: siehe `AGENTS.md`
 
 ## Verfuegbare Automations
