@@ -1,6 +1,6 @@
 # Current State
 
-Stand dieser Zusammenfassung: 2026-03-20 (Welle 1-4 + Auto-Agents: P22, P26, P27, P28, P30-P31, P33, P39-P43, P46-P49, P50-P56, P60-P65, Tier-2 #5-#7, #10-#14, P32, P35, P64, P73, P75-P77 erledigt, Multi-Cam-Kalibriermodus repariert, P9 Wizard implementiert)
+Stand dieser Zusammenfassung: 2026-03-23 (Welle 1-4 + Auto-Agents + Multi-Cam E2E Kalibrierung auf Hardware verifiziert, Config-Merge-Bug gefixt, Board-Pose Endpoint repariert, triangulation_possible=true)
 
 ## Technischer Kern
 
@@ -38,6 +38,10 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 - ChArUco-Guidance- und Lens-Capture-Flow besitzen jetzt manuelle Frame-Aufnahme, niedrigere Manual-Diversity, explizite Reject-Gruende und Live-Status fuer Schaerfe und nutzbare Frames
 - Lens- und Stereo-Kalibrierung loesen ChArUco-Layouts jetzt zur Laufzeit zwischen `7x5_40x20`, `7x5_40x28`, `5x7_40x20`, `5x7_40x28` auf; `auto` ist der empfohlene UI/API-Standard
 - Guided Capture zaehlt nur noch Frames mit erfolgreicher ChArUco-Interpolation; Rohmarker alleine machen den Collector oder die Progress-API nicht mehr "bereit"
+- ChArUco Auto-Capture sammelt jetzt automatisch Frames im Progress-Endpoint (zuvor nur update_detection ohne add_frame_if_diverse)
+- Config-Persistenz: CalibrationManager merged jetzt pro-Kamera-Sections statt sie zu ueberschreiben — Lens- und Board-Daten bleiben beide erhalten
+- Board-Pose Endpoint (`POST /api/calibration/board-pose`) funktioniert mit try/except Error-Handling und korrektem `get_config()`-Aufruf
+- Multi-Cam-Kalibrierung erstmals end-to-end auf Hardware verifiziert: Lens (RMS <0.23px), Board (4/4 Marker), Pose (solvePnP), Stereo — triangulation_possible=true
 - `/api/calibration/charuco-progress/{camera_id}` liefert jetzt explizit `markers_found`, `charuco_corners_found`, `interpolation_ok`, `resolved_preset`, `resolved_board`, `usable_frames`, `warning`; der normale Lens-Button startet erst Guided Capture und kalibriert erst nach genuegend nutzbaren Frames
 - `/api/calibration/charuco-start/{camera_id}` akzeptiert `mode` und `capture_mode`, `POST /api/calibration/capture-frame/{camera_id}` erlaubt manuelle Aufnahmen, und `charuco-progress` liefert zusaetzlich `sharpness`, `reject_reason`, `mode` und `capture_mode`
 - Laufende Multi-Cam-Guided-Capture-/Wizard-Sessions behalten ihren Kamera-Kontext jetzt auch dann, wenn das Frontend den Multi-Cam-Flag temporaer verliert; Statusmeldungen und Folge-Requests fallen waehrend der Session nicht mehr irrefuhrend auf `Single-Cam` zurueck
