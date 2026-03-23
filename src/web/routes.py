@@ -2736,6 +2736,22 @@ def setup_routes(app_state: dict) -> APIRouter:
                 sharpness=sharpness,
                 warning=detection.warning,
             )
+            # Auto-capture: add frame automatically when board is visible
+            if (
+                collector.capture_mode == "auto"
+                and detection.interpolation_ok
+                and detection.charuco_corners_found >= 6
+                and not collector.ready_to_calibrate
+            ):
+                collector.add_frame_if_diverse(
+                    detection.charuco_corners,
+                    frame,
+                    board_spec=detection.board_spec,
+                    markers_found=detection.markers_found,
+                    charuco_corners_found=detection.charuco_corners_found,
+                    interpolation_ok=detection.interpolation_ok,
+                    warning=detection.warning,
+                )
 
         markers_found = collector.last_markers_found
         charuco_corners_found = collector.last_charuco_corners_found

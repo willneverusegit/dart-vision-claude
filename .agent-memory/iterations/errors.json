@@ -10,8 +10,17 @@
     "solution": "update() wird jetzt VOR dem Early-Return aufgerufen. Der Early-Return bleibt, aber der Detektor bekommt jeden Frame.",
     "attempts": 1,
     "failed_approaches": [],
-    "files_changed": ["src/cv/pipeline.py", "docs/superpowers/plans/2026-03-17-p19-before-after-frame-diff.md"],
-    "tags": ["python", "state-machine", "pipeline", "architecture", "opencv"],
+    "files_changed": [
+      "src/cv/pipeline.py",
+      "docs/superpowers/plans/2026-03-17-p19-before-after-frame-diff.md"
+    ],
+    "tags": [
+      "python",
+      "state-machine",
+      "pipeline",
+      "architecture",
+      "opencv"
+    ],
     "reusable_pattern": "State-Machines die auf 'kein Ereignis'-Frames angewiesen sind (z.B. Countdown), muessen VOR jedem Motion-Gate-Early-Return aufgerufen werden — nicht danach.",
     "recurrence": []
   },
@@ -26,8 +35,16 @@
     "solution": "Baseline nur aktualisieren wenn has_motion=False. Bei has_motion=True: Baseline einfrieren, State wechseln.",
     "attempts": 1,
     "failed_approaches": [],
-    "files_changed": ["src/cv/diff_detector.py"],
-    "tags": ["python", "logic", "state-machine", "opencv", "background-subtraction"],
+    "files_changed": [
+      "src/cv/diff_detector.py"
+    ],
+    "tags": [
+      "python",
+      "logic",
+      "state-machine",
+      "opencv",
+      "background-subtraction"
+    ],
     "reusable_pattern": "Bei Frame-Diff-Detektoren: Baseline darf nur auf ruhigen Frames gesetzt werden. Jeder Frame mit Bewegung friert die Baseline ein — sonst hebt sich der Diff selbst auf.",
     "recurrence": []
   },
@@ -42,8 +59,16 @@
     "solution": "motion_detector.reset() in reset_turn() aufgenommen. MOG2 lernt nach jedem Turn neu, der naechste Wurf erzeugt wieder saubere Motion-Signale.",
     "attempts": 1,
     "failed_approaches": [],
-    "files_changed": ["src/cv/pipeline.py"],
-    "tags": ["python", "opencv", "background-subtraction", "pipeline", "state-machine"],
+    "files_changed": [
+      "src/cv/pipeline.py"
+    ],
+    "tags": [
+      "python",
+      "opencv",
+      "background-subtraction",
+      "pipeline",
+      "state-machine"
+    ],
     "reusable_pattern": "MOG2 (createBackgroundSubtractorMOG2) muss nach jedem semantischen Reset (Dart entfernt, neuer Turn) neu initialisiert werden. Sonst wird der vorherige Zustand Teil des Hintergrundmodells und neue Aenderungen bleiben unsichtbar.",
     "recurrence": []
   },
@@ -58,8 +83,19 @@
     "solution": "Neuer Algorithmus: minAreaRect fuer Achse, Kontur entlang Achse halbieren, schmalere Haelfte = Tip-Seite, aeusserster Punkt = Tip. Integration in diff_detector.py mit Centroid-Fallback.",
     "attempts": 1,
     "failed_approaches": [],
-    "files_changed": ["src/cv/tip_detection.py", "src/cv/diff_detector.py", "src/cv/detector.py"],
-    "tags": ["python", "opencv", "contour-analysis", "geometry", "tip-detection", "dart-shape"],
+    "files_changed": [
+      "src/cv/tip_detection.py",
+      "src/cv/diff_detector.py",
+      "src/cv/detector.py"
+    ],
+    "tags": [
+      "python",
+      "opencv",
+      "contour-analysis",
+      "geometry",
+      "tip-detection",
+      "dart-shape"
+    ],
     "reusable_pattern": "Bei laenglichen Objekten mit asymmetrischer Breite (breit→schmal): minAreaRect fuer Achse, senkrechte Breitenverteilung beider Haelften vergleichen, schmalere Haelfte enthaelt das spitze Ende.",
     "recurrence": []
   },
@@ -75,7 +111,13 @@
     "attempts": 1,
     "failed_approaches": [],
     "files_changed": [],
-    "tags": ["hardware", "camera", "image-quality", "diff-threshold", "diagnostics"],
+    "tags": [
+      "hardware",
+      "camera",
+      "image-quality",
+      "diff-threshold",
+      "diagnostics"
+    ],
     "reusable_pattern": "Bei Multi-Kamera-Setups: Bildqualitaet variiert zwischen Kameras. Diagnostics-Modus frueh einbauen um Unterschiede zu erkennen. Algorithmen muessen auf beiden Qualitaetsstufen funktionieren.",
     "recurrence": []
   },
@@ -93,8 +135,16 @@
       "Browser-Caching vermutet — ?v=2 Cache-Busting hinzugefuegt, loeste das Problem nicht",
       "Preview-Tool-Limitation vermutet — tatsaechlich war der Code auf Disk fehlerhaft"
     ],
-    "files_changed": ["static/js/app.js"],
-    "tags": ["javascript", "syntax", "class-definition", "agent-generated-code", "brace-mismatch"],
+    "files_changed": [
+      "static/js/app.js"
+    ],
+    "tags": [
+      "javascript",
+      "syntax",
+      "class-definition",
+      "agent-generated-code",
+      "brace-mismatch"
+    ],
     "reusable_pattern": "Wenn ein Agent Methoden in eine bestehende JS-Klasse einfuegt: immer node -c <file> ausfuehren um Syntax zu verifizieren. Besonders bei Einfuegungen am Ende einer Klasse auf korrekte Klammerung achten.",
     "recurrence": []
   },
@@ -129,5 +179,29 @@
     ],
     "reusable_pattern": "Kalibrier- und Diagnose-Endpunkte duerfen im Multi-Cam-Betrieb nie stillschweigend nur app_state['pipeline'] verwenden. Immer den aktiven Kamera-Kontext explizit mitfuehren und im Frontend sichtbar machen.",
     "recurrence": []
+  },
+  {
+    "id": "2026-03-23-2110-charuco-auto-capture-no-frames",
+    "timestamp": "2026-03-23T21:10:00+01:00",
+    "category": "logic",
+    "tags": [
+      "python",
+      "fastapi",
+      "charuco",
+      "auto-capture",
+      "calibration"
+    ],
+    "trigger": "Live ChArUco Lens-Kalibrierung mit Auto-Capture gestartet",
+    "problem": "charuco-progress Endpoint aktualisierte Detection aber sammelte keine Frames bei capture_mode=auto. 0/15 usable Frames trotz 14 erkannter Corners.",
+    "root_cause": "Der Progress-Endpoint rief nur update_detection() auf, nicht add_frame_if_diverse(). Auto-Capture war nie implementiert im Progress-Polling-Path.",
+    "fix": "Auto-Capture Block im charuco-progress Endpoint hinzugefuegt: bei capture_mode=auto, interpolation_ok=True und >=6 Corners wird add_frame_if_diverse() aufgerufen.",
+    "failed_approaches": [],
+    "prevention": "Bei Status/Progress-Endpoints pruefen ob Auto-Modi Seiteneffekte benoetigen. Integration-Tests mit echtem Collector-Flow schreiben.",
+    "severity": "critical",
+    "attempts": 1,
+    "confidence": 5,
+    "occurrences": 1,
+    "recurrence_dates": [],
+    "last_seen": "2026-03-23"
   }
 ]

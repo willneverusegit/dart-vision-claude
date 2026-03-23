@@ -173,6 +173,15 @@ class BoardCalibrationManager:
         self._legacy._atomic_save()
         logger.info("Board optical center persisted: (%.2f, %.2f)", optical_center[0], optical_center[1])
 
+    def reset_calibration(self, *, lens_only: bool = False, board_only: bool = False) -> dict:
+        """Delegate calibration reset to the underlying CalibrationManager."""
+        result = self._legacy.reset_calibration(lens_only=lens_only, board_only=board_only)
+        if not board_only:
+            # Reset cached homography state
+            self._homography = None
+            self._homography_age = 0
+        return result
+
     @property
     def homography_age(self) -> int:
         """Frames since last successful marker detection."""

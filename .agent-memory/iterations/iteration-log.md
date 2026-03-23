@@ -2,6 +2,49 @@
 
 ---
 
+## [2026-03-23 21:10] ChArUco Auto-Capture sammelte keine Frames
+
+**Category:** logic | **Severity:** critical | **Attempts:** 1
+
+**Type:** bugfix
+**Summary:** charuco-progress Endpoint aktualisierte nur Detection-State, rief aber nie add_frame_if_diverse() auf — Auto-Capture war komplett kaputt.
+**Files changed:** src/web/routes.py
+**Tests:** passed (1427)
+**Confidence:** 5/5
+**Tags:** python, fastapi, charuco, auto-capture, calibration
+
+### Details
+- Der `/api/calibration/charuco-progress/{camera_id}` Endpoint fuehrte `detect_charuco_board()` und `collector.update_detection()` aus, aber bei `capture_mode=auto` wurde `add_frame_if_diverse()` nie aufgerufen.
+- Ergebnis: 0 usable Frames trotz sichtbarem Board (14 Corners erkannt).
+- Fix: Auto-Capture Block hinzugefuegt der bei `interpolation_ok` und `>=6 Corners` automatisch Frames sammelt.
+- Verifiziert: Live-Test mit echten Kameras, 15/15 Frames in ~20s gesammelt, Lens RMS 0.23px.
+
+### Learnings
+- Progress/Status-Endpoints die nur lesen sollen koennen bei Auto-Modi auch Seiteneffekte (Frame-Sammlung) haben muessen — das ist ein Pattern das leicht uebersehen wird.
+
+### Errors
+- E8: charuco-auto-capture-no-frames
+
+---
+
+## [2026-03-23 21:20] Multi-Cam Kalibrierung end-to-end durchgefuehrt
+
+**Type:** feature
+**Summary:** Erstmals vollstaendige Multi-Cam-Kalibrierung auf Hardware: Lens (ChArUco 40/28), Board (ArUco 4x4), Stereo — beide Kameras.
+**Files changed:** src/web/routes.py, static/js/app.js
+**Tests:** passed (1427)
+**Confidence:** 4/5
+**Tags:** multi-cam, calibration, charuco, aruco, stereo, hardware-test
+
+### Details
+- Kalibrierungs-Reset fuer beide Kameras durchgefuehrt
+- Lens cam_left: RMS 0.230px, cam_right: RMS 0.223px (Preset 7x5_40x28)
+- Board ArUco: mm_per_px 2.385 (left), 2.343 (right), alle 4 Marker erkannt
+- Stereo-Paar: calibrated=true, quality_level=full
+- Board-Pose fehlt noch (kein Endpoint vorhanden)
+
+---
+
 ## [2026-03-19 13:15] Multi-Cam-Kalibrierung war auf Single-Cam-Routen verdrahtet
 
 **Category:** logic | **Severity:** major | **Attempts:** 2

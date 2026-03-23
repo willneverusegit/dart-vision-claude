@@ -8,7 +8,27 @@ last_cameras:
   src: 2
 - camera_id: cam_right
   src: 0
-pairs: {}
+pairs:
+  cam_left--cam_right:
+    R:
+    - - 0.813130013744846
+      - 0.2165891515002895
+      - 0.5402857764180835
+    - - 0.040038305584389214
+      - 0.9051852028805798
+      - -0.42312726521931293
+    - - -0.5807034654909833
+      - 0.3656896060027252
+      - 0.7273613938258847
+    T:
+    - - -0.42517317066813076
+    - - 0.3180786904194309
+    - - 0.6025632717654874
+    calibrated_utc: '2026-03-20T11:21:45.619068+00:00'
+    calibration_method: stereoCalibrate
+    intrinsics_source: lens_calibration
+    quality_level: full
+    reprojection_error: 0.34005776899157925
 schema_version: 2
 startup:
   cameras: []
