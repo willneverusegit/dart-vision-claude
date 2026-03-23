@@ -52,6 +52,39 @@ class CombinedRemapper:
             self._map_y = None
             logger.warning("Combined map build failed, using fallback path: %s", exc)
 
+    def roi_to_raw(self, x: float, y: float) -> tuple[float, float]:
+        """Transform a point from ROI board space back to raw camera pixel coords.
+
+        Uses inverse homography + re-distortion (matching the forward remap path).
+        Returns the original point unchanged if no homography is configured.
+        """
+        if self._homography is None:
+            return (x, y)
+
+        # Step 1: ROI -> undistorted full-frame via inverse homography
+        h_inv = np.linalg.inv(self._homography)
+        roi_pt = np.array([[[x, y]]], dtype=np.float64)
+        undist_pt = cv2.perspectiveTransform(roi_pt, h_inv).reshape(2)
+
+        # Step 2: undistorted -> raw (re-distort) if we have intrinsics
+        if self._intrinsics is not None and self._intrinsics.valid:
+            k = self._intrinsics.camera_matrix
+            fx, fy = float(k[0, 0]), float(k[1, 1])
+            cx, cy = float(k[0, 2]), float(k[1, 2])
+            if fx != 0 and fy != 0:
+                normalized = np.array([[(undist_pt[0] - cx) / fx,
+                                        (undist_pt[1] - cy) / fy, 1.0]])
+                distorted, _ = cv2.projectPoints(
+                    normalized,
+                    np.zeros((3, 1), dtype=np.float64),
+                    np.zeros((3, 1), dtype=np.float64),
+                    self._intrinsics.camera_matrix,
+                    self._intrinsics.dist_coeffs,
+                )
+                return (float(distorted[0, 0, 0]), float(distorted[0, 0, 1]))
+
+        return (float(undist_pt[0]), float(undist_pt[1]))
+
     def remap(self, frame: np.ndarray) -> np.ndarray:
         """Transform raw camera frame to ROI board space."""
         if self.has_combined_map:

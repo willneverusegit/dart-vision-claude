@@ -43,24 +43,26 @@ last_cameras:
 pairs:
   cam_left--cam_right:
     R:
-    - - 0.813130013744846
-      - 0.2165891515002895
-      - 0.5402857764180835
-    - - 0.040038305584389214
-      - 0.9051852028805798
-      - -0.42312726521931293
-    - - -0.5807034654909833
-      - 0.3656896060027252
-      - 0.7273613938258847
+    - - 0.8663367784457512
+      - 0.13911779098664706
+      - 0.47969451377228906
+    - - 0.03848466686129549
+      - 0.9389771638882529
+      - -0.34181985915529833
+    - - -0.4979754177957101
+      - 0.31459199914709945
+      - 0.808116549356477
     T:
-    - - -0.42517317066813076
-    - - 0.3180786904194309
-    - - 0.6025632717654874
-    calibrated_utc: '2026-03-20T11:21:45.619068+00:00'
-    calibration_method: stereoCalibrate
+    - - -0.8492764291829079
+    - - 0.24736338699920676
+    - - -0.04886490218582438
+    calibrated_utc: '2026-03-23T22:12:18.467396+00:00'
+    calibration_method: board_pose_provisional
     intrinsics_source: lens_calibration
-    quality_level: full
-    reprojection_error: 0.34005776899157925
+    pose_consistency_px: 0.1842830530846351
+    quality_level: provisional
+    reprojection_error: 0.1842830530846351
+    warning: Provisorisch - Verfeinerung per Lens-Kalibrierung empfohlen
 schema_version: 2
 startup:
   cameras: []

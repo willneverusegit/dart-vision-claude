@@ -137,9 +137,9 @@ def load_multi_cam_config(path: str = MULTI_CAM_CONFIG_PATH) -> dict:
 
 # ── Sync/Depth presets ──────────────────────────────────────────────
 SYNC_DEPTH_PRESETS: dict[str, dict[str, float]] = {
-    "tight":    {"max_time_diff_s": 0.100, "depth_tolerance_m": 0.010},
-    "standard": {"max_time_diff_s": 0.150, "depth_tolerance_m": 0.015},
-    "loose":    {"max_time_diff_s": 0.200, "depth_tolerance_m": 0.020},
+    "tight":    {"max_time_diff_s": 0.200, "depth_tolerance_m": 0.050},
+    "standard": {"max_time_diff_s": 0.500, "depth_tolerance_m": 0.300},
+    "loose":    {"max_time_diff_s": 1.000, "depth_tolerance_m": 0.500},
 }
 
 

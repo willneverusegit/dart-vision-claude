@@ -38,16 +38,16 @@ class TestDefaultValues:
     def test_default_max_time_diff(self):
         mcp = _create_mcp()
         assert mcp._max_time_diff_s == MAX_DETECTION_TIME_DIFF_S
-        assert mcp._max_time_diff_s == 0.15
+        assert mcp._max_time_diff_s == 0.5
 
     def test_default_depth_tolerance(self):
         mcp = _create_mcp()
         assert mcp._depth_tolerance_m == BOARD_DEPTH_TOLERANCE_M
-        assert mcp._depth_tolerance_m == 0.015
+        assert mcp._depth_tolerance_m == 0.30
 
     def test_default_sync_wait(self):
         mcp = _create_mcp()
-        assert mcp._sync_wait_s == 0.3
+        assert mcp._sync_wait_s == 0.8
 
     def test_default_depth_auto_adapt(self):
         mcp = _create_mcp()
@@ -86,10 +86,10 @@ class TestGetFusionConfig:
         mcp = _create_mcp()
         cfg = mcp.get_fusion_config()
         assert cfg == {
-            "sync_wait_s": 0.3,
-            "max_time_diff_s": 0.15,
-            "depth_tolerance_m": 0.015,
-            "effective_depth_tolerance_m": 0.015,
+            "sync_wait_s": 0.8,
+            "max_time_diff_s": 0.5,
+            "depth_tolerance_m": 0.30,
+            "effective_depth_tolerance_m": 0.30,
             "depth_auto_adapt": True,
             "buffer_max_depth": 5,
         }
@@ -146,7 +146,7 @@ class TestSingleCameraTimeout:
         assert emitted[0]["source"] == "single"
 
     def test_default_sync_wait_differs_from_max_time_diff(self):
-        """2-tier: sync_wait_s (0.3) != max_time_diff_s (0.15)."""
+        """2-tier: sync_wait_s (0.8) != max_time_diff_s (0.5)."""
         mcp = _create_mcp()
         assert mcp._sync_wait_s != mcp._max_time_diff_s
         assert mcp._sync_wait_s > mcp._max_time_diff_s

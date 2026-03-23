@@ -69,6 +69,8 @@ class DartDetection:
     quality: float = 0.0                # Detection quality score 0.0-1.0
     tip: tuple[int, int] | None = None  # Dart tip position (x, y), None if detection failed
     bounce_out: bool = False            # True if dart bounced off board (no stick)
+    raw_center: tuple[float, float] | None = None  # (x, y) in original camera frame coords
+    raw_tip: tuple[float, float] | None = None     # tip in original camera frame coords
 
 
 class DartImpactDetector:

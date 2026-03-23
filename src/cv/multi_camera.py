@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 # Maximum time difference (seconds) between detections from two cameras
 # to be considered "simultaneous" (software sync).
-MAX_DETECTION_TIME_DIFF_S = 0.15  # 150ms
+MAX_DETECTION_TIME_DIFF_S = 0.5  # 500ms — FrameDiff settle timing varies between cameras
 
 # Frame-rate target for each camera loop.  Keeps CPU usage bounded and gives
 # the GIL breathing room when running 2-3 camera threads in parallel.
@@ -33,9 +33,10 @@ _TARGET_FPS = 30
 _FRAME_INTERVAL_S = 1.0 / _TARGET_FPS  # ~0.0333 s
 
 # Dart tip must be within this distance of the board face (in board frame Z)
-# to be considered a valid hit.  Accounts for dart penetration (~5 mm),
-# triangulation noise (~5 mm), and calibration error (~5 mm).
-BOARD_DEPTH_TOLERANCE_M = 0.015  # 15 mm
+# to be considered a valid hit.  Accounts for dart penetration (~30 mm),
+# triangulation noise (~20 mm), calibration error (~20 mm), and the fact
+# that the two cameras may detect slightly different points on the dart.
+BOARD_DEPTH_TOLERANCE_M = 0.30  # 300 mm — generous; voting fallback handles bad results
 
 
 class FPSGovernor:
@@ -139,7 +140,7 @@ class MultiCameraPipeline:
         on_multi_dart_detected: Callable[[dict], None] | None = None,
         on_camera_errors_changed: Callable[[dict[str, str]], None] | None = None,
         debug: bool = False,
-        sync_wait_s: float = 0.3,
+        sync_wait_s: float = 0.8,
         max_time_diff_s: float | None = None,
         depth_tolerance_m: float | None = None,
         depth_auto_adapt: bool = True,
@@ -590,6 +591,21 @@ class MultiCameraPipeline:
                     )
                     continue
 
+                # Warn if lens calibration is newer than stereo calibration
+                stereo_utc = pair_data.get("calibrated_utc")
+                if stereo_utc:
+                    for cam_id, pipe in [(cam_a, pipe_a), (cam_b, pipe_b)]:
+                        lens_utc = pipe.camera_calibration._config_io.get_config().get(
+                            "lens_last_update_utc"
+                        )
+                        if lens_utc and lens_utc > stereo_utc:
+                            logger.warning(
+                                "STEREO CALIBRATION STALE: Lens calibration for '%s' (%s) "
+                                "is newer than stereo calibration (%s). "
+                                "Triangulation will likely fail — please redo stereo calibration!",
+                                cam_id, lens_utc[:19], stereo_utc[:19],
+                            )
+
                 # Camera 1 is the world origin (identity extrinsics)
                 self._stereo_params[cam_a] = CameraParams(
                     camera_id=cam_a,
@@ -655,7 +671,11 @@ class MultiCameraPipeline:
                 result = dict(latest["score_result"])
                 result["source"] = "single_timeout"
                 result["camera_id"] = latest["camera_id"]
-                logger.info("Timeout fallback: camera_id='%s' (detections too far apart)", latest["camera_id"])
+                time_diff = max(timestamps) - min(timestamps)
+                logger.info(
+                    "Timeout fallback: camera_id='%s' (time_diff=%.0fms, max=%.0fms)",
+                    latest["camera_id"], time_diff * 1000, self._max_time_diff_s * 1000,
+                )
                 self._emit(result)
                 self._detection_buffer.clear()
                 return

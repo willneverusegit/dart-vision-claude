@@ -128,5 +128,57 @@
     "tags": ["javascript", "syntax", "agent-generated-code", "class-definition", "brace-mismatch"],
     "confidence": "low",
     "skill_candidate": false
+  },
+  {
+    "id": "roi-vs-raw-coordinate-mismatch",
+    "type": "architecture-rule",
+    "title": "ROI-Koordinaten nie fuer Stereo-Triangulation verwenden",
+    "description": "Detection-Koordinaten im ROI-Raum (nach Homography-Warp) sind nicht kompatibel mit Stereo-Kalibrierung, die auf Raw-Frame-Bildern basiert. Vor Triangulation muessen Koordinaten ueber inverse Homography + Re-Distortion in den Raw-Camera-Raum zuruecktransformiert werden.",
+    "trigger_conditions": [
+      "Multi-Cam-Triangulation implementieren oder aendern",
+      "Detection-Koordinaten fuer kameraubergreifende Berechnungen verwenden",
+      "Neuen Koordinaten-Consumer in der Pipeline einbauen"
+    ],
+    "recommended_action": "Immer pruefen ob Koordinaten im ROI- oder Raw-Raum vorliegen. raw_center/raw_tip aus DartDetection verwenden. CombinedRemapper.roi_to_raw() fuer Ruecktransformation nutzen.",
+    "avoid": [
+      "DartDetection.center direkt fuer Triangulation verwenden",
+      "Annehmen dass ROI-Koordinaten = Kamera-Koordinaten"
+    ],
+    "evidence": {
+      "occurrences": 1,
+      "error_ids": ["2026-03-23-2240-triangulation-roi-coords"],
+      "first_seen": "2026-03-23",
+      "last_seen": "2026-03-23",
+      "clustering_rule": "explicit-seed"
+    },
+    "tags": ["python", "opencv", "stereo", "triangulation", "coordinate-systems"],
+    "confidence": "high",
+    "skill_candidate": false
+  },
+  {
+    "id": "calibration-chain-invalidation",
+    "type": "architecture-rule",
+    "title": "Kalibrierungs-Kette: Lens invalidiert Stereo",
+    "description": "Stereo-Kalibrierung (R,T) haengt von den Intrinsics ab. Wird die Lens-Kalibrierung erneuert, sind die Stereo-Extrinsics ungueltig. Die Kette ist: Lens -> Board Pose -> Stereo. Jeder Schritt invalidiert alle nachfolgenden.",
+    "trigger_conditions": [
+      "Lens-Kalibrierung wird neu durchgefuehrt",
+      "Stereo-Kalibrierung zeigt hohe Reproj-Fehler (>5px Epipolar-Distanz)",
+      "Triangulation schlaegt fehl obwohl beide Kameras erkennen"
+    ],
+    "recommended_action": "Nach jeder Lens-Kalibrierung: Stereo-Kalibrierung wiederholen. Timestamps vergleichen: lens_last_update_utc > calibrated_utc = stale. Warnung in _load_extrinsics() und /api/multi/readiness.",
+    "avoid": [
+      "Stereo-Kalibrierung mit alten Intrinsics wiederverwenden",
+      "Kalibrierungsschritte in beliebiger Reihenfolge ausfuehren"
+    ],
+    "evidence": {
+      "occurrences": 1,
+      "error_ids": ["2026-03-23-2300-stereo-stale-after-lens-recal"],
+      "first_seen": "2026-03-23",
+      "last_seen": "2026-03-23",
+      "clustering_rule": "explicit-seed"
+    },
+    "tags": ["opencv", "stereo", "calibration", "intrinsics", "timestamp"],
+    "confidence": "high",
+    "skill_candidate": false
   }
 ]

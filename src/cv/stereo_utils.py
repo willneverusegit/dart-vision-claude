@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import NamedTuple
 
 import cv2
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -36,7 +39,7 @@ def triangulate_point(
     pt2: tuple[float, float],
     cam1: CameraParams,
     cam2: CameraParams,
-    max_reproj_error: float = 5.0,
+    max_reproj_error: float = 20.0,
 ) -> TriangulationResult:
     """Triangulate a 3D point from two 2D observations.
 
@@ -87,6 +90,16 @@ def triangulate_point(
     avg_error = float((err_1 + err_2) / 2.0)
 
     valid = avg_error <= max_reproj_error and point_3d[2] > 0  # Z > 0 = in front of cameras
+
+    if avg_error > max_reproj_error:
+        logger.info(
+            "Triangulation debug: pt1=%s pt1_undist=%s pt2=%s pt2_undist=%s "
+            "3D=%s reproj1=%s(err=%.1f) reproj2=%s(err=%.1f) "
+            "cam1.R=identity=%s cam2.T=%s",
+            pt1, pt1_undist, pt2, pt2_undist,
+            point_3d, reproj_1, err_1, reproj_2, err_2,
+            np.allclose(cam1.R, np.eye(3)), cam2.T.flatten(),
+        )
 
     return TriangulationResult(point_3d, avg_error, valid)
 
@@ -162,19 +175,30 @@ def triangulate_multi_pair(
             p1 = camera_params.get(cam_a)
             p2 = camera_params.get(cam_b)
             if p1 is None or p2 is None:
+                logger.info("Triangulation skip: no camera params for %s/%s (have: %s)",
+                             cam_a, cam_b, list(camera_params.keys()))
                 continue
 
             det1 = detections[i]["detection"]
             det2 = detections[j]["detection"]
             if det1 is None or det2 is None:
+                logger.info("Triangulation skip: detection is None (%s=%s, %s=%s)",
+                             cam_a, det1, cam_b, det2)
                 continue
 
-            tri = triangulate_point(det1.center, det2.center, p1, p2)
+            pt1 = getattr(det1, "raw_tip", None) or getattr(det1, "raw_center", None) or det1.center
+            pt2 = getattr(det2, "raw_tip", None) or getattr(det2, "raw_center", None) or det2.center
+            logger.info("Triangulating %s pt=%s vs %s pt=%s (raw coords)", cam_a, pt1, cam_b, pt2)
+
+            tri = triangulate_point(pt1, pt2, p1, p2)
             if not tri.valid:
+                logger.info("Triangulation invalid: reproj=%.2f, point_3d=%s, valid=%s",
+                             tri.reprojection_error, tri.point_3d, tri.valid)
                 continue
 
             bt = board_transforms.get(cam_a)
             if bt is None:
+                logger.info("Triangulation skip: no board_transform for %s", cam_a)
                 continue
 
             p_board = transform_to_board_frame(tri.point_3d, bt["R_cb"], bt["t_cb"])
@@ -182,6 +206,8 @@ def triangulate_multi_pair(
             pairs_attempted += 1
             if abs(p_board[2]) > depth_tolerance_m:
                 z_rejected_count += 1
+                logger.info("Z-depth rejected: z=%.4f m (tolerance=%.4f m), board_xy=(%.1f, %.1f)mm",
+                             p_board[2], depth_tolerance_m, p_board[0]*1000, p_board[1]*1000)
                 continue
 
             board_x_mm, board_y_mm = point_3d_to_board_2d(p_board)

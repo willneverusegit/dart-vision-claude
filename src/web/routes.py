@@ -1651,9 +1651,10 @@ def setup_routes(app_state: dict) -> APIRouter:
         board-pose transform, stereo pairs. Helps users understand what
         setup steps are still missing before multi-cam can work optimally.
         """
-        from src.utils.config import load_multi_cam_config
+        from src.utils.config import load_config, load_multi_cam_config
 
         cfg = load_multi_cam_config()
+        cal_cfg = load_config()
         multi = app_state.get("multi_pipeline")
         if multi is None:
             saved = cfg.get("last_cameras", [])
@@ -1717,6 +1718,24 @@ def setup_routes(app_state: dict) -> APIRouter:
                     "quality_level",
                     "full" if (pair_data or has_stereo) else "none",
                 )
+                # Check if stereo calibration is stale (lens newer than stereo)
+                stereo_stale = False
+                stereo_utc = pair_data.get("calibrated_utc", "")
+                if stereo_utc:
+                    for cid in [cam_a, cam_b]:
+                        lens_utc = cal_cfg.get("cameras", {}).get(cid, {}).get(
+                            "lens_last_update_utc", ""
+                        )
+                        if lens_utc and lens_utc > stereo_utc:
+                            stereo_stale = True
+
+                pair_warning = pair_data.get("warning")
+                if stereo_stale:
+                    pair_warning = (
+                        "Stereo-Kalibrierung veraltet: Lens-Kalibrierung ist neuer. "
+                        "Bitte Stereo-Kalibrierung wiederholen!"
+                    )
+
                 stereo_pairs.append(
                     {
                         "camera_a": cam_a,
@@ -1725,7 +1744,8 @@ def setup_routes(app_state: dict) -> APIRouter:
                         "quality_level": quality_level,
                         "calibration_method": pair_data.get("calibration_method"),
                         "intrinsics_source": pair_data.get("intrinsics_source"),
-                        "warning": pair_data.get("warning"),
+                        "warning": pair_warning,
+                        "stale": stereo_stale,
                     }
                 )
 

@@ -203,5 +203,41 @@
     "occurrences": 1,
     "recurrence_dates": [],
     "last_seen": "2026-03-23"
+  },
+  {
+    "id": "2026-03-23-2240-triangulation-roi-coords",
+    "timestamp": "2026-03-23T22:40:00+01:00",
+    "category": "architecture",
+    "tags": ["python", "opencv", "stereo", "triangulation", "coordinate-systems", "multi-camera"],
+    "trigger": "Live-Test Multi-Cam Triangulation — reproj error 90px+",
+    "problem": "Triangulation bekam ROI-Koordinaten (400x400 Board-Space nach Homography-Warp) statt Original-Frame-Koordinaten. Stereo-Kalibrierung wurde mit Full-Frame-Bildern gemacht.",
+    "root_cause": "DartDetection.center und .tip sind im ROI-Raum (nach Combined Remap). triangulate_point() erwartet Raw-Camera-Pixel-Koordinaten passend zu den Intrinsics aus der Lens-Kalibrierung.",
+    "fix": "roi_to_raw() in CombinedRemapper (inverse Homography + Re-Distortion), raw_center/raw_tip in DartDetection, Pipeline setzt raw-Coords nach Detection, Triangulation nutzt raw-Koordinaten.",
+    "failed_approaches": ["Erst nur Tip statt Centroid geaendert — half nicht, Koordinatensystem war das eigentliche Problem"],
+    "prevention": "Bei Multi-Cam-Features immer pruefen in welchem Koordinatensystem Detection-Ergebnisse vorliegen. ROI-Raum != Kamera-Raum.",
+    "severity": "critical",
+    "attempts": 3,
+    "confidence": 5,
+    "occurrences": 1,
+    "recurrence_dates": [],
+    "last_seen": "2026-03-23"
+  },
+  {
+    "id": "2026-03-23-2300-stereo-stale-after-lens-recal",
+    "timestamp": "2026-03-23T23:00:00+01:00",
+    "category": "calibration",
+    "tags": ["opencv", "stereo", "calibration", "intrinsics", "timestamp"],
+    "trigger": "Triangulation reproj error 712px nach Stereo-Kalibrierung die 3 Tage alt war",
+    "problem": "Stereo-Kalibrierung (R,T) wurde mit alten Intrinsics berechnet. Danach wurde Lens-Kalibrierung neu gemacht — neue Intrinsics passen nicht mehr zu den alten Extrinsics.",
+    "root_cause": "Keine Validierung ob Lens-Kalibrierung neuer als Stereo-Kalibrierung ist. Epipolar-Distanz war 102px statt <2px.",
+    "fix": "Warnung in _load_extrinsics() wenn lens_last_update_utc > calibrated_utc. Stale-Flag in /api/multi/readiness Endpoint. User muss Stereo-Kalibrierung nach Lens-Kalibrierung wiederholen.",
+    "failed_approaches": [],
+    "prevention": "Kalibrierungs-Kette immer validieren: Lens -> Board Pose -> Stereo. Jeder Schritt invalidiert alle nachfolgenden.",
+    "severity": "critical",
+    "attempts": 1,
+    "confidence": 5,
+    "occurrences": 1,
+    "recurrence_dates": [],
+    "last_seen": "2026-03-23"
   }
 ]

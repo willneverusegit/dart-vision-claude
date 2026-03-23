@@ -293,6 +293,14 @@ class DartPipeline:
             self.dart_detector.register_confirmed(detection)
             # Activate temporal lock to suppress false positives during dart removal
             self._motion_filter.activate_lock()
+            # Compute raw (original camera frame) coordinates for triangulation
+            detection.raw_center = self.remapper.roi_to_raw(
+                float(detection.center[0]), float(detection.center[1])
+            )
+            if detection.tip is not None:
+                detection.raw_tip = self.remapper.roi_to_raw(
+                    float(detection.tip[0]), float(detection.tip[1])
+                )
         else:
             self._update_annotated_frame(frame, enhanced, motion_mask if has_motion else None)
             return None

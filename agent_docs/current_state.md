@@ -120,7 +120,10 @@ Das Projekt ist ein lokales Dart-Scoring-System mit:
 - Multi-Camera-Pipeline (gehaertet: Readiness-Diagnose, Config-Persistenz, Setup-Wizard)
 - Stereo-Kalibrierung (Triangulations-Genauigkeit validiert: <5mm auf 8 Board-Positionen)
 - Board-Pose-Kalibrierung
-- Triangulation und Voting-Fallback
+- **Live-Triangulation erstmals funktionierend** (2/7 Wuerfe mit Stereo, reproj 3.5-15px, rest Single-Cam-Fallback)
+- ROI-zu-Raw Koordinatentransformation (CombinedRemapper.roi_to_raw, DartDetection.raw_center/raw_tip)
+- Stale-Stereo-Warnung (Lens neuer als Stereo → automatische Warnung in Logs und /api/multi/readiness)
+- Voting-Fallback bei fehlgeschlagener Triangulation
 - Umschalten zwischen Single- und Multi-Cam (Fix: Kamera-Release-Timing)
 
 ## Verifizierte Kennzahlen
