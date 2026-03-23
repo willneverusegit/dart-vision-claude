@@ -741,8 +741,10 @@ class CalibrationManager:
                 if old_data:
                     full["cameras"]["default"] = old_data
 
-            # Update our camera_id section
-            full["cameras"][self.camera_id] = dict(self._config)
+            # Merge our camera_id section (preserve keys from other managers)
+            existing = full["cameras"].get(self.camera_id, {})
+            existing.update(self._config)
+            full["cameras"][self.camera_id] = existing
             full["schema_version"] = 3
 
             # Atomic write

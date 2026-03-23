@@ -1447,129 +1447,131 @@ def setup_routes(app_state: dict) -> APIRouter:
         import cv2 as _cv2
         import numpy as _np
         from src.cv.calibration import ARUCO_MARKER_SIZE_MM, MARKER_SPACING_MM
+        try:
+            body = await request.json()
+            cam_id = body.get("camera_id", "")
+            if not cam_id:
+                return {"ok": False, "error": "camera_id is required"}
 
-        body = await request.json()
-        cam_id = body.get("camera_id", "")
-        if not cam_id:
-            return {"ok": False, "error": "camera_id is required"}
+            multi = app_state.get("multi_pipeline")
+            if multi is None:
+                return {"ok": False, "error": "Multi-camera pipeline not running"}
 
-        multi = app_state.get("multi_pipeline")
-        if multi is None:
-            return {"ok": False, "error": "Multi-camera pipeline not running"}
+            pipelines = multi.get_pipelines()
+            pipeline = pipelines.get(cam_id)
+            if pipeline is None:
+                return {"ok": False, "error": f"Camera '{cam_id}' not found in multi-pipeline"}
 
-        pipelines = multi.get_pipelines()
-        pipeline = pipelines.get(cam_id)
-        if pipeline is None:
-            return {"ok": False, "error": f"Camera '{cam_id}' not found in multi-pipeline"}
+            intr = pipeline.camera_calibration.get_intrinsics()
+            if intr is None:
+                return {"ok": False, "error": f"Camera '{cam_id}' has no lens intrinsics -- run lens calibration first"}
 
-        intr = pipeline.camera_calibration.get_intrinsics()
-        if intr is None:
-            return {"ok": False, "error": f"Camera '{cam_id}' has no lens intrinsics — run lens calibration first"}
+            frame = pipeline.get_latest_raw_frame()
+            if frame is None:
+                return {"ok": False, "error": "No frame available from camera"}
 
-        frame = pipeline.get_latest_raw_frame()
-        if frame is None:
-            return {"ok": False, "error": "No frame available from camera"}
+            # --- Detect ArUco markers ---
+            dictionary = _cv2.aruco.getPredefinedDictionary(_cv2.aruco.DICT_4X4_50)
+            params = _cv2.aruco.DetectorParameters()
+            params.cornerRefinementMethod = _cv2.aruco.CORNER_REFINE_SUBPIX
+            detector = _cv2.aruco.ArucoDetector(dictionary, params)
 
-        # --- Detect ArUco markers ---
-        dictionary = _cv2.aruco.getPredefinedDictionary(_cv2.aruco.DICT_4X4_50)
-        params = _cv2.aruco.DetectorParameters()
-        params.cornerRefinementMethod = _cv2.aruco.CORNER_REFINE_SUBPIX
-        detector = _cv2.aruco.ArucoDetector(dictionary, params)
+            gray = _cv2.cvtColor(frame, _cv2.COLOR_BGR2GRAY)
+            corners, ids, _ = detector.detectMarkers(gray)
+            if ids is None or len(ids) < 4:
+                clahe = _cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+                corners, ids, _ = detector.detectMarkers(clahe.apply(gray))
 
-        gray = _cv2.cvtColor(frame, _cv2.COLOR_BGR2GRAY)
-        corners, ids, _ = detector.detectMarkers(gray)
-        if ids is None or len(ids) < 4:
-            clahe = _cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-            corners, ids, _ = detector.detectMarkers(clahe.apply(gray))
+            if ids is None or len(ids) < 4:
+                found = 0 if ids is None else len(ids)
+                return {"ok": False, "error": f"Only found {found} ArUco markers (need IDs 0-3)"}
 
-        if ids is None or len(ids) < 4:
-            found = 0 if ids is None else len(ids)
-            return {"ok": False, "error": f"Only found {found} ArUco markers (need IDs 0-3)"}
+            flat_ids = ids.flatten().tolist()
+            for eid in [0, 1, 2, 3]:
+                if eid not in flat_ids:
+                    return {"ok": False, "error": f"Marker ID {eid} not detected. Found: {flat_ids}"}
 
-        flat_ids = ids.flatten().tolist()
-        for eid in [0, 1, 2, 3]:
-            if eid not in flat_ids:
-                return {"ok": False, "error": f"Marker ID {eid} not detected. Found: {flat_ids}"}
+            # Order marker centers TL->TR->BR->BL by image position
+            marker_centers = []
+            for eid in [0, 1, 2, 3]:
+                idx = flat_ids.index(eid)
+                mc = corners[idx][0]
+                marker_centers.append([float(mc[:, 0].mean()), float(mc[:, 1].mean())])
 
-        # Order marker centers TL→TR→BR→BL by image position (same as board calibration)
-        marker_centers = []
-        for eid in [0, 1, 2, 3]:
-            idx = flat_ids.index(eid)
-            mc = corners[idx][0]
-            marker_centers.append([float(mc[:, 0].mean()), float(mc[:, 1].mean())])
+            centers_arr = _np.float32(marker_centers)
+            s = centers_arr.sum(axis=1)
+            d = _np.diff(centers_arr, axis=1).flatten()
+            order = [int(_np.argmin(s)), int(_np.argmin(d)), int(_np.argmax(s)), int(_np.argmax(d))]
+            image_points = _np.array([marker_centers[i] for i in order], dtype=_np.float64)
 
-        centers_arr = _np.float32(marker_centers)
-        s = centers_arr.sum(axis=1)
-        d = _np.diff(centers_arr, axis=1).flatten()
-        order = [int(_np.argmin(s)), int(_np.argmin(d)), int(_np.argmax(s)), int(_np.argmax(d))]
-        image_points = _np.array([marker_centers[i] for i in order], dtype=_np.float64)
+            # --- 3D object points in board frame (meters, Z=0 = board face) ---
+            half_m = (MARKER_SPACING_MM / 2.0) / 1000.0
+            object_points = _np.array([
+                [-half_m, +half_m, 0.0],
+                [+half_m, +half_m, 0.0],
+                [+half_m, -half_m, 0.0],
+                [-half_m, -half_m, 0.0],
+            ], dtype=_np.float64)
 
-        # --- 3D object points in board frame (meters, Z=0 = board face) ---
-        # Markers are at corners of a square with center-to-center distance MARKER_SPACING_MM.
-        # Board frame: X right, Y up, Z out of board face.
-        half_m = (MARKER_SPACING_MM / 2.0) / 1000.0  # 0.205 m
-        object_points = _np.array([
-            [-half_m, +half_m, 0.0],  # TL marker center
-            [+half_m, +half_m, 0.0],  # TR marker center
-            [+half_m, -half_m, 0.0],  # BR marker center
-            [-half_m, -half_m, 0.0],  # BL marker center
-        ], dtype=_np.float64)
-
-        # --- solvePnP ---
-        success, rvec, tvec = _cv2.solvePnP(
-            object_points, image_points,
-            intr.camera_matrix, intr.dist_coeffs,
-            flags=_cv2.SOLVEPNP_IPPE,
-        )
-        if not success:
-            return {"ok": False, "error": "solvePnP failed — check detection quality and intrinsics"}
-
-        R_cb, _ = _cv2.Rodrigues(rvec)
-        t_cb = tvec.reshape(3)
-
-        # Reprojection error
-        proj, _ = _cv2.projectPoints(object_points, rvec, tvec, intr.camera_matrix, intr.dist_coeffs)
-        reproj_err = float(_np.mean(_np.linalg.norm(proj.reshape(-1, 2) - image_points, axis=1)))
-
-        from src.utils.config import save_board_transform
-        save_board_transform(cam_id, R_cb.tolist(), t_cb.tolist())
-        logger.info(
-            "Board pose saved for camera '%s': reproj_error=%.2f px", cam_id, reproj_err
-        )
-
-        # Hot-reload transforms into live pipeline
-        if hasattr(multi, "reload_stereo_params"):
-            try:
-                multi.reload_stereo_params()
-            except Exception as e:
-                logger.warning("Board-pose hot-reload failed: %s", e)
-
-        from src.cv.calibration_overlay import draw_pose_result_overlay, encode_result_image
-
-        board_cal_data = pipeline.board_calibration.get_calibration()
-        ordered_centers = [marker_centers[i] for i in order]
-        center_of_markers = [float(image_points[:, 0].mean()), float(image_points[:, 1].mean())]
-
-        if board_cal_data and board_cal_data.get("radii_px"):
-            overlay = draw_pose_result_overlay(
-                frame, ordered_centers, center_of_markers,
-                board_cal_data["radii_px"],
-                rvec, tvec, intr.camera_matrix, intr.dist_coeffs,
+            # --- solvePnP ---
+            success, rvec, tvec = _cv2.solvePnP(
+                object_points, image_points,
+                intr.camera_matrix, intr.dist_coeffs,
+                flags=_cv2.SOLVEPNP_IPPE,
             )
-            result_image = encode_result_image(overlay)
-        else:
-            result_image = encode_result_image(frame)
+            if not success:
+                return {"ok": False, "error": "solvePnP failed -- check detection quality and intrinsics"}
 
-        return {
-            "ok": True,
-            "camera_id": cam_id,
-            "reprojection_error_px": reproj_err,
-            "result_image": result_image,
-            "quality_info": {
-                "reprojection_error_px": round(reproj_err, 2),
-                "description": f"Board-Pose gespeichert (Reproj. {reproj_err:.1f}px)",
-            },
-        }
+            R_cb, _ = _cv2.Rodrigues(rvec)
+            t_cb = tvec.reshape(3)
+
+            # Reprojection error
+            proj, _ = _cv2.projectPoints(object_points, rvec, tvec, intr.camera_matrix, intr.dist_coeffs)
+            reproj_err = float(_np.mean(_np.linalg.norm(proj.reshape(-1, 2) - image_points, axis=1)))
+
+            from src.utils.config import save_board_transform
+            save_board_transform(cam_id, R_cb.tolist(), t_cb.tolist())
+            logger.info(
+                "Board pose saved for camera '%s': reproj_error=%.2f px", cam_id, reproj_err
+            )
+
+            # Hot-reload transforms into live pipeline
+            if hasattr(multi, "reload_stereo_params"):
+                try:
+                    multi.reload_stereo_params()
+                except Exception as e:
+                    logger.warning("Board-pose hot-reload failed: %s", e)
+
+            from src.cv.calibration_overlay import draw_pose_result_overlay, encode_result_image
+
+            board_cal_data = pipeline.board_calibration.get_config()
+            ordered_centers = [marker_centers[i] for i in order]
+            center_of_markers = [float(image_points[:, 0].mean()), float(image_points[:, 1].mean())]
+
+            if board_cal_data and board_cal_data.get("radii_px"):
+                overlay = draw_pose_result_overlay(
+                    frame, ordered_centers, center_of_markers,
+                    board_cal_data["radii_px"],
+                    rvec, tvec, intr.camera_matrix, intr.dist_coeffs,
+                )
+                result_image = encode_result_image(overlay)
+            else:
+                result_image = encode_result_image(frame)
+
+            return {
+                "ok": True,
+                "camera_id": cam_id,
+                "reprojection_error_px": reproj_err,
+                "result_image": result_image,
+                "quality_info": {
+                    "reprojection_error_px": round(reproj_err, 2),
+                    "description": f"Board-Pose gespeichert (Reproj. {reproj_err:.1f}px)",
+                },
+            }
+        except Exception as exc:
+            import traceback
+            logger.error("board-pose failed: %s\n%s", exc, traceback.format_exc())
+            return {"ok": False, "error": str(exc)}
 
     # --- Single-Camera Pipeline Routes ---
 
