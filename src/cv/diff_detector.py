@@ -58,7 +58,7 @@ class FrameDiffDetector:
         min_diff_area: int = 30,
         max_diff_area: int = 8000,
         diagnostics_dir: str | None = None,
-        min_elongation: float = 1.5,
+        min_elongation: float = 1.2,
         bounce_diff_threshold: float = 0.2,
         bounce_check_frames: int = 3,
         stability_frames: int = 2,
