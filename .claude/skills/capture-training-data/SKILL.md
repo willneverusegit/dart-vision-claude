@@ -1,6 +1,6 @@
 ---
 name: capture-training-data
-description: Systematisch Dart-Treffer-Videos aufnehmen und mit Ground-Truth annotieren. Trigger wenn: "Trainingsdaten aufnehmen", "neues Video aufnehmen", "Ground Truth annotieren", "Batch-Validierung laufen", "Hit Rate testen", "Detection verbessern", "neues Testvideo".
+description: Systematically capture dart hit videos and annotate with ground truth data. Trigger when user says: "capture training data", "record new video", "annotate ground truth", "run batch validation", "test hit rate", "improve detection", "new test video", "Trainingsdaten aufnehmen", "neues Video aufnehmen", "Ground Truth annotieren", "Batch-Validierung laufen".
 ---
 
 # Skill: capture-training-data
