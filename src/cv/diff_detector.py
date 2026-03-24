@@ -70,6 +70,8 @@ class FrameDiffDetector:
         search_mode_threshold_factor: float = 0.8,
         light_variance_threshold: float = 15.0,
         light_window_size: int = 10,
+        baseline_avg_frames: int = 5,
+        pre_blur_ksize: int = 3,
     ) -> None:
         if settle_frames < 1:
             raise ValueError("settle_frames must be >= 1")
@@ -100,6 +102,13 @@ class FrameDiffDetector:
         self.search_mode_threshold_factor = search_mode_threshold_factor
 
         self._no_detect_count: int = 0
+
+        # Baseline averaging: accumulate N idle frames to reduce temporal noise
+        self._baseline_avg_frames = max(1, baseline_avg_frames)
+        self._baseline_accum: list[np.ndarray] = []
+
+        # Pre-blur: Gaussian kernel size applied before absdiff (0 = disabled)
+        self._pre_blur_ksize = pre_blur_ksize if pre_blur_ksize > 1 else 0
 
         # Sharpness tracking for per-camera quality compensation
         self._sharpness_tracker = SharpnessTracker(ema_alpha=0.1, sample_interval=10)
@@ -205,6 +214,7 @@ class FrameDiffDetector:
         """State zurücksetzen (nach Dart-Entfernung / Turn-Reset)."""
         self._state = _State.IDLE
         self._baseline = None
+        self._baseline_accum.clear()
         self._settle_count = 0
         self._had_motion_event = False
         self._stability_centroids = []
@@ -301,15 +311,24 @@ class FrameDiffDetector:
             if self._baseline is None:
                 self._baseline = frame.copy()
                 logger.debug("FrameDiff: Baseline warmup — forced from first frame")
-            # Motion detected — freeze baseline at last stable frame, switch state
+            # Motion detected — freeze baseline (averaged), switch state
             self._state = _State.IN_MOTION
             self._settle_count = 0
             self._had_motion_event = True
             self._stability_centroids = []
+            self._baseline_accum.clear()
             logger.debug("FrameDiff: IDLE → IN_MOTION")
         else:
-            # No motion — update baseline continuously
-            self._baseline = frame.copy()
+            # No motion — accumulate frames for averaged baseline
+            self._baseline_accum.append(frame.copy())
+            if len(self._baseline_accum) > self._baseline_avg_frames:
+                self._baseline_accum.pop(0)
+            # Compute averaged baseline from accumulated frames
+            if len(self._baseline_accum) == 1:
+                self._baseline = self._baseline_accum[0]
+            else:
+                acc = np.mean(self._baseline_accum, axis=0).astype(np.uint8)
+                self._baseline = acc
         return None
 
     def _handle_in_motion(self, frame: np.ndarray, has_motion: bool) -> DartDetection | None:
@@ -441,10 +460,19 @@ class FrameDiffDetector:
     # ------------------------------------------------------------------
 
     def _get_diff(self, frame: np.ndarray) -> np.ndarray:
-        """Return cv2.absdiff(baseline, frame), cached per frame_id."""
+        """Return cv2.absdiff(baseline, frame), cached per frame_id.
+
+        Applies optional GaussianBlur before diffing to reduce sensor noise.
+        """
         if self._cached_diff is not None and self._cached_diff_frame_id == self._frame_id:
             return self._cached_diff
-        diff = cv2.absdiff(self._baseline, frame)
+        bl = self._baseline
+        fr = frame
+        if self._pre_blur_ksize > 1:
+            k = self._pre_blur_ksize
+            bl = cv2.GaussianBlur(bl, (k, k), 0)
+            fr = cv2.GaussianBlur(fr, (k, k), 0)
+        diff = cv2.absdiff(bl, fr)
         self._cached_diff = diff
         self._cached_diff_frame_id = self._frame_id
         return diff

@@ -100,3 +100,19 @@ videos:
   8.mp4:
     description: ""
     throws: []
+
+  rec_20260324_130228.mp4:
+    description: "5 Wuerfe, Cam 0 (rechts), bessere Beleuchtung"
+    throws:
+      - {sector: 1, ring: "double", timestamp_s: 3}
+      - {sector: 20, ring: "single", timestamp_s: 7}
+      - {sector: 20, ring: "single", timestamp_s: 10}
+      - {sector: 19, ring: "single", timestamp_s: 12}
+      - {sector: 15, ring: "single", timestamp_s: 15}
+
+  rec_20260324_124913.mp4:
+    description: "3 Wuerfe, Cam 0 (rechts), Single 1 + 2x Single 20"
+    throws:
+      - {sector: 1, ring: "single", timestamp_s: 2.5}
+      - {sector: 20, ring: "single", timestamp_s: 5}
+      - {sector: 20, ring: "single", timestamp_s: 9}

@@ -17,7 +17,7 @@ def test_idle_no_motion_returns_none():
 
 
 def test_idle_updates_baseline():
-    d = FrameDiffDetector()
+    d = FrameDiffDetector(baseline_avg_frames=1)
     d.update(_gray(50), has_motion=False)
     d.update(_gray(200), has_motion=False)
     assert np.array_equal(d._baseline, _gray(200))
@@ -314,7 +314,7 @@ def test_invalid_min_elongation_raises():
 
 def test_board_wire_filtered_by_opening():
     """Thin 1px-wide wire artefacts in the diff should be removed by opening."""
-    d = FrameDiffDetector(settle_frames=2, diff_threshold=10, min_diff_area=10, min_elongation=1.0)
+    d = FrameDiffDetector(settle_frames=2, diff_threshold=10, min_diff_area=10, min_elongation=1.0, pre_blur_ksize=0)
     baseline = _gray(50)
     post = _gray(50)
     # Simulate thin board wire: 1px wide horizontal line
