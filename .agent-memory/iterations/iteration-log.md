@@ -2,6 +2,55 @@
 
 ---
 
+## [2026-03-24] P77: Cricket Sektor-Validierung + Tests
+
+**Category:** enhancement | **Severity:** minor | **Attempts:** 1
+
+**Type:** feature
+**Summary:** Cricket-Sektorvalidierung war bereits implizit vorhanden (`if target not in player.cricket_marks: return`). Ergaenzt: explizite `CRICKET_SECTORS` Klassenkonstante, debug-Logging fuer nicht-Cricket-Wuerfe, 8 neue Tests (Dart-Verbrauch, Turn-Completion, Bull-Varianten, Win-Szenario, Boundary-Sektoren, Excess-Marks).
+**Files changed:** src/game/engine.py, tests/test_game_engine.py
+**Tests:** 32 passed (24 pre-existing + 8 new), 0 regressions
+**Confidence:** 5/5
+**Tags:** python, game-engine, cricket, validation, testing
+
+### Details
+- Bestehende Logik in `_score_cricket()` filterte nicht-Cricket-Sektoren korrekt, aber ohne Logging oder explizite Dokumentation
+- `CRICKET_SECTORS = frozenset({15, 16, 17, 18, 19, 20, 25})` als Klassen-Konstante hinzugefuegt
+- `logger.debug()` bei nicht-Cricket-Wuerfen eingefuegt
+- Neue Tests decken: non-cricket darts still count toward turn, 3 non-cricket darts complete turn, outer bull single mark, double bull 2 marks, cricket win all-closed, boundary sectors (1-14, 21+), CRICKET_SECTORS constant, excess marks scoring
+
+### Learnings
+- P77 war als "keine Pruefung vorhanden" beschrieben, tatsaechlich war die Pruefung bereits implementiert. Analyse vor Implementierung spart unnoetige Aenderungen.
+- Wert lag primaer in den Tests, nicht in Code-Aenderungen.
+
+---
+
+## [2026-03-24] Board-XY-Mapping: solvePnP-Transform war nicht invertiert
+
+**Category:** logic | **Severity:** critical | **Attempts:** 1
+
+**Type:** bugfix
+**Summary:** solvePnP liefert Board→Camera (R_bc, t_bc), aber der Code speicherte das direkt als R_cb/t_cb (Camera→Board). transform_to_board_frame() produzierte dadurch unsinnige Koordinaten — Scoring zeigte immer "miss".
+**Files changed:** src/web/routes.py, src/cv/stereo_utils.py, tests/test_stereo_utils.py
+**Tests:** passed (83 fokussiert, 2 pre-existing env-failures)
+**Confidence:** 5/5
+**Tags:** python, opencv, solvepnp, triangulation, coordinate-transform, multi-cam
+
+### Details
+- `cv2.solvePnP(object_points, image_points, ...)` gibt rvec/tvec zurueck die von **Object-Frame (Board) nach Camera-Frame** transformieren: `p_cam = R_bc @ p_board + t_bc`
+- Der Code benannte das Ergebnis faelschlicherweise R_cb/t_cb und wendete `R_cb @ p_cam + t_cb` an — mathematisch falsch
+- Fix: Im board_pose_calibration Endpoint die Inverse berechnen: `R_cb = R_bc.T`, `t_cb = -R_bc.T @ t_bc`
+- Zusaetzlich 7 Debug-Logs von INFO auf DEBUG gestuft
+
+### Learnings
+- solvePnP gibt IMMER Object→Camera. Die Variable-Benennung muss das reflektieren. Faustregel: R aus solvePnP = R_object_to_camera, nie umgekehrt.
+- Bestehende Board-Pose-Kalibrierungsdaten sind nach diesem Fix ungueltig und muessen neu erstellt werden.
+
+### Errors
+- E11: solvepnp-transform-not-inverted
+
+---
+
 ## [2026-03-23 21:10] ChArUco Auto-Capture sammelte keine Frames
 
 **Category:** logic | **Severity:** critical | **Attempts:** 1

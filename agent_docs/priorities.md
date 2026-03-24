@@ -252,7 +252,9 @@ Typische Arbeiten:
 
 Warum sinnvoll: Verhindert Regressionen bei CV-Aenderungen, ohne dass alle Wuerfe (inkl. schwieriger Edge Cases) gruen sein muessen.
 
-## Prioritaet 77: Game-Engine Cricket Sektor-Validierung (neu — entdeckt bei Agent-Run)
+## Prioritaet 77: Game-Engine Cricket Sektor-Validierung (✅ ERLEDIGT 2026-03-24)
+
+**Umsetzung:** Analyse ergab, dass `_score_cricket()` nicht-Cricket-Sektoren bereits korrekt ignorierte (`if target not in player.cricket_marks: return`). Ergaenzt: `CRICKET_SECTORS` frozenset als Klassen-Konstante, debug-Logging bei nicht-Cricket-Wuerfen. 8 neue Tests: Nicht-Cricket-Wurf verbraucht Dart, 3 Non-Cricket-Wuerfe beenden Turn, Outer-Bull-Einzelmark, Double-Bull-Doppelmark, Cricket-Win-Szenario, Boundary-Sektoren (1-14, 21+), CRICKET_SECTORS-Konstante, Excess-Marks-Scoring. Geaenderte Dateien: `src/game/engine.py`, `tests/test_game_engine.py`.
 
 Kritikalitaet: MITTEL
 
@@ -268,6 +270,9 @@ Typische Arbeiten:
 - Dateien: `src/game/engine.py`, `tests/test_game_engine.py`
 
 Warum sinnvoll: P14 hat allgemeine Robustheit verbessert, aber Cricket-spezifische Sektorvalidierung fehlt noch.
+
+Verknuepfte Weaknesses: keine
+Verknuepfte Entscheidungen: keine
 
 ---
 

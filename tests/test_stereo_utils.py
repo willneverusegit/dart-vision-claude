@@ -9,6 +9,7 @@ from src.cv.stereo_utils import (
     TriangulationResult,
     triangulate_point,
     point_3d_to_board_2d,
+    transform_to_board_frame,
 )
 
 
@@ -161,3 +162,67 @@ class TestPoint3dToBoard2d:
         x_mm, y_mm = point_3d_to_board_2d(point_3d)
         assert abs(x_mm - 20.0) < 0.01
         assert abs(y_mm - 10.0) < 0.01
+
+
+class TestTransformToBoardFrame:
+    """Verify camera-to-board transform round-trips correctly with solvePnP."""
+
+    def test_solvepnp_inverse_roundtrip(self):
+        """A point at the board origin should map to ~(0,0,0) in board frame.
+
+        Simulates what board_pose_calibration does: solvePnP gives board-to-camera,
+        we invert to get camera-to-board, and then transform_to_board_frame should
+        recover the original board coordinates.
+        """
+        # Camera intrinsics
+        K = np.array([[500, 0, 320], [0, 500, 240], [0, 0, 1]], dtype=np.float64)
+        D = np.zeros((5, 1), dtype=np.float64)
+
+        # Board point at origin and at known offset
+        board_points = np.array([
+            [0.0, 0.0, 0.0],       # board center
+            [0.05, 0.03, 0.0],      # 50mm right, 30mm up
+            [-0.1, 0.07, 0.0],      # 100mm left, 70mm up
+        ], dtype=np.float64)
+
+        # Simulate a camera looking at the board from 0.5m away, slightly rotated
+        rvec_true = np.array([0.1, -0.05, 0.02], dtype=np.float64)
+        tvec_true = np.array([0.0, 0.0, 0.5], dtype=np.float64).reshape(3, 1)
+
+        # solvePnP gives board-to-camera: p_cam = R_bc @ p_board + t_bc
+        R_bc, _ = cv2.Rodrigues(rvec_true)
+        t_bc = tvec_true.reshape(3)
+
+        # Invert to camera-to-board (what board_pose_calibration now does)
+        R_cb = R_bc.T
+        t_cb = -R_bc.T @ t_bc
+
+        for bp in board_points:
+            # Forward: board -> camera
+            p_cam = R_bc @ bp + t_bc
+
+            # Inverse: camera -> board via transform_to_board_frame
+            p_board = transform_to_board_frame(p_cam, R_cb, t_cb)
+
+            np.testing.assert_array_almost_equal(p_board, bp, decimal=6,
+                err_msg=f"Round-trip failed for board point {bp}")
+
+    def test_board_center_maps_to_zero(self):
+        """Board center (0,0,0) through solvePnP + inverse should give (0,0) in mm."""
+        rvec = np.array([0.15, -0.1, 0.0], dtype=np.float64)
+        tvec = np.array([0.02, -0.01, 0.6], dtype=np.float64).reshape(3, 1)
+
+        R_bc, _ = cv2.Rodrigues(rvec)
+        t_bc = tvec.reshape(3)
+        R_cb = R_bc.T
+        t_cb = -R_bc.T @ t_bc
+
+        # Board center in camera frame
+        p_cam = R_bc @ np.zeros(3) + t_bc
+
+        # Transform back to board
+        p_board = transform_to_board_frame(p_cam, R_cb, t_cb)
+        x_mm, y_mm = point_3d_to_board_2d(p_board)
+
+        assert abs(x_mm) < 0.01, f"Expected x~0mm, got {x_mm}"
+        assert abs(y_mm) < 0.01, f"Expected y~0mm, got {y_mm}"

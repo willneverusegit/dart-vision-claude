@@ -1522,10 +1522,14 @@ def setup_routes(app_state: dict) -> APIRouter:
             if not success:
                 return {"ok": False, "error": "solvePnP failed -- check detection quality and intrinsics"}
 
-            R_cb, _ = _cv2.Rodrigues(rvec)
-            t_cb = tvec.reshape(3)
+            # solvePnP returns board-to-camera transform (R_bc, t_bc).
+            # We need camera-to-board (R_cb, t_cb) for triangulation.
+            R_bc, _ = _cv2.Rodrigues(rvec)
+            t_bc = tvec.reshape(3)
+            R_cb = R_bc.T
+            t_cb = -R_bc.T @ t_bc
 
-            # Reprojection error
+            # Reprojection error (use original rvec/tvec for projection)
             proj, _ = _cv2.projectPoints(object_points, rvec, tvec, intr.camera_matrix, intr.dist_coeffs)
             reproj_err = float(_np.mean(_np.linalg.norm(proj.reshape(-1, 2) - image_points, axis=1)))
 

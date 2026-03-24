@@ -1,5 +1,21 @@
 [
   {
+    "id": "2026-03-24-board-xy-solvepnp-not-inverted",
+    "timestamp": "2026-03-24T12:00:00+01:00",
+    "category": "logic",
+    "severity": "critical",
+    "trigger": "Session-summary noted 'Scoring zeigt miss bei Triangulation — board_xy Werte unrealistisch'",
+    "problem": "solvePnP returns Board-to-Camera transform (R_bc, t_bc), but code saved it as R_cb/t_cb (Camera-to-Board) without inverting. transform_to_board_frame() produced wrong coordinates, causing all triangulated hits to score as 'miss'.",
+    "root_cause": "Missing matrix inversion: solvePnP gives R_bc, but downstream code expected R_cb = R_bc.T and t_cb = -R_bc.T @ t_bc.",
+    "solution": "In board_pose_calibration endpoint: compute R_cb = R_bc.T and t_cb = -R_bc.T @ t_bc before saving. transform_to_board_frame() itself was correct — it just received wrong inputs.",
+    "attempts": 1,
+    "failed_approaches": [],
+    "files_changed": ["src/web/routes.py", "src/cv/stereo_utils.py", "tests/test_stereo_utils.py"],
+    "tags": ["python", "opencv", "solvepnp", "triangulation", "coordinate-transform", "multi-cam"],
+    "reusable_pattern": "solvePnP always returns object-to-camera transform. To get camera-to-object: R_inv = R.T, t_inv = -R.T @ t. Never assume the naming convention matches — verify the math.",
+    "recurrence": []
+  },
+  {
     "id": "2026-03-17-1400-motion-gate-blocks-settling",
     "timestamp": "2026-03-17T14:00:00+01:00",
     "category": "architecture",

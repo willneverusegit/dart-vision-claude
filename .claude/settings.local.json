@@ -43,7 +43,9 @@
       "Bash(cp ~/.claude/plugins/agentic-os/hooks/session-start-context.txt ~/.claude/plugins/marketplaces/local-desktop-app-uploads/agentic-os/hooks/session-start-context.txt)",
       "Bash(cp ~/.claude/plugins/agentic-os/skills/heartbeat/SKILL.md ~/.claude/plugins/marketplaces/local-desktop-app-uploads/agentic-os/skills/heartbeat/SKILL.md)",
       "Bash(cp ~/.claude/plugins/agentic-os/skills/agent-orchestrator/SKILL.md ~/.claude/plugins/marketplaces/local-desktop-app-uploads/agentic-os/skills/agent-orchestrator/SKILL.md)",
-      "Bash(cp ~/.claude/plugins/agentic-os/skills/agent-handoff/SKILL.md ~/.claude/plugins/marketplaces/local-desktop-app-uploads/agentic-os/skills/agent-handoff/SKILL.md)"
+      "Bash(cp ~/.claude/plugins/agentic-os/skills/agent-handoff/SKILL.md ~/.claude/plugins/marketplaces/local-desktop-app-uploads/agentic-os/skills/agent-handoff/SKILL.md)",
+      "Skill(agentic-os:init)",
+      "Skill(agentic-os:init:*)"
     ]
   },
   "hooks": {

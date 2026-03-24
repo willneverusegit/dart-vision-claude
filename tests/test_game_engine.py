@@ -160,6 +160,83 @@ class TestCricket:
         assert bull_marks == 2
 
 
+    def test_non_cricket_throw_still_counts_as_dart(self, engine):
+        """A throw at a non-cricket sector uses one of the 3 darts per turn."""
+        engine.new_game(mode="cricket", players=["Alice", "Bob"])
+        engine.register_throw(_throw(7, 7, 1, "single"))  # Non-cricket
+        state = engine.get_state()
+        assert state["darts_thrown"] == 1
+        assert state["scores"]["Alice"] == 0
+
+    def test_three_non_cricket_throws_complete_turn(self, engine):
+        """Three non-cricket darts should complete the turn normally."""
+        engine.new_game(mode="cricket", players=["Alice", "Bob"])
+        for sector in [1, 3, 7]:
+            engine.register_throw(_throw(sector, sector, 1, "single"))
+        state = engine.get_state()
+        assert state["darts_thrown"] == 0  # Turn archived
+        assert state["scores"]["Alice"] == 0
+
+    def test_outer_bull_single_mark(self, engine):
+        """Outer bull (sector 25, multiplier 1) adds 1 mark on bull."""
+        engine.new_game(mode="cricket", players=["Alice"])
+        engine.register_throw(_throw(25, 25, 1, "outer_bull"))
+        state = engine.get_state()
+        marks = state["players"][0]["cricket_marks"]
+        bull_marks = marks.get(25, marks.get("25"))
+        assert bull_marks == 1
+
+    def test_double_bull_two_marks(self, engine):
+        """Double bull (sector 25, multiplier 2) adds 2 marks on bull."""
+        engine.new_game(mode="cricket", players=["Alice"])
+        engine.register_throw(_throw(50, 25, 2, "inner_bull"))
+        state = engine.get_state()
+        marks = state["players"][0]["cricket_marks"]
+        bull_marks = marks.get(25, marks.get("25"))
+        assert bull_marks == 2
+
+    def test_cricket_win_all_closed_highest_score(self, engine):
+        """Player wins when all numbers closed and score >= all opponents."""
+        engine.new_game(mode="cricket", players=["Alice", "Bob"])
+        # Alice closes all 7 numbers with triples
+        for sector in [15, 16, 17, 18, 19, 20]:
+            engine.register_throw(_throw(sector * 3, sector, 3, "triple"))
+        # Bull needs special handling: triple doesn't exist, use 3 singles
+        engine.register_throw(_throw(25, 25, 1, "outer_bull"))
+        engine.register_throw(_throw(25, 25, 1, "outer_bull"))
+        engine.register_throw(_throw(25, 25, 1, "outer_bull"))
+        state = engine.get_state()
+        assert state["winner"] == "Alice"
+        assert state["phase"] == "game_over"
+
+    def test_cricket_all_sectors_boundary(self, engine):
+        """Sectors 14 and below, and 21 and above are not cricket sectors."""
+        engine.new_game(mode="cricket", players=["Alice"])
+        for sector in [1, 2, 10, 14, 21, 22]:
+            engine.register_throw(_throw(sector, sector, 1, "single"))
+        state = engine.get_state()
+        marks = state["players"][0]["cricket_marks"]
+        assert all(
+            marks.get(k, marks.get(str(k))) == 0
+            for k in [15, 16, 17, 18, 19, 20, 25]
+        )
+
+    def test_cricket_sectors_constant(self):
+        """Verify CRICKET_SECTORS class constant matches cricket_marks keys."""
+        from src.game.engine import GameEngine
+        assert GameEngine.CRICKET_SECTORS == frozenset({15, 16, 17, 18, 19, 20, 25})
+
+    def test_excess_marks_score_points(self, engine):
+        """After closing a number, excess marks score points if opponent hasn't closed."""
+        engine.new_game(mode="cricket", players=["Alice", "Bob"])
+        # Alice closes 20 with triple
+        engine.register_throw(_throw(60, 20, 3, "triple"))
+        # Alice hits another triple 20 — Bob hasn't closed it, so 60 points
+        engine.register_throw(_throw(60, 20, 3, "triple"))
+        state = engine.get_state()
+        assert state["scores"]["Alice"] == 60
+
+
 class TestFreePlay:
     def test_score_accumulates(self, engine):
         engine.new_game(mode="free", players=["Alice"])

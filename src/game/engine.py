@@ -143,13 +143,17 @@ class GameEngine:
 
     # --- Cricket Scoring ---
 
+    # Valid cricket sectors (15-20 and Bull)
+    CRICKET_SECTORS = frozenset({15, 16, 17, 18, 19, 20, 25})
+
     def _score_cricket(self, player: PlayerState, throw: ThrowResult) -> None:
         """Cricket scoring: mark numbers 15-20 and bull. 3 marks to close."""
         target = throw.sector
         if target == 50:
             target = 25  # Inner bull counts as bull
         if target not in player.cricket_marks:
-            return  # Not a cricket number
+            logger.debug("Cricket: sector %d is not a cricket number, no marks added", throw.sector)
+            return  # Not a cricket number — dart still counts toward the turn
 
         marks_to_add = throw.multiplier
         current_marks = player.cricket_marks[target]
