@@ -48,7 +48,7 @@ class TestCameraFailureFallback:
             "camera_id": "cam_left",
             "score_result": {"score": 20, "ring": "single", "sector": 20, "multiplier": 1, "total_score": 20},
             "detection": FakeDetection(confidence=0.85),
-            "timestamp": time.time() - 0.5,  # older than sync_wait_s (0.3s default)
+            "timestamp": time.time() - 1.0,  # older than sync_wait_s (0.8s default)
         }
 
         pipeline._try_fuse()

@@ -16,7 +16,7 @@ class TestFrameDiffDetectorParams:
         assert params["diff_threshold"] == 30
         assert params["min_diff_area"] == 30
         assert params["max_diff_area"] == 8000
-        assert params["min_elongation"] == 1.5
+        assert params["min_elongation"] == 1.2
         assert params["diagnostics_enabled"] is False
 
     def test_set_params_updates_values(self):

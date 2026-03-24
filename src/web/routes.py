@@ -3,9 +3,29 @@
 import asyncio
 import base64
 import logging
+import sys
 import threading
 import time as _time
 from contextlib import nullcontext as _nullcontext
+
+# Python 3.11+ has asyncio.timeout; provide a shim for older versions
+if sys.version_info < (3, 11):
+    import contextlib
+
+    @contextlib.asynccontextmanager
+    async def _asyncio_timeout(delay):
+        """Minimal asyncio.timeout shim for Python <3.11."""
+        task = asyncio.current_task()
+        loop = asyncio.get_event_loop()
+        handle = loop.call_later(delay, task.cancel)
+        try:
+            yield
+        except asyncio.CancelledError:
+            raise TimeoutError(f"Timed out after {delay}s")
+        finally:
+            handle.cancel()
+
+    asyncio.timeout = _asyncio_timeout
 
 import cv2
 import numpy as np

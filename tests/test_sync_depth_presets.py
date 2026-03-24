@@ -28,18 +28,18 @@ class TestSyncDepthPresets:
 
     def test_tight_values(self):
         p = SYNC_DEPTH_PRESETS["tight"]
-        assert p["max_time_diff_s"] == 0.100
-        assert p["depth_tolerance_m"] == 0.010
+        assert p["max_time_diff_s"] == 0.200
+        assert p["depth_tolerance_m"] == 0.050
 
     def test_standard_values(self):
         p = SYNC_DEPTH_PRESETS["standard"]
-        assert p["max_time_diff_s"] == 0.150
-        assert p["depth_tolerance_m"] == 0.015
+        assert p["max_time_diff_s"] == 0.500
+        assert p["depth_tolerance_m"] == 0.300
 
     def test_loose_values(self):
         p = SYNC_DEPTH_PRESETS["loose"]
-        assert p["max_time_diff_s"] == 0.200
-        assert p["depth_tolerance_m"] == 0.020
+        assert p["max_time_diff_s"] == 1.000
+        assert p["depth_tolerance_m"] == 0.500
 
 
 # ── Config loading from YAML ────────────────────────────────────────
@@ -54,15 +54,15 @@ class TestGetSyncDepthConfig:
         cfg_path = str(tmp_path / "mc.yaml")
         _write_yaml(cfg_path, {"sync_depth": {"preset": "tight"}})
         result = get_sync_depth_config(cfg_path)
-        assert result["max_time_diff_s"] == 0.100
-        assert result["depth_tolerance_m"] == 0.010
+        assert result["max_time_diff_s"] == 0.200
+        assert result["depth_tolerance_m"] == 0.050
 
     def test_preset_loose(self, tmp_path):
         cfg_path = str(tmp_path / "mc.yaml")
         _write_yaml(cfg_path, {"sync_depth": {"preset": "loose"}})
         result = get_sync_depth_config(cfg_path)
-        assert result["max_time_diff_s"] == 0.200
-        assert result["depth_tolerance_m"] == 0.020
+        assert result["max_time_diff_s"] == 1.000
+        assert result["depth_tolerance_m"] == 0.500
 
     def test_explicit_overrides_preset(self, tmp_path):
         cfg_path = str(tmp_path / "mc.yaml")
@@ -74,21 +74,21 @@ class TestGetSyncDepthConfig:
         })
         result = get_sync_depth_config(cfg_path)
         assert result["max_time_diff_s"] == 0.175  # overridden
-        assert result["depth_tolerance_m"] == 0.010  # from tight preset
+        assert result["depth_tolerance_m"] == 0.050  # from tight preset
 
     def test_missing_section_falls_back_to_standard(self, tmp_path):
         cfg_path = str(tmp_path / "mc.yaml")
         _write_yaml(cfg_path, {"cameras": {}})
         result = get_sync_depth_config(cfg_path)
-        assert result["max_time_diff_s"] == 0.150
-        assert result["depth_tolerance_m"] == 0.015
+        assert result["max_time_diff_s"] == 0.500
+        assert result["depth_tolerance_m"] == 0.300
 
     def test_unknown_preset_falls_back_to_standard(self, tmp_path):
         cfg_path = str(tmp_path / "mc.yaml")
         _write_yaml(cfg_path, {"sync_depth": {"preset": "ultra"}})
         result = get_sync_depth_config(cfg_path)
-        assert result["max_time_diff_s"] == 0.150
-        assert result["depth_tolerance_m"] == 0.015
+        assert result["max_time_diff_s"] == 0.500
+        assert result["depth_tolerance_m"] == 0.300
 
 
 class TestGetGovernorConfig:
@@ -226,9 +226,9 @@ class TestMultiCamConfigIntegration:
     def test_none_args_load_from_config(self):
         """When no explicit values given, values come from YAML (standard preset)."""
         mcp = self._make()
-        # Standard preset values
-        assert mcp._max_time_diff_s == pytest.approx(0.15)
-        assert mcp._depth_tolerance_m == pytest.approx(0.015)
+        # Standard preset values (relaxed for real-world use)
+        assert mcp._max_time_diff_s == pytest.approx(0.500)
+        assert mcp._depth_tolerance_m == pytest.approx(0.300)
 
     def test_load_config_disabled(self):
         mcp = self._make(load_config_from_yaml=False)

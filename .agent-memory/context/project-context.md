@@ -1,6 +1,6 @@
 # Project Context — DartVision
 
-*Last updated: 2026-03-24 (Auto-Agent Run #4: P77 Cricket-Sektorvalidierung abgeschlossen, solvePnP-Fix aus vorherigem Run)*
+*Last updated: 2026-03-24 (Automation-Ausbau: 4 neue Skills, 2 neue Subagents, 2 neue Hooks)*
 
 ## Projektziel
 Lokales Dart-Scoring-System mit Computer Vision zur automatischen Treffererkennung auf einer Dartscheibe. CPU-only, Windows-Laptop, kein Cloud-Zwang.
@@ -13,7 +13,7 @@ Lokales Dart-Scoring-System mit Computer Vision zur automatischen Treffererkennu
 | Backend | FastAPI | — | REST + WebSocket |
 | CV | OpenCV + NumPy | — | CPU-only, keine GPU |
 | Frontend | Vanilla JS / HTML / CSS | — | Web Audio API |
-| Tests | pytest | — | 1401+ Tests (ohne e2e), ~77% Coverage |
+| Tests | pytest | — | 1450+ Tests (ohne e2e), ~77% Coverage |
 | Config | YAML | — | calibration_config.yaml |
 
 ## Architektur

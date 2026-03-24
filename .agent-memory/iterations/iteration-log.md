@@ -2,6 +2,29 @@
 
 ---
 
+## [2026-03-24] Test-Suite Hygiene: 16 Failures gefixt
+
+**Category:** testing | **Severity:** minor | **Attempts:** 1
+
+**Type:** bugfix
+**Summary:** 26 pre-existing Test-Failures auf 10 reduziert. Drei Root Causes identifiziert und behoben: (1) sync_depth_presets-Tests referenzierten veraltete Preset-Werte nach Live-Tuning, (2) asyncio.timeout fehlt in Python <3.11, (3) Multi-Cam sync_wait_s Default von 0.3s auf 0.8s geaendert aber Tests nicht angepasst. Verbleibende 10 Failures sind umgebungsbedingt (fehlende Video-Codecs in Linux-VM, Test-Ordering-Pollution).
+**Files changed:** tests/test_sync_depth_presets.py, tests/test_multi_camera.py, tests/test_multi_robustness.py, src/web/routes.py
+**Tests:** 1450 passed, 10 failed (8 env, 2 ordering), 2 skipped
+**Confidence:** 5/5
+**Tags:** python, testing, asyncio, compatibility, sync-depth-presets, multi-cam
+
+### Details
+- `SYNC_DEPTH_PRESETS` in config.py: tight=200ms/50mm, standard=500ms/300mm, loose=1000ms/500mm — Tests erwarteten die alten engeren Werte
+- `asyncio.timeout` (Python 3.11+): Compat-Shim als asynccontextmanager mit call_later/cancel in routes.py eingefuegt
+- `sync_wait_s` Default 0.8s: Test-Timestamps von 0.5s auf 1.0s angehoben damit Single-Cam-Fallback triggert
+- diff_detector-Tests (test_idle_updates_baseline, test_board_wire_filtered_by_opening) bestehen isoliert, scheitern nur im Gesamtlauf — State Pollution durch anderes Testmodul
+
+### Learnings
+- Wenn Implementierungs-Defaults geaendert werden (z.B. durch Live-Tuning), muessen zugehoerige Tests zeitgleich aktualisiert werden. Sonst divergieren Tests und Impl still.
+- Python-Version-Compat: asyncio.timeout ist nicht backportierbar ueber pip, braucht eigenen Shim.
+
+---
+
 ## [2026-03-24] P77: Cricket Sektor-Validierung + Tests
 
 **Category:** enhancement | **Severity:** minor | **Attempts:** 1
