@@ -1,1 +1,59 @@
-[]
+[
+  {
+    "id": "2026-03-25-review",
+    "timestamp": "2026-03-25T12:00:00+01:00",
+    "files_reviewed": [
+      "tests/test_calibration_coverage.py",
+      "tests/test_main_coverage2.py",
+      "tests/test_multi_camera_coverage.py",
+      "tests/test_pipeline_coverage2.py",
+      "tests/test_remapping_coverage.py",
+      "tests/test_stereo_calibration_coverage.py"
+    ],
+    "trigger": "manual",
+    "scores": {
+      "overall": 85,
+      "readability": 5,
+      "maintainability": 4,
+      "correctness": 4,
+      "performance": 4,
+      "security": 5,
+      "testability": 4
+    },
+    "findings": [
+      {
+        "severity": "warning",
+        "file": "tests/test_pipeline_coverage2.py",
+        "line": 205,
+        "dimension": "correctness",
+        "issue": "Unreachable code after else-return in mock_monotonic",
+        "suggestion": "Remove dead return statement after the else block"
+      },
+      {
+        "severity": "warning",
+        "file": "tests/test_main_coverage2.py",
+        "line": 261,
+        "dimension": "correctness",
+        "issue": "Soft assertion with if-guard means test passes even if callback never fires (race condition)",
+        "suggestion": "Add a brief sleep or use threading.Event to ensure callback fires before assertion"
+      },
+      {
+        "severity": "suggestion",
+        "file": "tests/test_multi_camera_coverage.py",
+        "line": 697,
+        "dimension": "maintainability",
+        "issue": "_make_entry always uses time.time(), not parametrizable",
+        "suggestion": "Add optional timestamp parameter for deterministic tests"
+      },
+      {
+        "severity": "suggestion",
+        "file": "tests/test_stereo_calibration_coverage.py",
+        "line": 199,
+        "dimension": "correctness",
+        "issue": "OR-assertion hard to debug on failure",
+        "suggestion": "Use a single specific assertion or split into separate checks"
+      }
+    ],
+    "summary": "6 new test files with 258 tests covering calibration, main, multi-camera, pipeline, remapping, and stereo calibration. Well-structured, good edge case coverage. Two minor race-condition risks in callback tests."
+  }
+]

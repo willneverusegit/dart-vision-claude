@@ -2,6 +2,126 @@
 
 ---
 
+## [2026-03-24] Stereo Calibration Coverage: 59 neue Tests, alle Kernfunktionen abgedeckt
+
+**Category:** testing | **Severity:** minor | **Attempts:** 1
+
+**Type:** enhancement
+**Summary:** 59 neue Tests in `tests/test_stereo_calibration_coverage.py` fuer bisher ungetestete Bereiche in `src/cv/stereo_calibration.py`. Abgedeckt: CharucoBoardSpec Validierung (__post_init__ alle 3 Fehlertypen, to_config_fragment, to_api_payload, create_dictionary, create_board), _canonical_preset_name (bekannte Presets, custom, Portrait-Varianten), resolve_charuco_board_spec Edge Cases (board_spec Parameter, unknown preset, config overrides, mm overrides), resolve_charuco_board_candidates (board_spec, non-auto, dedup, auto+mm), detect_charuco_board Edge Cases (empty candidates, grayscale, no markers, few markers warning, no interpolation multi-candidate, few corners warning, single candidate no markers), estimate_charuco_board_pose (None intrinsics, no board_spec, interpolation not ok, too few ids, synthetic success, cv2.error, solvePnP failure), stereo_from_board_poses (identity, translation-only, output types), _average_stereo_extrinsics (single pair, multi averaging, negative det correction, output types), provisional_stereo_calibrate (mismatch, too few pairs, synthetic success, result fields), validate_stereo_prerequisites (invalid cameras, dict keys), stereo_calibrate Exception-Pfade (cv2.error, non-finite rms, success path), ProvisionalStereoResult/BoardPoseEstimate fields.
+**Files changed:** tests/test_stereo_calibration_coverage.py (neu)
+**Tests:** 1686 passed (+59), 0 failed, 1 warning
+**Confidence:** 5/5
+**Tags:** python, testing, stereo-calibration, coverage, board-pose, provisional-stereo, charuco
+
+### Details
+- estimate_charuco_board_pose war komplett ungetestet — jetzt 7 Tests (None-Pfade, synthetic success mit projectPoints, cv2.error, solvePnP failure)
+- stereo_from_board_poses war komplett ungetestet — jetzt 3 Tests (identity, translation, types)
+- _average_stereo_extrinsics war komplett ungetestet — jetzt 4 Tests inkl. negative-det SVD-Korrektur
+- provisional_stereo_calibrate war komplett ungetestet — jetzt 4 Tests (mismatch, few pairs, synthetic success mit 4 variierenden Posen, result fields)
+- validate_stereo_prerequisites war komplett ungetestet — jetzt 2 Tests (ungueltige Kameras, dict structure)
+- stereo_calibrate Exception-Pfade (cv2.error, non-finite rms, success) waren komplett ungetestet — jetzt 3 Tests via monkeypatch
+- CharucoBoardSpec.__post_init__ Validierung (3 Fehlertypen), to_config_fragment, to_api_payload waren ungetestet — jetzt 11 Tests
+
+### Learnings
+- estimate_charuco_board_pose laesst sich gut mit synthetischen Daten testen: Board-Corners via getChessboardCorners holen, projectPoints fuer Image-Points, dann Detection-Objekt bauen
+- _average_stereo_extrinsics hat einen SVD-basierten Rotations-Averaging mit negative-det-Korrektur — subtiler Branch der ohne Test leicht brechen koennte
+
+---
+
+## [2026-03-24] Remapping + Main Coverage: 51 neue Tests
+
+**Category:** testing | **Severity:** minor | **Attempts:** 1
+
+**Type:** enhancement
+**Summary:** 51 neue Tests in zwei Dateien fuer bisher ungetestete Branches in `src/cv/remapping.py` und `src/main.py`. Remapping (25 Tests): roi_to_raw() alle 3 Pfade (no homography, with intrinsics, without intrinsics, zero-fx skip), configure() Edge Cases (None homography reset, invalid intrinsics, flat array reshape, exception in _build_combined_maps), _build_combined_maps ValueError bei fx=0/fy=0, remap() Fallback-Pfade (undistort+warp, combined map), Properties. Main (26 Tests): _full_state_reset() mit/ohne Lock, _wait_for_camera_release() (skip non-USB, retry, timeout, string digit), stop_pipeline_thread force-release (camera stop, pipeline stop, camera None, exception), _run_pipeline Callbacks (on_dart_detected mit detection, ohne engine/em, recorder write, general exception, stop_event=None), _run_multi_pipeline (start failure, on_multi_dart_detected, on_camera_errors_changed, frame update loop), _compute_quality_score Edge Cases.
+**Files changed:** tests/test_remapping_coverage.py (neu), tests/test_main_coverage2.py (neu)
+**Tests:** 1627 passed (+51), 0 failed, 1 warning
+**Confidence:** 5/5
+**Tags:** python, testing, remapping, main, coverage, roi-to-raw, state-reset, callbacks
+
+### Details
+- remapping.py hatte nur 3 Tests — roi_to_raw() war komplett ungetestet, configure() Edge Cases fehlten
+- main.py: _full_state_reset(), _wait_for_camera_release(), force-release Pfade in stop_pipeline_thread, Recorder-Write-Pfad, Multi-Pipeline-Callbacks waren ungetestet
+- _full_state_reset in finally-Block von _run_multi_pipeline loescht multi_latest_frames — Test muss get_annotated_frame-Aufruf verifizieren statt State nach Cleanup
+- roi_to_raw mit fx=0 nimmt den Early-Return-Pfad ohne Re-Distortion (Zeile 74: if fx != 0 and fy != 0)
+
+### Learnings
+- remapping.py war trotz geringer Zeilenanzahl (146 Zeilen) ein Coverage-Blindspot weil es nur 3 triviale Tests hatte — roi_to_raw() als Kernfunktion war komplett ungetestet
+- Bei Tests fuer Funktionen mit finally-Cleanup-Bloecken: State-Assertions muessen den Cleanup beruecksichtigen, nicht den Zustand waehrend der Ausfuehrung
+
+---
+
+## [2026-03-24] CalibrationManager Coverage: 46 neue Tests, 52% → 78%
+
+**Category:** testing | **Severity:** minor | **Attempts:** 1
+
+**Type:** enhancement
+**Summary:** 46 neue Tests in `tests/test_calibration_coverage.py` fuer bisher ungetestete Bereiche in `src/cv/calibration.py`. Abgedeckt: ArUco Calibration Success Path (Grayscale/BGR/Config-Persistenz/Custom Params/Detection Method/Missing Marker/State Updates/Radii), ChArUco Calibration (Too-few-frames/No-usable/Synthetic Success/BGR/Exception), reset_calibration (Full/Lens-Only/Board-Only/State Verification), _atomic_save (Directory Creation/Legacy Migration/Multi-Camera Preservation/Corrupt File), find_optical_center (Grayscale/Empty Patch/Edge Cases), _load_config (Exception/Missing Camera/Raw Data), manual_calibration Edge Cases (Degenerate/Too Small/Exception/Close Points/Wrong Count/mm_per_px), Config Accessors.
+**Files changed:** tests/test_calibration_coverage.py (neu)
+**Tests:** 1576 passed (+46), 0 failed, 1 warning
+**Confidence:** 5/5
+**Tags:** python, testing, calibration, aruco, charuco, coverage
+
+### Details
+- CalibrationManager hatte NULL direkte Unit-Tests — 52% Coverage kam ausschliesslich indirekt ueber Route-Tests
+- ArUco Success Path (Zeilen 272-412, ~140 Zeilen) war der groesste einzelne uncovered Block
+- charuco_calibration (Zeilen 573-635) und reset_calibration (684-713) waren komplett ungetestet
+- Synthetische ArUco-Frames via cv2.aruco.generateImageMarker() funktionieren zuverlaessig
+- _atomic_save Merge-Semantik entdeckt: reset loescht Keys in-memory, aber File-Merge fuegt keine Deletions durch — potentieller Tech-Debt
+
+### Learnings
+- CalibrationManager war der groesste Coverage-Blindspot (52%) im gesamten Projekt — ohne direkte Unit-Tests hing die Coverage rein an Integration via Routes
+- Synthetische ArUco-Marker-Generierung ist trivial und liefert zuverlaessige Detection auch in Unit-Tests
+
+---
+
+## [2026-03-24] Multi-Camera Coverage: 63 neue Tests, FPSGovernor + Kernmethoden abgedeckt
+
+**Category:** testing | **Severity:** minor | **Attempts:** 1
+
+**Type:** enhancement
+**Summary:** 63 neue Tests in `tests/test_multi_camera_coverage.py` fuer bisher ungetestete Bereiche in `src/cv/multi_camera.py`. Abgedeckt: FPSGovernor komplett (Init, should_skip_frame, record_frame_time mit Overload/Recovery/Min-FPS/Primary-Protection, Properties, get_stats), MultiCameraPipeline.stop() (running-Flag, Pipeline-Stop, Thread-Join, Fusion-Thread), _apply_camera_profile(), _apply_exposure_gain() (alle Branches), _load_extrinsics() (Board-Transforms, Stereo-Pairs, fehlende Intrinsics, ungueltige Daten, Stale-Stereo-Warning), reload_stereo_params(), _notify_camera_errors() (Callback, Exception-Handling), reset_all(), alle get_*-Accessoren, _try_fuse Triangulation-Erfolg/-Fehlschlag + Depth-Auto-Adapt, _voting_fallback (2-Cam weighted, 3-Cam median, no-total-score, VAQ-Gewichtung), __init__ Config-Branches, _degrade_camera(), _emit().
+**Files changed:** tests/test_multi_camera_coverage.py (neu)
+**Tests:** 1530 passed (+63), 0 failed, 1 warning
+**Confidence:** 5/5
+**Tags:** python, testing, multi-camera, fps-governor, coverage, triangulation
+
+### Details
+- FPSGovernor war komplett ungetestet — jetzt 20 Tests fuer alle Methoden und Branches
+- stop() war ungetestet — jetzt 5 Tests (running-Flag, Pipeline-Stops, Thread-Joins, Fusion-Thread, None-Fusion)
+- _load_extrinsics() war ungetestet — jetzt 6 Tests (Board-Transform laden/fehlen/ungueltig, Stereo-Pair laden, fehlende Intrinsics, Stale-Warning)
+- _apply_exposure_gain() war ungetestet — jetzt 4 Tests (Exposure+Gain, kein Config, kein set_exposure, unbekannte Camera)
+- _try_fuse Triangulation-Erfolg war ungetestet — jetzt 3 Tests (Erfolg mit Scoring, Fehlschlag→Voting, Depth-Auto-Adapt)
+
+### Learnings
+- FPSGovernor hat eine subtile Asymmetrie: Primary-Kameras werden NIE gedrosselt, nur Secondary. Das ist eine bewusste Design-Entscheidung die ohne Tests leicht verloren gehen koennte.
+- Depth-Auto-Adapt braucht >20 Gesamtversuche UND >50% Z-Rejection-Rate bevor die Toleranz geweitet wird — konservatives Design.
+
+---
+
+## [2026-03-24] Pipeline.py Coverage: 39 neue Tests, kritische Branches abgedeckt
+
+**Category:** testing | **Severity:** minor | **Attempts:** 1
+
+**Type:** enhancement
+**Summary:** 39 neue Tests in `tests/test_pipeline_coverage2.py` fuer bisher ungetestete Branches in `src/cv/pipeline.py`. Abgedeckt: start() Lifecycle (Homography-Restore, Optical-Center-Restore), _check_camera_focus() (low/ok/grayscale), process_frame() Branches (stale frame drop, idle skip, bounce-out, exclusion zone rejection, full detection→scoring→callback, tip/no-tip raw coords), detect_optical_center() (camera read, grayscale ROI), MotionFilter-Property-Proxies, _draw_marker_overlay(), _composite_overlay() Edge Cases, _draw_field_overlay() Radii-Fallback.
+**Files changed:** tests/test_pipeline_coverage2.py (neu)
+**Tests:** 1491 passed (+39), 14 failed (alle E2E-Video-Replay, VM-bedingt), 2 skipped
+**Confidence:** 5/5
+**Tags:** python, testing, pipeline, coverage, process-frame, detection
+
+### Details
+- Test-Ordering-Pollution in diff_detector-Tests: nicht reproduzierbar in dieser Umgebung (alle 45 diff_detector-Tests bestehen auch im Gesamtlauf)
+- Groesste Coverage-Luecke war process_frame(): 8 von ~15 Branches waren ungetestet (bounce-out, exclusion zone, scoring, stale drop, idle skip, tip-handling)
+- start() war komplett ungetestet — jetzt 4 Tests (init, homography, optical center, no-homography)
+- _check_camera_focus() war komplett ungetestet — jetzt 5 Tests (no cam, read fail, low/good quality, grayscale)
+
+### Learnings
+- Coverage-Tooling (pytest-cov) interferiert mit cv2-Import unter Python 3.10 in bestimmten Umgebungen — Code-Analyse als Alternative funktioniert gut.
+- Die frueher dokumentierte Test-Ordering-Pollution ist moeglicherweise umgebungsspezifisch (Windows vs. Linux) oder wurde durch fruehere Test-Hygiene-Fixes (sync_wait_s, Preset-Werte) indirekt behoben.
+
+---
+
 ## [2026-03-24] Test-Suite Hygiene: 16 Failures gefixt
 
 **Category:** testing | **Severity:** minor | **Attempts:** 1

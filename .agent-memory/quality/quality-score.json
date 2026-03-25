@@ -1,1 +1,11 @@
-{"last_updated": null, "test_health": {"current_score": null, "trend": "unknown"}, "code_quality": {"current_score": null, "trend": "unknown"}}
+{
+  "last_updated": "2026-03-25T12:00:00+01:00",
+  "test_health": {"current_score": null, "trend": "unknown"},
+  "code_quality": {
+    "current_score": 85,
+    "trend": "unknown",
+    "history": [
+      {"date": "2026-03-25T12:00:00+01:00", "score": 85}
+    ]
+  }
+}

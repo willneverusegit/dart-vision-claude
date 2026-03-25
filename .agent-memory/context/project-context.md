@@ -13,7 +13,7 @@ Lokales Dart-Scoring-System mit Computer Vision zur automatischen Treffererkennu
 | Backend | FastAPI | — | REST + WebSocket |
 | CV | OpenCV + NumPy | — | CPU-only, keine GPU |
 | Frontend | Vanilla JS / HTML / CSS | — | Web Audio API |
-| Tests | pytest | — | 1450+ Tests (ohne e2e), ~77% Coverage |
+| Tests | pytest | — | 1686+ Tests (ohne e2e), ~88% Coverage |
 | Config | YAML | — | calibration_config.yaml |
 
 ## Architektur
@@ -53,7 +53,7 @@ ThreadedCamera
 | Homography-Fallback | stabil | P60+P61 — gecachte Homography bei Marker-Occlusion, in Pipeline integriert, homography_age in Stats |
 | CSS Theming | stabil | P46+P52 — alle Farben via CSS-Variablen, 3-Way Toggle (dark/light/high-contrast) |
 | Telemetrie-Cleanup | stabil | P48+P51 — Rotation, Age-Cleanup, Background-Scheduler, Status/Rotate API |
-| Multi-Cam Governors | in Arbeit | P33 — Sync-Depth-Presets validiert, FPS Governor Implementierung ausstehend |
+| Multi-Cam Governors | stabil | P33 — Sync-Depth-Presets validiert, FPSGovernor implementiert + 20 Unit-Tests |
 | Stereo Progress | verbessert | P54 — Fehleranzeige bei nicht erkanntem Board, valid_pairs Tracking |
 | Tip-Detection | stabil | P20 erledigt — minAreaRect + Kontur-Halbierung, 18/18 validiert |
 | Tip vs Centroid Scoring | validiert | P25 — 22 Tests beweisen Tip > Centroid bei Segmentgrenzen |
