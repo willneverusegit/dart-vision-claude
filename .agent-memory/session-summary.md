@@ -1,33 +1,29 @@
 # Letzte Session
 
-*Datum: 2026-03-24 (Automatisierter Verbesserungslauf — Stereo Calibration Coverage)*
-*Agent: Claude Opus 4.6 (Cowork Scheduled Task)*
+*Datum: 2026-03-25 12:00-15:00*
+*Agent: Claude Opus 4.6 (Claude Code)*
 
 ## Was wurde gemacht
-- **59 neue Tests** fuer `src/cv/stereo_calibration.py` in `tests/test_stereo_calibration_coverage.py`
-- **estimate_charuco_board_pose**: 7 Tests (None-Pfade, synthetic success, cv2.error, solvePnP failure)
-- **stereo_from_board_poses**: 3 Tests (identity, translation, types)
-- **_average_stereo_extrinsics**: 4 Tests (single, multi, negative-det, types)
-- **provisional_stereo_calibrate**: 4 Tests (mismatch, few pairs, synthetic success, fields)
-- **validate_stereo_prerequisites**: 2 Tests (ungueltige Kameras, dict keys)
-- **stereo_calibrate Exception-Pfade**: 3 Tests (cv2.error, non-finite rms, success)
-- **CharucoBoardSpec**: 11 Tests (validation, to_config_fragment, to_api_payload, create_*)
-- **detect_charuco_board Edge Cases**: 7 Tests (empty, grayscale, warnings)
-- **resolve_* Edge Cases**: 10 Tests
-
-## Test-Ergebnis
-- 1686 Tests bestanden (+59), 0 Failures, 1 Warning (pytest.mark.slow)
-- Keine Regressionen in bestehenden Tests
-- stereo_calibration.py: ~77% → ~92%+ (alle Kernfunktionen abgedeckt)
+- **258 Coverage-Tests committed+pushed** (6 Dateien: calibration, main, multi-cam, pipeline, remapping, stereo)
+- **Code Review 85/100** durchgefuehrt, code-reviews.json + quality-score.json erstmalig befuellt
+- **Self-Improve Loop** auf self-improve-loop Plugin: 4 Iterationen, 11 Fixes (Rollback, Fallbacks, Robustheit)
+- **Self-Improving Agent** auf dart-vision-claude gestartet: T001 erledigt (10 lifespan()-Tests, commit cbf7108)
+- **tasks.json** erstellt mit 3 Tasks (T001 done, T002+T003 pending)
 
 ## Offene Punkte
-- Board-Pose muss nach solvePnP-Fix neu kalibriert werden (Hardware)
-- main.py verbleibende Luecken: lifespan() (async, braucht TestClient), _collect_telemetry(), _telemetry_cleanup_scheduler(), Windows-Memory-Code (ctypes.windll)
-- Coverage-Tooling (pytest-cov) hat PermissionError auf .coverage-Datei in VM — Coverage-Zahlen geschaetzt
-- E2E-Tests mit echten Videoclips weiter ausbauen (P11)
+- T002: routes.py Coverage 81% → 85%+ (15+ neue Tests)
+- T003: Quality Gate Baseline etablieren (nach T002)
+- T004: Board-Pose Hardware-Rekalibrierung (solvePnP-Fix)
+- T005: E2E-Tests mit echten Videoclips (Ground-Truth-Annotation)
+- T006: Stop-Hook Konfiguration fixen (stop_hook_active=false)
 
 ## Naechste Schritte
-1. main.py lifespan()-Tests mit AsyncClient (httpx)
-2. Board-Pose auf Hardware neu kalibrieren
-3. E2E-Tests mit echten Videoclips (P11)
-4. routes.py Coverage weiter erhoehen (81% → 85%+)
+1. T002 mit self-improving-agent ausfuehren (routes.py Coverage)
+2. T003 Quality Gate laufen lassen
+3. Board-Pose auf Hardware neu kalibrieren
+
+## Statistik
+- Iterationen: 1 (T001 via self-improving-agent)
+- Tests: 268 neue Tests diese Session (258 + 10 lifespan)
+- Code-Quality: 85/100 (Baseline)
+- Test-Health: noch nicht gemessen

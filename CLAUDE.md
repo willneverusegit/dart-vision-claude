@@ -79,3 +79,11 @@ Alle Prozess-Regeln (Iteration-Logging, Fortschrittsdoku, Session-Start/-Ende) s
 ## Abschlussformat
 
 Nenne am Ende: geaenderte Dateien, ausgefuehrte Tests, offene Risiken.
+
+## Agent Learnings
+
+<!-- Auto-maintained by wrap-up skill. Last updated: 2026-03-25 -->
+- solvePnP gibt IMMER Object→Camera: R_inv = R.T, t_inv = -R.T @ t (source: errors.json#2026-03-24-board-xy-solvepnp-not-inverted)
+- Kalibrierungs-Kette validieren: Lens→Board→Stereo, jeder Schritt invalidiert nachfolgende (source: errors.json#2026-03-23-stereo-stale)
+- Self-Improving Agent via `claude -p` braucht explizite Ausfuehrungsanweisung, nicht nur den Prompt-Text
+- tasks.json im Projekt-Root steuert den self-improving-agent Workflow (T001-T003 aktiv)

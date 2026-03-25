@@ -1,0 +1,85 @@
+{
+  "$schema": "self-improving-agent/tasks-schema",
+  "version": "1.0",
+  "goal": "DartVision Test-Coverage auf 90%+ erhoehen und verbleibende Code-Luecken schliessen",
+  "created_at": "2026-03-25T12:30:00+01:00",
+  "updated_at": "2026-03-25T15:00:00+01:00",
+  "tasks": [
+    {
+      "id": "T001",
+      "title": "main.py lifespan()-Tests mit AsyncClient",
+      "description": "Tests fuer lifespan() in src/main.py schreiben. Nutzt httpx.AsyncClient und pytest-asyncio. Abdeckung: startup, shutdown, telemetry cleanup scheduler, Windows memory code.",
+      "acceptance_criteria": [
+        "Mindestens 5 neue Tests fuer lifespan()",
+        "Tests decken startup und shutdown Pfade ab",
+        "Tests fuer _telemetry_cleanup_scheduler()",
+        "Alle neuen Tests bestehen",
+        "Keine Regressionen in bestehenden Tests"
+      ],
+      "dependencies": [],
+      "status": "done",
+      "effort": "M",
+      "priority": 1,
+      "assigned_skills": [
+        "tdd",
+        "test-validator"
+      ],
+      "notes": "10 tests written in tests/test_main_lifespan.py. Direct lifespan() call pattern used (ASGITransport does not trigger lifespan). All 10 pass, no regressions.",
+      "started_at": null,
+      "completed_at": "2026-03-25T15:00:00+01:00",
+      "blocked_reason": null
+    },
+    {
+      "id": "T002",
+      "title": "routes.py Coverage 81% auf 85%+",
+      "description": "Verbleibende ungetestete Branches in src/web/routes.py identifizieren und Tests schreiben. Fokus auf Error-Pfade, Edge Cases in Calibration-Endpoints, WebSocket-Fehlerbehandlung.",
+      "acceptance_criteria": [
+        "Mindestens 15 neue Tests fuer routes.py",
+        "Error-Pfade in Calibration-Endpoints abgedeckt",
+        "WebSocket disconnect/error Pfade getestet",
+        "Alle neuen Tests bestehen",
+        "Keine Regressionen"
+      ],
+      "dependencies": [],
+      "status": "pending",
+      "effort": "M",
+      "priority": 2,
+      "assigned_skills": [
+        "tdd",
+        "test-validator",
+        "web-ui"
+      ],
+      "notes": "",
+      "started_at": null,
+      "completed_at": null,
+      "blocked_reason": null
+    },
+    {
+      "id": "T003",
+      "title": "Quality Gate Baseline etablieren",
+      "description": "Erstmalig den Quality Gate (test-validator + code-reviewer) auf dem gesamten Projekt laufen lassen. quality-score.json mit echten Werten befuellen. Regressions-Tracking aktivieren.",
+      "acceptance_criteria": [
+        "quality-score.json enthaelt test_health UND code_quality Scores",
+        "combined.verdict ist gesetzt (PASS/WARN/FAIL)",
+        "Alle Tests laufen durch (0 Failures)",
+        "Score dokumentiert in session-summary.md"
+      ],
+      "dependencies": [
+        "T001",
+        "T002"
+      ],
+      "status": "pending",
+      "effort": "S",
+      "priority": 3,
+      "assigned_skills": [
+        "quality-gate",
+        "test-validator",
+        "code-reviewer"
+      ],
+      "notes": "",
+      "started_at": null,
+      "completed_at": null,
+      "blocked_reason": null
+    }
+  ]
+}

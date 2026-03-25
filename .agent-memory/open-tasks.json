@@ -1,0 +1,8 @@
+[
+  {"id": "T001", "title": "main.py lifespan()-Tests mit AsyncClient", "created": "2026-03-25", "status": "done", "context": "10 Tests geschrieben, commit cbf7108", "source": "session-summary", "completed": "2026-03-25"},
+  {"id": "T002", "title": "routes.py Coverage 81% auf 85%+", "created": "2026-03-25", "status": "open", "context": "Error-Pfade, Calibration-Endpoints, WebSocket-Fehlerbehandlung", "source": "session-summary", "completed": null},
+  {"id": "T003", "title": "Quality Gate Baseline etablieren", "created": "2026-03-25", "status": "open", "context": "Abhaengig von T001+T002, quality-score.json befuellen", "source": "session-summary", "completed": null},
+  {"id": "T004", "title": "Board-Pose auf Hardware neu kalibrieren", "created": "2026-03-24", "status": "open", "context": "solvePnP-Fix erfordert Neukalibrierung, braucht physische Dartscheibe", "source": "session-summary", "completed": null},
+  {"id": "T005", "title": "E2E-Tests mit echten Videoclips ausbauen", "created": "2026-03-24", "status": "open", "context": "Ground-Truth-Annotation ausstehend, Infra steht", "source": "session-summary", "completed": null},
+  {"id": "T006", "title": "Stop-Hook Konfiguration fixen", "created": "2026-03-25", "status": "open", "context": "stop_hook_active=false trotz .agent-memory/ — settings.json pruefen", "source": "iteration", "completed": null}
+]
