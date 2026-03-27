@@ -126,6 +126,11 @@ class FrameDiffDetector:
         self._settle_count: int = 0
         self._had_motion_event: bool = False
         self._stability_centroids: list[tuple[int, int]] = []
+
+        # Dynamic settle_frames: increase when vibration interrupts settling
+        self._base_settle_frames = settle_frames
+        self._settling_interrupts: int = 0  # count of SETTLING→IN_MOTION transitions
+        self._max_settle_frames = settle_frames + 4  # cap at base + 4
         # Three-stage morphology:
         # 1) Opening with small kernel removes thin board-wire artefacts
         # 2) Ellipse closing fills small gaps
@@ -350,6 +355,17 @@ class FrameDiffDetector:
             # Dart wackelt noch — zurück zu IN_MOTION, Baseline bleibt eingefroren
             self._state = _State.IN_MOTION
             self._settle_count = 0
+            # Dynamic settle: vibration interrupted settling → need more frames next time
+            self._settling_interrupts += 1
+            if self._settling_interrupts >= 2:
+                self.settle_frames = min(
+                    self._base_settle_frames + self._settling_interrupts,
+                    self._max_settle_frames,
+                )
+                logger.debug(
+                    "FrameDiff: settle_frames raised to %d (vibration interrupts: %d)",
+                    self.settle_frames, self._settling_interrupts,
+                )
             logger.debug("FrameDiff: SETTLING → IN_MOTION (motion resumed)")
             return None
 
@@ -384,6 +400,8 @@ class FrameDiffDetector:
             self._state = _State.IDLE
             self._settle_count = 0
             self._had_motion_event = False
+            self._settling_interrupts = 0
+            self.settle_frames = self._base_settle_frames
             return DartDetection(
                 center=(0, 0), area=0.0, confidence=0.0,
                 frame_count=self.settle_frames, bounce_out=True,
@@ -393,6 +411,9 @@ class FrameDiffDetector:
         self._settle_count = 0
         self._had_motion_event = False
         self._stability_centroids = []
+        # Reset dynamic settle after successful detection cycle
+        self._settling_interrupts = 0
+        self.settle_frames = self._base_settle_frames
         return detection
 
     # ------------------------------------------------------------------
