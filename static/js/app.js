@@ -80,6 +80,15 @@ class DartApp {
         const btnNewGame = document.getElementById("btn-new-game");
         if (btnNewGame) btnNewGame.addEventListener("click", () => this._newGame());
 
+        // Show/hide cricket variant based on mode selection
+        const gameModeSelect = document.getElementById("game-mode");
+        const cricketVarSelect = document.getElementById("cricket-variant");
+        if (gameModeSelect && cricketVarSelect) {
+            gameModeSelect.addEventListener("change", () => {
+                cricketVarSelect.style.display = gameModeSelect.value === "cricket" ? "" : "none";
+            });
+        }
+
         // Undo
         const btnUndo = document.getElementById("btn-undo");
         if (btnUndo) btnUndo.addEventListener("click", () => this._undo());
@@ -1426,6 +1435,8 @@ class DartApp {
         if (players.length === 0) players.push("Spieler 1");
         const doubleInEl = document.getElementById("double-in");
         const doubleIn = doubleInEl ? doubleInEl.checked : false;
+        const cricketVarEl = document.getElementById("cricket-variant");
+        const cricketVariant = cricketVarEl ? cricketVarEl.value : "standard";
 
         this.dartboard.clearHits();
         this.pendingHits.clear();
@@ -1435,7 +1446,11 @@ class DartApp {
             const response = await fetch("/api/game/new", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ mode, players, starting_score: startingScore, double_in: doubleIn }),
+                body: JSON.stringify({
+                    mode, players, starting_score: startingScore,
+                    double_in: doubleIn,
+                    cricket_variant: cricketVariant,
+                }),
             });
             if (!response.ok) { this._showError(`Fehler: ${response.status}`); return; }
             const data = await response.json();

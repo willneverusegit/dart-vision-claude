@@ -1,7 +1,7 @@
 """GameEngine: manages game state, scoring logic, and undo stack."""
 
 import logging
-from src.game.models import GameState, GameMode, GamePhase, PlayerState, ThrowResult
+from src.game.models import GameState, GameMode, GamePhase, PlayerState, ThrowResult, CricketVariant
 
 logger = logging.getLogger(__name__)
 
@@ -15,8 +15,16 @@ class GameEngine:
         self._max_undo = 20
 
     def new_game(self, mode: str = "x01", players: list[str] | None = None,
-                 starting_score: int = 501, double_in: bool = False) -> None:
-        """Start a new game."""
+                 starting_score: int = 501, double_in: bool = False,
+                 starting_scores: dict[str, int] | None = None,
+                 cricket_variant: str = "standard") -> None:
+        """Start a new game.
+
+        Args:
+            starting_scores: Per-player handicap, e.g. {"Alice": 301, "Bob": 501}.
+                           Overrides starting_score for named players.
+            cricket_variant: "standard" or "cut_throat".
+        """
         if not isinstance(starting_score, int) or starting_score <= 0 or starting_score > 10000:
             raise ValueError(f"starting_score must be int 1-10000, got {starting_score!r}")
         if players is None:
@@ -25,10 +33,18 @@ class GameEngine:
             raise ValueError(f"players must be a non-empty list, got {players!r}")
 
         game_mode = GameMode(mode)
+        cv = CricketVariant(cricket_variant) if cricket_variant in ("standard", "cut_throat") else CricketVariant.STANDARD
         player_states = []
 
         for name in players:
-            initial_score = starting_score if game_mode == GameMode.X01 else 0
+            # Handicap: per-player starting score overrides global
+            player_start = starting_score
+            if starting_scores and name in starting_scores:
+                ps = starting_scores[name]
+                if isinstance(ps, int) and 2 <= ps <= 10000:
+                    player_start = ps
+
+            initial_score = player_start if game_mode == GameMode.X01 else 0
             cricket_marks: dict[int, int] = {}
             if game_mode == GameMode.CRICKET:
                 cricket_marks = {n: 0 for n in [20, 19, 18, 17, 16, 15, 25]}
@@ -47,6 +63,7 @@ class GameEngine:
             round_number=1,
             starting_score=starting_score,
             double_in=double_in,
+            cricket_variant=cv,
         )
         self._undo_stack.clear()
         logger.info("New game: mode=%s, players=%s, start=%d", mode, players, starting_score)
@@ -158,6 +175,8 @@ class GameEngine:
         marks_to_add = throw.multiplier
         current_marks = player.cricket_marks[target]
 
+        cut_throat = self.state.cricket_variant == CricketVariant.CUT_THROAT
+
         if current_marks >= 3:
             # Already closed: score points if opponents have not closed it
             all_closed = all(
@@ -165,7 +184,11 @@ class GameEngine:
                 for p in self.state.players if p != player
             )
             if not all_closed:
-                player.score += target * marks_to_add
+                points = target * marks_to_add
+                if cut_throat:
+                    self._cricket_give_points_to_open(player, target, points)
+                else:
+                    player.score += points
         else:
             new_marks = current_marks + marks_to_add
             player.cricket_marks[target] = min(new_marks, 3)
@@ -176,17 +199,32 @@ class GameEngine:
                 )
                 if not all_closed:
                     excess = new_marks - 3
-                    player.score += target * excess
+                    points = target * excess
+                    if cut_throat:
+                        self._cricket_give_points_to_open(player, target, points)
+                    else:
+                        player.score += points
 
         if self._check_cricket_win(player):
             self.state.winner = player.name
             self.state.phase = GamePhase.GAME_OVER
 
+    def _cricket_give_points_to_open(self, thrower: PlayerState, target: int, points: int) -> None:
+        """Cut Throat: give points to all opponents who haven't closed the target."""
+        for p in self.state.players:
+            if p != thrower and p.cricket_marks.get(target, 0) < 3:
+                p.score += points
+
     def _check_cricket_win(self, player: PlayerState) -> bool:
-        """Check if player has won cricket (all closed + highest score)."""
+        """Check if player has won cricket (all closed + best score).
+
+        Standard: highest score wins. Cut Throat: lowest score wins.
+        """
         all_closed = all(v >= 3 for v in player.cricket_marks.values())
         if not all_closed:
             return False
+        if self.state.cricket_variant == CricketVariant.CUT_THROAT:
+            return all(player.score <= p.score for p in self.state.players)
         return all(player.score >= p.score for p in self.state.players)
 
     # --- Free Play Scoring ---

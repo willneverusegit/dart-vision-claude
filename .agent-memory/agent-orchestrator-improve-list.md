@@ -25,13 +25,13 @@
 
 ## Woche 2: UI-Begeisterung
 
-- [ ] **1. Hit-Explosion** (SVG Particles bei Treffer-Confirm)
-- [ ] **2. Score-Popup** (+N schwebt hoch, 1.2s Animation)
-- [ ] **3. Sound-System** (Hit/Reject/Undo/Win — generalisiert)
-- [ ] **4. Victory Confetti + Animation** (Full-Screen, Sound, Auto-Close)
-- [ ] **5. Leading-Player Glow** + Animated Score-Counter
-- [ ] **6. Sektor-Highlight** bei Treffer auf SVG-Board
-- [ ] **7. Double-In Checkbox** in Game-Setup UI
+- [x] **1. Hit-Explosion** (SVG Particles bei Treffer-Confirm) — commit c18d0f6
+- [x] **2. Score-Popup** (+N schwebt hoch, 1.2s Animation) — commit c18d0f6
+- [x] **3. Sound-System** (Hit/Reject/Undo/Win — generalisiert) — commit c18d0f6
+- [x] **4. Victory Confetti + Animation** (Full-Screen, Sound, Auto-Close 6s) — commit c18d0f6
+- [x] **5. Leading-Player Glow** + Animated Score-Counter — commit c18d0f6
+- [x] **6. Sektor-Highlight** bei Treffer auf SVG-Board — commit c18d0f6
+- [x] **7. Double-In Checkbox** in Game-Setup UI + API — commit c18d0f6
 - [ ] **8. Spieleinstellungen erweitern** (Handicap, Cricket-Varianten)
 
 ## Woche 3: Spiellogik + Polish

@@ -37,6 +37,12 @@ class PlayerState(BaseModel):
     cricket_marks: dict[int, int] = {}               # {20: 3, 19: 2, ...}
 
 
+class CricketVariant(str, Enum):
+    """Cricket game variants."""
+    STANDARD = "standard"      # You score points on open numbers
+    CUT_THROAT = "cut_throat"  # Points go to opponents who haven't closed
+
+
 class GameState(BaseModel):
     """Complete game state, serializable to JSON."""
     mode: GameMode = GameMode.X01
@@ -46,6 +52,7 @@ class GameState(BaseModel):
     round_number: int = 1
     starting_score: int = 501
     double_in: bool = False
+    cricket_variant: CricketVariant = CricketVariant.STANDARD
     winner: str | None = None
 
     @property
@@ -111,4 +118,5 @@ class GameState(BaseModel):
             "winner": self.winner,
             "checkout": self._get_checkout_suggestion(),
             "double_in": self.double_in,
+            "cricket_variant": self.cricket_variant.value,
         }

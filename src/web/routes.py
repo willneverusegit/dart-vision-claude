@@ -294,8 +294,15 @@ def setup_routes(app_state: dict) -> APIRouter:
         if not isinstance(starting_score, int) or starting_score < 2 or starting_score > 10000:
             starting_score = 501
         double_in = body.get("double_in", False) is True
+        starting_scores = body.get("starting_scores")
+        if starting_scores is not None and not isinstance(starting_scores, dict):
+            starting_scores = None
+        cricket_variant = body.get("cricket_variant", "standard")
+        if cricket_variant not in ("standard", "cut_throat"):
+            cricket_variant = "standard"
         engine.new_game(mode=mode, players=players, starting_score=starting_score,
-                        double_in=double_in)
+                        double_in=double_in, starting_scores=starting_scores,
+                        cricket_variant=cricket_variant)
         state = engine.get_state()
         em = app_state.get("event_manager")
         if em:
