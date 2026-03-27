@@ -2,6 +2,7 @@
 
 import cv2
 import numpy as np
+from collections import deque
 
 
 class MotionDetector:
@@ -17,7 +18,8 @@ class MotionDetector:
                  learning_rate: float = 0.002,
                  downscale_factor: int = 1,
                  framediff_fallback: bool = True,
-                 framediff_threshold: int = 25) -> None:
+                 framediff_threshold: int = 25,
+                 temporal_median_frames: int = 3) -> None:
         if threshold <= 0:
             raise ValueError("threshold must be > 0")
         if var_threshold <= 0:
@@ -26,7 +28,11 @@ class MotionDetector:
             raise ValueError("learning_rate must be in (0, 1]")
         if downscale_factor < 1:
             raise ValueError("downscale_factor must be >= 1")
+        if temporal_median_frames < 1:
+            raise ValueError("temporal_median_frames must be >= 1")
         self.threshold = threshold
+        self._temporal_median_frames = temporal_median_frames
+        self._mask_history: deque[np.ndarray] = deque(maxlen=temporal_median_frames)
         self._detect_shadows = detect_shadows
         self._var_threshold = var_threshold
         self._learning_rate = learning_rate
@@ -129,6 +135,8 @@ class MotionDetector:
             fg_mask_small = cv2.threshold(fg_mask_small, 200, 255, cv2.THRESH_BINARY)[1]
             fg_mask_small = cv2.morphologyEx(fg_mask_small, cv2.MORPH_OPEN, self._kernel)
             fg_mask_small = cv2.morphologyEx(fg_mask_small, cv2.MORPH_CLOSE, self._kernel)
+            # Temporal median: suppress 1-2 frame vibration spikes
+            fg_mask_small = self._apply_temporal_median(fg_mask_small)
             # Check motion on small mask (threshold scaled by area ratio)
             motion_pixels = cv2.countNonZero(fg_mask_small)
             scale_ratio = ds * ds
@@ -143,10 +151,27 @@ class MotionDetector:
         # Morphological cleanup
         fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_OPEN, self._kernel)
         fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_CLOSE, self._kernel)
+        # Temporal median: suppress 1-2 frame vibration spikes
+        fg_mask = self._apply_temporal_median(fg_mask)
 
         motion_pixels = cv2.countNonZero(fg_mask)
         mog2_motion = motion_pixels > self.threshold
         return fg_mask, mog2_motion or framediff_motion
+
+    def _apply_temporal_median(self, mask: np.ndarray) -> np.ndarray:
+        """Apply temporal median filter over recent masks to suppress vibration spikes.
+
+        A pixel is only considered motion if it appears in the majority of
+        recent frames. Single-frame spikes from tripod vibration are filtered out.
+        """
+        if self._temporal_median_frames <= 1:
+            return mask
+        self._mask_history.append(mask)
+        if len(self._mask_history) < self._temporal_median_frames:
+            return mask
+        stacked = np.stack(self._mask_history, axis=0)
+        median = np.median(stacked, axis=0).astype(np.uint8)
+        return median
 
     def get_params(self) -> dict:
         """Return current tunable parameters."""
@@ -169,3 +194,4 @@ class MotionDetector:
             varThreshold=self._var_threshold,
         )
         self._prev_frame = None
+        self._mask_history.clear()
