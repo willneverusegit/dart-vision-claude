@@ -39,8 +39,11 @@ class Scoreboard {
 
     _createPlayerRow(player, index) {
         const isActive = index === this.state.current_player_index;
+        const isLeading = this._isLeading(player);
         const row = document.createElement("div");
-        row.className = "player-row" + (isActive ? " player-row--active" : "");
+        row.className = "player-row"
+            + (isActive ? " player-row--active" : "")
+            + (isLeading ? " player-row--leading" : "");
 
         // Left side: name + turn info
         const leftDiv = document.createElement("div");
@@ -72,13 +75,37 @@ class Scoreboard {
 
         row.appendChild(leftDiv);
 
-        // Right side: score
+        // Right side: score (with animation on change)
         const scoreEl = document.createElement("div");
         scoreEl.className = "player-score";
         scoreEl.textContent = player.score.toString();
+        scoreEl.setAttribute("data-player", player.name);
+
+        // Animate score change
+        const prevScore = this._prevScores && this._prevScores[player.name];
+        if (prevScore !== undefined && prevScore !== player.score) {
+            scoreEl.classList.add("score-changed");
+            setTimeout(() => scoreEl.classList.remove("score-changed"), 600);
+        }
+        if (!this._prevScores) this._prevScores = {};
+        this._prevScores[player.name] = player.score;
+
         row.appendChild(scoreEl);
 
         return row;
+    }
+
+    _isLeading(player) {
+        if (!this.state || !this.state.players || this.state.players.length < 2) return false;
+        const mode = this.state.mode;
+        if (mode === "x01") {
+            // Lowest score is leading in X01
+            const minScore = Math.min(...this.state.players.map(p => p.score));
+            return player.score === minScore;
+        }
+        // Cricket / Free Play: highest score leads
+        const maxScore = Math.max(...this.state.players.map(p => p.score));
+        return player.score === maxScore;
     }
 
     _createCricketMarks(marks) {

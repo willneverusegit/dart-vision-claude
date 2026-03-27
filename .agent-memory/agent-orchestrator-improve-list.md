@@ -19,9 +19,9 @@
 
 - [x] **1. `min_elongation` 1.2 -> 2.0** (1 Zeile, -80% False Positives)
 - [x] **2. CLAHE conditional** (nur bei niedriger Helligkeit) -> -15% CPU
-- [ ] **3. Vibrations-Filter** (Temporal Median auf Motion-Mask, 3 Frames)
-- [ ] **4. Threshold-Kalibrierung** mit echten Wuerfen auf den Kameras (Script)
-- [ ] **5. `settle_frames` dynamisch** (Vibrations-aware, 3->5-7)
+- [x] **3. Vibrations-Filter** (Temporal Median auf Motion-Mask, 3 Frames) — commit fda3cf1
+- [x] **4. Threshold-Kalibrierung** scripts/calibrate_thresholds.py (--quick Mode) — commit 1880e95
+- [x] **5. `settle_frames` dynamisch** (auto-raise bei Vibrations-Interrupts, max base+4) — commit 1880e95
 
 ## Woche 2: UI-Begeisterung
 

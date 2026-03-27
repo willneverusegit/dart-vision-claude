@@ -1156,8 +1156,8 @@ class DartApp {
     _onHitConfirmed(data) {
         this._clearCandidateTimer(data.candidate_id);
         this.pendingHits.delete(data.candidate_id);
-        // Update marker style from pending to confirmed
-        this.dartboard.confirmHit(data.candidate_id);
+        // Update marker style from pending to confirmed (with effects)
+        this.dartboard.confirmHit(data.candidate_id, data.score, data.sector);
         this._playHitSound();
         this._renderCandidates();
     }
@@ -1167,6 +1167,7 @@ class DartApp {
         this.pendingHits.delete(data.candidate_id);
         // Remove marker from dartboard
         this.dartboard.removeHit(data.candidate_id);
+        this._playSound("reject");
         this._renderCandidates();
     }
 
@@ -1187,21 +1188,39 @@ class DartApp {
         this._renderCandidates();
     }
 
-    _playHitSound() {
+    _playSound(type) {
         try {
             const ctx = new (window.AudioContext || window.webkitAudioContext)();
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            osc.connect(gain);
-            gain.connect(ctx.destination);
-            osc.frequency.value = 880;
-            osc.type = "sine";
-            gain.gain.value = 0.15;
-            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
-            osc.start(ctx.currentTime);
-            osc.stop(ctx.currentTime + 0.15);
+            const sounds = {
+                hit: [{ freq: 880, dur: 0.12, vol: 0.18 }, { freq: 1320, dur: 0.08, vol: 0.12, delay: 0.06 }],
+                reject: [{ freq: 300, dur: 0.15, vol: 0.12 }, { freq: 200, dur: 0.2, vol: 0.1, delay: 0.1 }],
+                undo: [{ freq: 600, dur: 0.08, vol: 0.1 }, { freq: 400, dur: 0.08, vol: 0.1, delay: 0.06 }],
+                victory: [
+                    { freq: 523, dur: 0.2, vol: 0.2 },
+                    { freq: 659, dur: 0.2, vol: 0.2, delay: 0.15 },
+                    { freq: 784, dur: 0.3, vol: 0.25, delay: 0.3 },
+                    { freq: 1047, dur: 0.4, vol: 0.2, delay: 0.5 },
+                ],
+                nextPlayer: [{ freq: 660, dur: 0.1, vol: 0.1 }],
+            };
+            const notes = sounds[type] || sounds.hit;
+            notes.forEach(n => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.frequency.value = n.freq;
+                osc.type = "sine";
+                const start = ctx.currentTime + (n.delay || 0);
+                gain.gain.setValueAtTime(n.vol, start);
+                gain.gain.exponentialRampToValueAtTime(0.001, start + n.dur);
+                osc.start(start);
+                osc.stop(start + n.dur);
+            });
         } catch (e) { /* Audio not available */ }
     }
+
+    _playHitSound() { this._playSound("hit"); }
 
     _renderCandidates() {
         const panel = document.getElementById("candidates-panel");
@@ -1369,8 +1388,27 @@ class DartApp {
         if (modal && text) {
             text.textContent = name + " gewinnt!";
             modal.style.display = "flex";
-            modal.classList.add("winner-pulse");
-            setTimeout(() => modal.classList.remove("winner-pulse"), 2000);
+            modal.classList.add("winner-celebration");
+            this._playSound("victory");
+            this._spawnConfetti(modal);
+            setTimeout(() => {
+                modal.classList.remove("winner-celebration");
+                modal.style.display = "none";
+            }, 6000);
+        }
+    }
+
+    _spawnConfetti(container) {
+        const colors = ["#ff0", "#e94560", "#2ed573", "#0ff", "#f0f", "#ffa502"];
+        for (let i = 0; i < 40; i++) {
+            const piece = document.createElement("div");
+            piece.className = "confetti-piece";
+            piece.style.left = Math.random() * 100 + "%";
+            piece.style.backgroundColor = colors[i % colors.length];
+            piece.style.animationDelay = (Math.random() * 0.8) + "s";
+            piece.style.animationDuration = (2 + Math.random() * 2) + "s";
+            container.appendChild(piece);
+            setTimeout(() => piece.remove(), 5000);
         }
     }
 
@@ -1386,6 +1424,8 @@ class DartApp {
         const playersStr = playersEl ? playersEl.value : "Spieler 1";
         const players = playersStr.split(",").map(s => s.trim()).filter(s => s.length > 0);
         if (players.length === 0) players.push("Spieler 1");
+        const doubleInEl = document.getElementById("double-in");
+        const doubleIn = doubleInEl ? doubleInEl.checked : false;
 
         this.dartboard.clearHits();
         this.pendingHits.clear();
@@ -1395,7 +1435,7 @@ class DartApp {
             const response = await fetch("/api/game/new", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ mode, players, starting_score: startingScore }),
+                body: JSON.stringify({ mode, players, starting_score: startingScore, double_in: doubleIn }),
             });
             if (!response.ok) { this._showError(`Fehler: ${response.status}`); return; }
             const data = await response.json();
@@ -1417,6 +1457,7 @@ class DartApp {
             if (!response.ok) { this._showError(`Fehler: ${response.status}`); return; }
             const data = await response.json();
             this._updateState(data);
+            this._playSound("undo");
         } catch (e) {
             console.error("Undo error:", e);
         }

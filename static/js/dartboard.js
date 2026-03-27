@@ -194,10 +194,12 @@ class DartboardRenderer {
         if (candidateId) this.hits.set(candidateId, g);
     }
 
-    confirmHit(candidateId) {
+    confirmHit(candidateId, score, sector) {
         const g = this.hits.get(candidateId);
         if (!g) return;
         const circle = g.querySelector("circle");
+        const cx = circle ? parseFloat(circle.getAttribute("cx")) : this.cx;
+        const cy = circle ? parseFloat(circle.getAttribute("cy")) : this.cy;
         if (circle) {
             circle.setAttribute("fill", "#ff0");
             circle.setAttribute("stroke", "#000");
@@ -208,6 +210,112 @@ class DartboardRenderer {
         }
         const label = g.querySelector("text");
         if (label) label.setAttribute("fill", "#000");
+
+        // Hit explosion particles
+        this._spawnParticles(cx, cy);
+        // Score popup
+        if (score !== undefined) this._spawnScorePopup(cx, cy, score);
+        // Sector highlight
+        if (sector !== undefined) this._flashSector(sector);
+    }
+
+    _spawnParticles(x, y) {
+        const colors = ["#ff0", "#fff", "#e94560", "#2ed573"];
+        for (let i = 0; i < 10; i++) {
+            const angle = (i / 10) * Math.PI * 2;
+            const dist = 15 + Math.random() * 25;
+            const particle = document.createElementNS(this.svgNS, "circle");
+            particle.setAttribute("cx", x);
+            particle.setAttribute("cy", y);
+            particle.setAttribute("r", 2 + Math.random() * 2);
+            particle.setAttribute("fill", colors[i % colors.length]);
+            particle.setAttribute("opacity", "0.9");
+
+            const tx = x + Math.cos(angle) * dist;
+            const ty = y + Math.sin(angle) * dist;
+            particle.style.transition = "all 0.5s ease-out";
+            this.hitsGroup.appendChild(particle);
+
+            requestAnimationFrame(() => {
+                particle.setAttribute("cx", tx);
+                particle.setAttribute("cy", ty);
+                particle.setAttribute("opacity", "0");
+                particle.setAttribute("r", "0.5");
+            });
+            setTimeout(() => particle.remove(), 550);
+        }
+    }
+
+    _spawnScorePopup(x, y, score) {
+        const popup = document.createElementNS(this.svgNS, "text");
+        popup.setAttribute("x", x);
+        popup.setAttribute("y", y - 10);
+        popup.setAttribute("fill", "#ff0");
+        popup.setAttribute("font-size", "18");
+        popup.setAttribute("font-weight", "bold");
+        popup.setAttribute("text-anchor", "middle");
+        popup.setAttribute("class", "score-popup");
+        popup.setAttribute("filter", "url(#glow)");
+        popup.textContent = "+" + score;
+
+        // Add glow filter if not present
+        if (!this.svg.querySelector("#glow")) {
+            const defs = document.createElementNS(this.svgNS, "defs");
+            const filter = document.createElementNS(this.svgNS, "filter");
+            filter.setAttribute("id", "glow");
+            const blur = document.createElementNS(this.svgNS, "feGaussianBlur");
+            blur.setAttribute("stdDeviation", "2");
+            blur.setAttribute("result", "glow");
+            const merge = document.createElementNS(this.svgNS, "feMerge");
+            const m1 = document.createElementNS(this.svgNS, "feMergeNode");
+            m1.setAttribute("in", "glow");
+            const m2 = document.createElementNS(this.svgNS, "feMergeNode");
+            m2.setAttribute("in", "SourceGraphic");
+            merge.appendChild(m1);
+            merge.appendChild(m2);
+            filter.appendChild(blur);
+            filter.appendChild(merge);
+            defs.appendChild(filter);
+            this.svg.insertBefore(defs, this.svg.firstChild);
+        }
+
+        this.hitsGroup.appendChild(popup);
+        setTimeout(() => popup.remove(), 1200);
+    }
+
+    _flashSector(sector) {
+        const idx = this.sectors.indexOf(sector);
+        if (idx === -1) return;
+        const sectorAngle = 360 / 20;
+        const startOffset = -90 - sectorAngle / 2;
+        const a1 = (startOffset + idx * sectorAngle) * Math.PI / 180;
+        const a2 = (startOffset + (idx + 1) * sectorAngle) * Math.PI / 180;
+
+        const innerR = this.radii.outerBull;
+        const outerR = this.radii.double;
+
+        const x1i = this.cx + innerR * Math.cos(a1);
+        const y1i = this.cy + innerR * Math.sin(a1);
+        const x1o = this.cx + outerR * Math.cos(a1);
+        const y1o = this.cy + outerR * Math.sin(a1);
+        const x2o = this.cx + outerR * Math.cos(a2);
+        const y2o = this.cy + outerR * Math.sin(a2);
+        const x2i = this.cx + innerR * Math.cos(a2);
+        const y2i = this.cy + innerR * Math.sin(a2);
+
+        const d = [
+            `M ${x1i} ${y1i}`, `L ${x1o} ${y1o}`,
+            `A ${outerR} ${outerR} 0 0 1 ${x2o} ${y2o}`,
+            `L ${x2i} ${y2i}`,
+            `A ${innerR} ${innerR} 0 0 0 ${x1i} ${y1i}`, "Z"
+        ].join(" ");
+
+        const flash = document.createElementNS(this.svgNS, "path");
+        flash.setAttribute("d", d);
+        flash.setAttribute("fill", "rgba(255,255,255,0.3)");
+        flash.setAttribute("class", "sector-flash");
+        this.svg.insertBefore(flash, this.hitsGroup);
+        setTimeout(() => flash.remove(), 400);
     }
 
     removeHit(candidateId) {

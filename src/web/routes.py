@@ -293,7 +293,9 @@ def setup_routes(app_state: dict) -> APIRouter:
         starting_score = body.get("starting_score", 501)
         if not isinstance(starting_score, int) or starting_score < 2 or starting_score > 10000:
             starting_score = 501
-        engine.new_game(mode=mode, players=players, starting_score=starting_score)
+        double_in = body.get("double_in", False) is True
+        engine.new_game(mode=mode, players=players, starting_score=starting_score,
+                        double_in=double_in)
         state = engine.get_state()
         em = app_state.get("event_manager")
         if em:
