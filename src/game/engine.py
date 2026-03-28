@@ -12,12 +12,14 @@ class GameEngine:
     def __init__(self) -> None:
         self.state = GameState()
         self._undo_stack: list[GameState] = []
+        self._redo_stack: list[GameState] = []
         self._max_undo = 20
 
     def new_game(self, mode: str = "x01", players: list[str] | None = None,
                  starting_score: int = 501, double_in: bool = False,
                  starting_scores: dict[str, int] | None = None,
-                 cricket_variant: str = "standard") -> None:
+                 cricket_variant: str = "standard",
+                 target_score: int | None = None) -> None:
         """Start a new game.
 
         Args:
@@ -64,8 +66,10 @@ class GameEngine:
             starting_score=starting_score,
             double_in=double_in,
             cricket_variant=cv,
+            target_score=target_score if isinstance(target_score, int) and target_score > 0 else None,
         )
         self._undo_stack.clear()
+        self._redo_stack.clear()
         logger.info("New game: mode=%s, players=%s, start=%d", mode, players, starting_score)
 
     def register_throw(self, score_result: dict) -> dict:
@@ -107,9 +111,14 @@ class GameEngine:
 
         player.current_turn.append(throw)
 
-        # Check if turn is complete (3 darts)
-        if len(player.current_turn) >= 3:
+        # Auto-advance after 3 darts (unless game just ended)
+        if len(player.current_turn) >= 3 and self.state.phase == GamePhase.PLAYING:
             self._complete_turn()
+            self.state.current_player_index = (
+                (self.state.current_player_index + 1) % len(self.state.players)
+            )
+            if self.state.current_player_index == 0:
+                self.state.round_number += 1
 
         return self.get_state()
 
@@ -230,8 +239,12 @@ class GameEngine:
     # --- Free Play Scoring ---
 
     def _score_free(self, player: PlayerState, throw: ThrowResult) -> None:
-        """Free play: just accumulate score."""
+        """Free play: accumulate score. Check target if set."""
         player.score += throw.score
+        if self.state.target_score and player.score >= self.state.target_score:
+            self.state.winner = player.name
+            self.state.phase = GamePhase.GAME_OVER
+            logger.info("Free Play winner: %s (reached %d)", player.name, self.state.target_score)
 
     # --- Turn Management ---
 
@@ -264,8 +277,25 @@ class GameEngine:
     def undo_last_throw(self) -> None:
         """Undo the last registered throw."""
         if self._undo_stack:
+            self._redo_stack.append(self.state.model_copy(deep=True))
             self.state = self._undo_stack.pop()
             logger.info("Undo performed")
+
+    def redo(self) -> None:
+        """Redo the last undone action."""
+        if self._redo_stack:
+            self._undo_stack.append(self.state.model_copy(deep=True))
+            self.state = self._redo_stack.pop()
+            logger.info("Redo performed")
+
+    def toggle_pause(self) -> None:
+        """Toggle between PLAYING and PAUSED."""
+        if self.state.phase == GamePhase.PLAYING:
+            self.state.phase = GamePhase.PAUSED
+            logger.info("Game paused")
+        elif self.state.phase == GamePhase.PAUSED:
+            self.state.phase = GamePhase.PLAYING
+            logger.info("Game resumed")
 
     def end_game(self) -> None:
         """End the current game and reset to idle state."""
@@ -284,3 +314,4 @@ class GameEngine:
         if len(self._undo_stack) >= self._max_undo:
             self._undo_stack.pop(0)
         self._undo_stack.append(self.state.model_copy(deep=True))
+        self._redo_stack.clear()  # New action invalidates redo history

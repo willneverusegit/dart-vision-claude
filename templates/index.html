@@ -232,6 +232,7 @@
                     </div>
                     <div class="game-controls__secondary">
                         <button id="btn-undo" class="btn btn--warning">Undo</button>
+                        <button id="btn-pause" class="btn btn--secondary">Pause</button>
                         <button id="btn-remove-darts" class="btn btn--secondary">Darts entfernen</button>
                     </div>
                     <div class="game-controls__destructive">
@@ -265,6 +266,7 @@
                 <option value="701">701</option>
             </select>
             <input id="player-names" type="text" class="input" placeholder="Spieler (kommagetrennt)" value="Spieler 1, Spieler 2">
+            <input id="target-score" type="number" class="input" placeholder="Zielscore" min="100" max="10000" style="display:none;width:100px;" title="Erster Spieler der diesen Score erreicht gewinnt">
             <select id="cricket-variant" class="select" title="Cricket-Variante" style="display:none;">
                 <option value="standard">Standard</option>
                 <option value="cut_throat">Cut Throat</option>
@@ -278,8 +280,9 @@
 
     <!-- Winner Modal -->
     <div id="winner-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="winner-text" style="display: none;">
-        <div class="modal__content">
+        <div class="modal__content" style="max-width:500px;">
             <h2 id="winner-text" class="modal__title">Gewinner!</h2>
+            <div id="game-stats" style="margin:16px 0;text-align:left;font-size:0.85rem;"></div>
             <button id="btn-close-modal" class="btn btn--accent">OK</button>
         </div>
     </div>

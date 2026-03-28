@@ -16,6 +16,7 @@ class GamePhase(str, Enum):
     """Game state machine phases."""
     IDLE = "idle"
     PLAYING = "playing"
+    PAUSED = "paused"
     GAME_OVER = "game_over"
 
 
@@ -53,6 +54,7 @@ class GameState(BaseModel):
     starting_score: int = 501
     double_in: bool = False
     cricket_variant: CricketVariant = CricketVariant.STANDARD
+    target_score: int | None = None  # Free Play: first to reach this score wins
     winner: str | None = None
 
     @property
@@ -119,4 +121,24 @@ class GameState(BaseModel):
             "checkout": self._get_checkout_suggestion(),
             "double_in": self.double_in,
             "cricket_variant": self.cricket_variant.value,
+            "target_score": self.target_score,
+            "stats": self._compute_stats() if self.phase == GamePhase.GAME_OVER else None,
         }
+
+    def _compute_stats(self) -> dict:
+        """Compute end-of-game statistics for all players."""
+        stats = {}
+        for p in self.players:
+            all_throws = [t for turn in p.throws_history for t in turn]
+            scores = [t.score for t in all_throws]
+            turns = p.throws_history
+            turn_totals = [sum(t.score for t in turn) for turn in turns if turn]
+            stats[p.name] = {
+                "total_darts": len(all_throws),
+                "total_turns": len(turns),
+                "avg_per_dart": round(sum(scores) / len(scores), 1) if scores else 0,
+                "avg_per_turn": round(sum(turn_totals) / len(turn_totals), 1) if turn_totals else 0,
+                "highest_turn": max(turn_totals) if turn_totals else 0,
+                "highest_dart": max(scores) if scores else 0,
+            }
+        return stats

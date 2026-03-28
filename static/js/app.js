@@ -80,14 +80,21 @@ class DartApp {
         const btnNewGame = document.getElementById("btn-new-game");
         if (btnNewGame) btnNewGame.addEventListener("click", () => this._newGame());
 
-        // Show/hide cricket variant based on mode selection
+        // Show/hide mode-specific options
         const gameModeSelect = document.getElementById("game-mode");
         const cricketVarSelect = document.getElementById("cricket-variant");
-        if (gameModeSelect && cricketVarSelect) {
-            gameModeSelect.addEventListener("change", () => {
-                cricketVarSelect.style.display = gameModeSelect.value === "cricket" ? "" : "none";
-            });
+        const targetScoreInput = document.getElementById("target-score");
+        if (gameModeSelect) {
+            const updateModeUI = () => {
+                if (cricketVarSelect) cricketVarSelect.style.display = gameModeSelect.value === "cricket" ? "" : "none";
+                if (targetScoreInput) targetScoreInput.style.display = gameModeSelect.value === "free" ? "" : "none";
+            };
+            gameModeSelect.addEventListener("change", updateModeUI);
         }
+
+        // Pause
+        const btnPause = document.getElementById("btn-pause");
+        if (btnPause) btnPause.addEventListener("click", () => this._togglePause());
 
         // Undo
         const btnUndo = document.getElementById("btn-undo");
@@ -1341,6 +1348,7 @@ class DartApp {
 
     _updateState(state) {
         this.state = state;
+        this._lastState = state;
         this.scoreboard.update(state);
 
         const turnTotalEl = document.getElementById("turn-total");
@@ -1396,14 +1404,40 @@ class DartApp {
         const text = document.getElementById("winner-text");
         if (modal && text) {
             text.textContent = name + " gewinnt!";
+            this._renderStats();
             modal.style.display = "flex";
             modal.classList.add("winner-celebration");
             this._playSound("victory");
             this._spawnConfetti(modal);
-            setTimeout(() => {
-                modal.classList.remove("winner-celebration");
-                modal.style.display = "none";
-            }, 6000);
+        }
+    }
+
+    _renderStats() {
+        const el = document.getElementById("game-stats");
+        if (!el || !this._lastState || !this._lastState.stats) return;
+        while (el.firstChild) el.removeChild(el.firstChild);
+        const stats = this._lastState.stats;
+        for (const [name, s] of Object.entries(stats)) {
+            const div = document.createElement("div");
+            div.style.cssText = "margin-bottom:10px;padding:8px;background:rgba(255,255,255,0.05);border-radius:6px;";
+            const title = document.createElement("div");
+            title.style.cssText = "font-weight:bold;color:var(--accent);margin-bottom:4px;";
+            title.textContent = name;
+            div.appendChild(title);
+            const info = document.createElement("div");
+            info.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;font-size:0.8rem;color:var(--text-secondary);";
+            const items = [
+                ["Darts", s.total_darts], ["Runden", s.total_turns],
+                ["Avg/Dart", s.avg_per_dart], ["Avg/Runde", s.avg_per_turn],
+                ["Beste Runde", s.highest_turn], ["Bester Dart", s.highest_dart],
+            ];
+            items.forEach(([label, val]) => {
+                const span = document.createElement("span");
+                span.textContent = label + ": " + val;
+                info.appendChild(span);
+            });
+            div.appendChild(info);
+            el.appendChild(div);
         }
     }
 
@@ -1450,6 +1484,7 @@ class DartApp {
                     mode, players, starting_score: startingScore,
                     double_in: doubleIn,
                     cricket_variant: cricketVariant,
+                    target_score: mode === "free" ? (parseInt(document.getElementById("target-score")?.value) || null) : null,
                 }),
             });
             if (!response.ok) { this._showError(`Fehler: ${response.status}`); return; }
@@ -1489,6 +1524,19 @@ class DartApp {
             this._renderCandidates();
         } catch (e) {
             console.error("Next player error:", e);
+        }
+    }
+
+    async _togglePause() {
+        try {
+            const response = await fetch("/api/game/pause", { method: "POST" });
+            if (!response.ok) { this._showError(`Fehler: ${response.status}`); return; }
+            const data = await response.json();
+            this._updateState(data);
+            const btn = document.getElementById("btn-pause");
+            if (btn) btn.textContent = data.phase === "paused" ? "Weiter" : "Pause";
+        } catch (e) {
+            console.error("Pause error:", e);
         }
     }
 

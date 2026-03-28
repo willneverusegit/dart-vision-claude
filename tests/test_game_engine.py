@@ -76,15 +76,13 @@ class TestX01:
         state = engine.get_state()
         assert state["darts_thrown"] == 0  # Turn archived, current_turn cleared
 
-    def test_two_player_manual_switch(self, engine):
-        """After 3 darts, player must manually be advanced via next_player()."""
+    def test_two_player_auto_advance(self, engine):
+        """After 3 darts, player auto-advances to next player."""
         engine.new_game(mode="x01", players=["Alice", "Bob"], starting_score=501)
         assert engine.get_state()["current_player"] == "Alice"
         for _ in range(3):
             engine.register_throw(_throw(20, 20, 1, "single"))
-        # Turn completed but player not yet switched (by design)
-        # User must call next_player() or remove-darts
-        engine.next_player()
+        # Auto-advance: after 3 darts, now Bob's turn
         assert engine.get_state()["current_player"] == "Bob"
 
     def test_301_game(self, engine):
@@ -198,10 +196,19 @@ class TestCricket:
     def test_cricket_win_all_closed_highest_score(self, engine):
         """Player wins when all numbers closed and score >= all opponents."""
         engine.new_game(mode="cricket", players=["Alice", "Bob"])
-        # Alice closes all 7 numbers with triples
-        for sector in [15, 16, 17, 18, 19, 20]:
+        # Alice's turn 1: close 15, 16, 17 (3 triples = 3 darts → auto-advance to Bob)
+        for sector in [15, 16, 17]:
             engine.register_throw(_throw(sector * 3, sector, 3, "triple"))
-        # Bull needs special handling: triple doesn't exist, use 3 singles
+        # Bob's turn 1: 3 irrelevant throws (auto-advance back to Alice)
+        for _ in range(3):
+            engine.register_throw(_throw(1, 1, 1, "single"))
+        # Alice's turn 2: close 18, 19, 20
+        for sector in [18, 19, 20]:
+            engine.register_throw(_throw(sector * 3, sector, 3, "triple"))
+        # Bob's turn 2
+        for _ in range(3):
+            engine.register_throw(_throw(1, 1, 1, "single"))
+        # Alice's turn 3: close Bull (3 singles)
         engine.register_throw(_throw(25, 25, 1, "outer_bull"))
         engine.register_throw(_throw(25, 25, 1, "outer_bull"))
         engine.register_throw(_throw(25, 25, 1, "outer_bull"))

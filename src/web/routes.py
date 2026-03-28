@@ -300,9 +300,12 @@ def setup_routes(app_state: dict) -> APIRouter:
         cricket_variant = body.get("cricket_variant", "standard")
         if cricket_variant not in ("standard", "cut_throat"):
             cricket_variant = "standard"
+        target_score = body.get("target_score")
+        if target_score is not None:
+            target_score = int(target_score) if isinstance(target_score, (int, float)) else None
         engine.new_game(mode=mode, players=players, starting_score=starting_score,
                         double_in=double_in, starting_scores=starting_scores,
-                        cricket_variant=cricket_variant)
+                        cricket_variant=cricket_variant, target_score=target_score)
         state = engine.get_state()
         em = app_state.get("event_manager")
         if em:
@@ -330,6 +333,19 @@ def setup_routes(app_state: dict) -> APIRouter:
             em.broadcast_sync("game_state", state)
         return state
 
+    @router.post("/api/game/redo")
+    async def redo_throw() -> dict:
+        """Redo the last undone action."""
+        engine = app_state.get("game_engine")
+        if not engine:
+            return {"error": "No game engine"}
+        engine.redo()
+        state = engine.get_state()
+        em = app_state.get("event_manager")
+        if em:
+            em.broadcast_sync("game_state", state)
+        return state
+
     @router.post("/api/game/next-player")
     async def next_player() -> dict:
         """Advance to the next player."""
@@ -337,6 +353,19 @@ def setup_routes(app_state: dict) -> APIRouter:
         if not engine:
             return {"error": "No game engine"}
         engine.next_player()
+        state = engine.get_state()
+        em = app_state.get("event_manager")
+        if em:
+            em.broadcast_sync("game_state", state)
+        return state
+
+    @router.post("/api/game/pause")
+    async def toggle_pause() -> dict:
+        """Toggle game pause/resume."""
+        engine = app_state.get("game_engine")
+        if not engine:
+            return {"error": "No game engine"}
+        engine.toggle_pause()
         state = engine.get_state()
         em = app_state.get("event_manager")
         if em:

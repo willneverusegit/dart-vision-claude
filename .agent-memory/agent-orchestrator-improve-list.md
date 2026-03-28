@@ -32,7 +32,7 @@
 - [x] **5. Leading-Player Glow** + Animated Score-Counter — commit c18d0f6
 - [x] **6. Sektor-Highlight** bei Treffer auf SVG-Board — commit c18d0f6
 - [x] **7. Double-In Checkbox** in Game-Setup UI + API — commit c18d0f6
-- [ ] **8. Spieleinstellungen erweitern** (Handicap, Cricket-Varianten)
+- [x] **8. Spieleinstellungen erweitern** (Handicap per Player, Cricket Cut Throat) — commit 5635496
 
 ## Woche 3: Spiellogik + Polish
 
