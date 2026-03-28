@@ -50,11 +50,16 @@ class DartPipeline:
         marker_size_mm: float | None = None,
         marker_spacing_mm: float | None = None,
         diff_threshold: int | None = None,
+        target_fps: int | None = None,
     ) -> None:
         # Ensure OpenCV uses all available CPU cores
         cv2.setNumThreads(0)
 
         self.camera_src = camera_src
+        # Configurable target FPS (default 30, lower for weak hardware)
+        self._target_fps = target_fps if target_fps is not None else _TARGET_FPS
+        self._frame_interval_s = 1.0 / self._target_fps
+        self._frame_stale_threshold_s = self._frame_interval_s * 1.5
         self.marker_size_mm = marker_size_mm
         self.marker_spacing_mm = marker_spacing_mm
         self.on_dart_detected = on_dart_detected
@@ -112,6 +117,11 @@ class DartPipeline:
 
         # Motion overlay toggle
         self.show_overlay_motion = False
+
+        # Emergency resolution: downscale ROI when too many frames dropped
+        self._emergency_mode = False
+        self._emergency_drop_threshold = 30  # consecutive drops to trigger
+        self._consecutive_drops = 0
 
         # Camera focus quality threshold (Laplacian variance)
         self._focus_quality_threshold: float = 50.0
@@ -236,9 +246,22 @@ class DartPipeline:
         # C1: Skip expensive analysis when pipeline is falling behind schedule.
         # If more than FRAME_STALE_THRESHOLD_S has elapsed since we started
         # capturing (e.g. due to prior processing overhead), discard this frame.
-        if time.monotonic() - t_capture > FRAME_STALE_THRESHOLD_S:
+        if time.monotonic() - t_capture > self._frame_stale_threshold_s:
             self._dropped_frames += 1
+            self._consecutive_drops += 1
+            if not self._emergency_mode and self._consecutive_drops >= self._emergency_drop_threshold:
+                self._emergency_mode = True
+                logger.warning("Emergency mode ON: too many dropped frames, downscaling ROI")
             return None
+        self._consecutive_drops = 0
+
+        # Queue-aware: skip detection when camera queue is backed up
+        try:
+            qp = getattr(self.camera, "queue_pressure", None)
+            if qp is not None and isinstance(qp, (int, float)) and qp > 0.8 and self._motion_filter.is_idle:
+                return None
+        except (TypeError, AttributeError):
+            pass
 
         # Frame-skip in idle: every 2nd frame when idle for a while
         self._frame_counter += 1
@@ -251,8 +274,12 @@ class DartPipeline:
 
         # 1) Combined remap to ROI board space
         roi_source = self.remapper.remap(frame)
-        if roi_source.shape[:2] != (self.roi_processor.roi_size[1], self.roi_processor.roi_size[0]):
-            roi_source = cv2.resize(roi_source, self.roi_processor.roi_size)
+        target_size = self.roi_processor.roi_size
+        if self._emergency_mode:
+            # Downscale to 50% to reduce CPU load
+            target_size = (target_size[0] // 2, target_size[1] // 2)
+        if roi_source.shape[:2] != (target_size[1], target_size[0]):
+            roi_source = cv2.resize(roi_source, target_size)
 
         # 2) Grayscale + local contrast enhancement
         gray = cv2.cvtColor(roi_source, cv2.COLOR_BGR2GRAY) if len(roi_source.shape) == 3 else roi_source
@@ -270,7 +297,12 @@ class DartPipeline:
         # 2b) Advance cooldown timer
         self.dart_detector.tick()
 
-        # 3) Motion detection
+        # 3) Motion detection — adapt threshold for low light
+        if brightness > 0 and brightness < 80:
+            # Low light: raise threshold to avoid noise-triggered motion
+            self.motion_detector.set_threshold(max(150, self.motion_detector.threshold))
+        elif brightness >= 120 and self.motion_detector.threshold > 80:
+            self.motion_detector.set_threshold(80)
         motion_mask, has_motion = self.motion_detector.detect(enhanced)
         self._last_motion_mask = motion_mask
 

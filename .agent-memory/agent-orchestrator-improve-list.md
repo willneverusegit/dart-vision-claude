@@ -47,9 +47,9 @@
 - [x] **1. WLAN-Latenz-Profiling** pro Kamera (get_latency_stats API) — commit 54c9a76
 - [x] **2. Vibrations-tolerante Depth-Tolerance** (Z-Varianz → adaptive Tolerance) — commit 54c9a76
 - [x] **3. Kalibrierungs-Kette: Blocking** (stale pair wird uebersprungen) — commit 54c9a76
-- [ ] **4. UI-Feedback bei Kamera-Degradation** (Single-Cam Fallback sichtbar)
-- [ ] **5. Reprojections-Fehler pro Kamera kalibrieren** (statt global 20px)
-- [ ] **6. Frame-Sync Re-Synchronisation** (alle 10s, Timestamp-Drift verhindern)
+- [x] **4. UI-Feedback bei Kamera-Degradation** (Source Badge: Stereo/1-Cam) — commit 0828e69
+- [x] **5. Reprojections-Fehler pro Kamera** (calibration_rms skaliert max_reproj) — commit 0828e69
+- [x] **6. Frame-Sync Re-Synchronisation** (stale Buffer alle 10s clearen) — commit 0828e69
 
 ---
 

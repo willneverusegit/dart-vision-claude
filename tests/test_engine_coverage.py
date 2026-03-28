@@ -40,12 +40,14 @@ class TestEngineCoverage:
         """Cricket: already closed number scores if opponents not closed."""
         engine = GameEngine()
         engine.new_game(mode="cricket", players=["Alice", "Bob"])
-        # Close 20 with triple
+        # Alice turn 1: Close 20, 19, 18 (auto-advance to Bob after 3 darts)
         engine.register_throw({"score": 60, "sector": 20, "multiplier": 3, "ring": "triple"})
-        # Complete turn
         engine.register_throw({"score": 57, "sector": 19, "multiplier": 3, "ring": "triple"})
         engine.register_throw({"score": 54, "sector": 18, "multiplier": 3, "ring": "triple"})
-        # Next turn: score on closed 20
+        # Bob turn 1: 3 irrelevant throws (auto-advance back to Alice)
+        for _ in range(3):
+            engine.register_throw({"score": 1, "sector": 1, "multiplier": 1, "ring": "single"})
+        # Alice turn 2: score on closed 20 (Bob hasn't closed it)
         engine.register_throw({"score": 20, "sector": 20, "multiplier": 1, "ring": "single"})
         state = engine.get_state()
         alice = state["players"][0]
