@@ -1,29 +1,36 @@
 # Letzte Session
 
-*Datum: 2026-03-25 12:00-15:00*
+*Datum: 2026-03-28 (ganztaegig)*
 *Agent: Claude Opus 4.6 (Claude Code)*
 
 ## Was wurde gemacht
-- **258 Coverage-Tests committed+pushed** (6 Dateien: calibration, main, multi-cam, pipeline, remapping, stereo)
-- **Code Review 85/100** durchgefuehrt, code-reviews.json + quality-score.json erstmalig befuellt
-- **Self-Improve Loop** auf self-improve-loop Plugin: 4 Iterationen, 11 Fixes (Rollback, Fallbacks, Robustheit)
-- **Self-Improving Agent** auf dart-vision-claude gestartet: T001 erledigt (10 lifespan()-Tests, commit cbf7108)
-- **tasks.json** erstellt mit 3 Tasks (T001 done, T002+T003 pending)
+- **5-Agent Brainstorming** (CV-Pipeline, Multi-Cam, UI/UX, Game Logic, Hardware) → Staerken/Schwaechen-Analyse
+- **Woche 1 komplett:** 5 Single-Cam Robustheit-Fixes (min_elongation, CLAHE conditional, Vibrations-Filter, dynamic settle, Kalibrierungs-Script)
+- **Woche 2 komplett:** 8 UI-Begeisterungs-Features (Hit-Explosion, Score-Popup, Sound-System, Confetti, Leading-Glow, Sektor-Flash, Double-In, Handicap+CutThroat)
+- **Woche 3 komplett:** 5 Spiellogik-Features (Auto-Advance, Stats-Panel, Free-Play-Target, Pause, Redo)
+- **5 Commits** gepusht, 318 Game+Routes Tests + 184 Pipeline Tests bestanden
 
 ## Offene Punkte
-- T002: routes.py Coverage 81% → 85%+ (15+ neue Tests)
-- T003: Quality Gate Baseline etablieren (nach T002)
-- T004: Board-Pose Hardware-Rekalibrierung (solvePnP-Fix)
-- T005: E2E-Tests mit echten Videoclips (Ground-Truth-Annotation)
-- T006: Stop-Hook Konfiguration fixen (stop_hook_active=false)
+- W4: Multi-Cam Verbesserungen (6 Tasks offen)
+  - WLAN-Latenz-Profiling pro Kamera
+  - Vibrations-tolerante Depth-Tolerance
+  - Kalibrierungs-Kette Blocking statt Warning
+  - UI-Feedback bei Kamera-Degradation
+  - Reprojections-Fehler pro Kamera kalibrieren
+  - Frame-Sync Re-Synchronisation
+- Hardware Quick-Wins (4 Tasks offen)
+  - Target-FPS konfigurierbar
+  - Emergency Resolution Mode
+  - Motion-Threshold adaptiv
+  - Queue-Aware Detection
 
 ## Naechste Schritte
-1. T002 mit self-improving-agent ausfuehren (routes.py Coverage)
-2. T003 Quality Gate laufen lassen
-3. Board-Pose auf Hardware neu kalibrieren
+1. Woche 4 Multi-Cam Tasks (WLAN-Latenz-Profiling zuerst)
+2. Threshold-Kalibrierung auf echten Videos laufen lassen
+3. UI visuell testen im Browser
 
 ## Statistik
-- Iterationen: 1 (T001 via self-improving-agent)
-- Tests: 268 neue Tests diese Session (258 + 10 lifespan)
-- Code-Quality: 85/100 (Baseline)
-- Test-Health: noch nicht gemessen
+- 18 Features implementiert
+- 5 Commits (fda3cf1, 1880e95, c18d0f6, 5635496, 26fb28a)
+- 0 Regressionen
+- Checkliste: .agent-memory/agent-orchestrator-improve-list.md

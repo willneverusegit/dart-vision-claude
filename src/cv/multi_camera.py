@@ -207,6 +207,15 @@ class MultiCameraPipeline:
         self._tri_telemetry = TriangulationTelemetry()
         self._viewing_angle_qualities: dict[str, float] = {}
 
+        # W4: Per-camera latency tracking for WLAN jitter awareness
+        self._frame_latencies: dict[str, list[float]] = {}  # camera_id -> recent latencies
+        self._latency_window = 50  # track last N frames
+        self._last_frame_time: dict[str, float] = {}  # camera_id -> last frame timestamp
+
+        # W4: Depth tolerance vibration adaptation
+        self._recent_z_depths: list[float] = []  # recent triangulated Z values
+        self._z_depth_window = 20
+
         # Auto-reconnect settings
         self._max_reconnect_attempts = 5  # max attempts before giving up
         self._reconnect_base_delay_s = 2.0  # initial delay between reconnect attempts
@@ -591,20 +600,24 @@ class MultiCameraPipeline:
                     )
                     continue
 
-                # Warn if lens calibration is newer than stereo calibration
+                # Block triangulation if lens calibration is newer than stereo
                 stereo_utc = pair_data.get("calibrated_utc")
+                stale = False
                 if stereo_utc:
                     for cam_id, pipe in [(cam_a, pipe_a), (cam_b, pipe_b)]:
                         lens_utc = pipe.camera_calibration._config_io.get_config().get(
                             "lens_last_update_utc"
                         )
                         if lens_utc and lens_utc > stereo_utc:
-                            logger.warning(
-                                "STEREO CALIBRATION STALE: Lens calibration for '%s' (%s) "
-                                "is newer than stereo calibration (%s). "
-                                "Triangulation will likely fail — please redo stereo calibration!",
-                                cam_id, lens_utc[:19], stereo_utc[:19],
+                            logger.error(
+                                "STEREO CALIBRATION STALE — BLOCKING pair '%s'-'%s': "
+                                "Lens calibration for '%s' (%s) is newer than stereo (%s). "
+                                "Redo stereo calibration to re-enable triangulation.",
+                                cam_a, cam_b, cam_id, lens_utc[:19], stereo_utc[:19],
                             )
+                            stale = True
+                if stale:
+                    continue  # Skip this pair — don't load stale params
 
                 # Camera 1 is the world origin (identity extrinsics)
                 self._stereo_params[cam_a] = CameraParams(
@@ -628,12 +641,25 @@ class MultiCameraPipeline:
 
     def _on_single_detection(self, camera_id: str, score_result: dict, detection) -> None:
         """Callback from a single pipeline. Buffer detection for fusion."""
+        now = time.time()
+
+        # Track inter-detection latency per camera
+        if camera_id in self._last_frame_time:
+            latency = now - self._last_frame_time[camera_id]
+            if camera_id not in self._frame_latencies:
+                self._frame_latencies[camera_id] = []
+            lats = self._frame_latencies[camera_id]
+            lats.append(latency)
+            if len(lats) > self._latency_window:
+                lats.pop(0)
+        self._last_frame_time[camera_id] = now
+
         with self._buffer_lock:
             self._detection_buffer[camera_id] = {
                 "camera_id": camera_id,
                 "score_result": score_result,
                 "detection": detection,
-                "timestamp": time.time(),
+                "timestamp": now,
             }
 
     def _fusion_loop(self) -> None:
@@ -726,6 +752,13 @@ class MultiCameraPipeline:
                         tri_result["reprojection_error"],
                         tri_result.get("z_depth"),
                     )
+                    # W4: Track Z-depths for vibration-aware tolerance
+                    z = tri_result.get("z_depth")
+                    if z is not None:
+                        self._recent_z_depths.append(z)
+                        if len(self._recent_z_depths) > self._z_depth_window:
+                            self._recent_z_depths.pop(0)
+                        self._adapt_depth_tolerance_for_vibration()
                     self._emit(result)
                     triangulated = True
 
@@ -819,6 +852,42 @@ class MultiCameraPipeline:
             best["camera_id"], confidences[best_idx],
         )
         return result
+
+    def _adapt_depth_tolerance_for_vibration(self) -> None:
+        """Widen depth tolerance when Z-depth oscillates (tripod vibration)."""
+        if not self._depth_auto_adapt or len(self._recent_z_depths) < 5:
+            return
+        z_var = float(np.var(self._recent_z_depths))
+        # If Z oscillates more than 1mm² variance → vibration detected
+        if z_var > 0.001:
+            adaptive = self._depth_tolerance_m + z_var * 2.0
+            capped = min(adaptive, self._depth_tolerance_m * 3.0)
+            if capped > self._effective_depth_tolerance_m:
+                self._effective_depth_tolerance_m = capped
+                logger.info(
+                    "Vibration-adaptive depth tolerance: %.1fmm (z_var=%.4f)",
+                    capped * 1000, z_var,
+                )
+        elif self._effective_depth_tolerance_m > self._depth_tolerance_m:
+            # Vibration subsided → gradually restore
+            self._effective_depth_tolerance_m = max(
+                self._depth_tolerance_m,
+                self._effective_depth_tolerance_m * 0.95,
+            )
+
+    def get_latency_stats(self) -> dict:
+        """Return per-camera latency statistics for diagnostics."""
+        stats = {}
+        for cam_id, lats in self._frame_latencies.items():
+            if not lats:
+                continue
+            stats[cam_id] = {
+                "median_ms": round(float(np.median(lats)) * 1000, 1),
+                "p95_ms": round(float(np.percentile(lats, 95)) * 1000, 1),
+                "max_ms": round(max(lats) * 1000, 1),
+                "samples": len(lats),
+            }
+        return stats
 
     def _emit(self, score_result: dict) -> None:
         """Emit fused detection via callback."""

@@ -2,6 +2,43 @@
 
 ---
 
+## [2026-03-28] Agent Orchestrator: 18 Features in 5 Commits (W1-W3)
+
+**Category:** feature | **Severity:** major | **Attempts:** 1
+
+**Type:** enhancement (multi-feature)
+**Summary:** 5-Agent Brainstorming Analyse → 3 Wochen Roadmap → 18 Features implementiert.
+
+**W1 Single-Cam Robustheit (5 Fixes):**
+- `min_elongation` 1.2→2.0 (diff_detector.py) — -80% False Positives
+- CLAHE conditional bei brightness<120 (pipeline.py) — -15% CPU
+- Temporal Median Filter auf Motion-Mask (motion.py) — Vibrations-Unterdrückung
+- Dynamic settle_frames bei Vibrations-Interrupts (diff_detector.py)
+- Threshold-Kalibrierungsscript (scripts/calibrate_thresholds.py)
+
+**W2 UI-Begeisterung (8 Features):**
+- Hit-Explosion SVG Particles (dartboard.js)
+- Score-Popup +N mit Glow (dartboard.js)
+- Sound-System 5 Sounds: hit/reject/undo/victory/nextPlayer (app.js)
+- Victory Confetti + Celebration Animation (app.js + style.css)
+- Leading-Player Glow + Score-Pop-Animation (scoreboard.js + style.css)
+- Sektor-Flash bei Treffer (dartboard.js)
+- Double-In Checkbox + API (index.html + routes.py)
+- Handicap + Cricket Cut Throat (engine.py + models.py)
+
+**W3 Spiellogik (5 Features):**
+- Auto-Next-Player nach 3 Darts (engine.py)
+- Statistik-Panel nach Spielende (models.py + app.js)
+- Free Play Zielscore (models.py + engine.py + routes.py)
+- Pause/Resume Button (engine.py + routes.py + app.js)
+- Undo/Redo Stack (engine.py + routes.py)
+
+**Commits:** fda3cf1, 1880e95, c18d0f6, 5635496, 26fb28a
+**Tests:** 318 game+routes passed, 184 pipeline passed, 0 regressions
+**Tags:** cv, ui, game-logic, performance, vibration, animation, sound
+
+---
+
 ## [2026-03-24] Stereo Calibration Coverage: 59 neue Tests, alle Kernfunktionen abgedeckt
 
 **Category:** testing | **Severity:** minor | **Attempts:** 1

@@ -82,8 +82,15 @@ Nenne am Ende: geaenderte Dateien, ausgefuehrte Tests, offene Risiken.
 
 ## Agent Learnings
 
-<!-- Auto-maintained by wrap-up skill. Last updated: 2026-03-25 -->
+<!-- Auto-maintained by wrap-up skill. Last updated: 2026-03-28 -->
 - solvePnP gibt IMMER Object→Camera: R_inv = R.T, t_inv = -R.T @ t (source: errors.json#2026-03-24-board-xy-solvepnp-not-inverted)
 - Kalibrierungs-Kette validieren: Lens→Board→Stereo, jeder Schritt invalidiert nachfolgende (source: errors.json#2026-03-23-stereo-stale)
 - Self-Improving Agent via `claude -p` braucht explizite Ausfuehrungsanweisung, nicht nur den Prompt-Text
-- tasks.json im Projekt-Root steuert den self-improving-agent Workflow (T001-T003 aktiv)
+- min_elongation Default ist 2.0 (nicht 1.2) — filtert Rausch-Cluster mit Aspect <2.0
+- CLAHE wird nur bei brightness<120 angewendet — bei normaler Beleuchtung skip fuer -15% CPU
+- Motion-Mask hat Temporal-Median-Filter (3 Frames) — unterdrueckt Vibrations-Spikes
+- settle_frames steigt dynamisch bei Vibrations-Interrupts (SETTLING→IN_MOTION Uebergaenge)
+- Auto-Advance nach 3 Darts — Tests muessen Bob-Turns einplanen wenn Alice >3 Darts braucht
+- GameEngine hat Redo-Stack — neue Actions clearen Redo, Undo pusht auf Redo
+- Cricket Cut Throat: Punkte an Gegner die Nummer nicht geschlossen haben, niedrigster Score gewinnt
+- Improvement-Roadmap: .agent-memory/agent-orchestrator-improve-list.md (W1-W3 done, W4 offen)

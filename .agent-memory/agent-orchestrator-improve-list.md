@@ -36,11 +36,11 @@
 
 ## Woche 3: Spiellogik + Polish
 
-- [ ] **1. Auto-Next-Player nach 3 Darts**
-- [ ] **2. Statistik-Panel nach Spielende** (AVG, Highest, Export)
-- [ ] **3. Free Play Zielscore** (z.B. "Erste zu 1000")
-- [ ] **4. Pause-Button**
-- [ ] **5. Undo/Redo verbessern** (Turn-Ebene, Redo)
+- [x] **1. Auto-Next-Player nach 3 Darts** — commit 26fb28a
+- [x] **2. Statistik-Panel nach Spielende** (Darts, Turns, AVG, Highest) — commit 26fb28a
+- [x] **3. Free Play Zielscore** (target_score, UI input) — commit 26fb28a
+- [x] **4. Pause-Button** (PAUSED phase, toggle API) — commit 26fb28a
+- [x] **5. Undo/Redo** (Redo-Stack, /api/game/redo) — commit 26fb28a
 
 ## Woche 4+: Multi-Cam (wenn Single stabil)
 

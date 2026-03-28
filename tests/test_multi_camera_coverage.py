@@ -411,8 +411,8 @@ class TestLoadExtrinsics:
                 mcp._load_extrinsics()
         assert len(mcp._stereo_params) == 0
 
-    def test_stale_stereo_warning(self):
-        """When lens calibration is newer than stereo, a warning should be logged."""
+    def test_stale_stereo_blocks_pair(self):
+        """When lens calibration is newer than stereo, the pair should be blocked."""
         configs = [
             {"camera_id": "cam_left", "src": 0},
             {"camera_id": "cam_right", "src": 1},
@@ -435,9 +435,10 @@ class TestLoadExtrinsics:
         }
         with patch("src.cv.multi_camera.get_board_transform", return_value=None):
             with patch("src.cv.multi_camera.get_stereo_pair", return_value=pair_data):
-                # Should not raise, just log warning
+                # Stale calibration should block the pair (not just warn)
                 mcp._load_extrinsics()
-        assert "cam_left" in mcp._stereo_params
+        # Pair blocked — cam_left should NOT be in stereo_params
+        assert "cam_left" not in mcp._stereo_params
 
 
 # ===========================================================================
