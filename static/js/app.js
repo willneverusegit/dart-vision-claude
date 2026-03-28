@@ -1289,6 +1289,16 @@ class DartApp {
             countdown.textContent = remaining + "s";
             info.appendChild(countdown);
 
+            // Source badge (multi-cam: triangulation vs single fallback)
+            if (candidate.source) {
+                const srcBadge = document.createElement("span");
+                srcBadge.className = "source-badge";
+                const isSingle = candidate.source.startsWith("single");
+                srcBadge.textContent = isSingle ? "1-Cam" : "Stereo";
+                srcBadge.style.cssText = `font-size:0.6rem;padding:1px 5px;border-radius:3px;margin-left:4px;background:${isSingle ? "rgba(255,165,0,0.3)" : "rgba(46,213,115,0.3)"};color:${isSingle ? "var(--warning)" : "var(--success)"}`;
+                info.appendChild(srcBadge);
+            }
+
             row.appendChild(info);
 
             // Buttons

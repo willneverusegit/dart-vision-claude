@@ -216,6 +216,10 @@ class MultiCameraPipeline:
         self._recent_z_depths: list[float] = []  # recent triangulated Z values
         self._z_depth_window = 20
 
+        # W4: Frame-sync re-synchronisation interval
+        self._last_sync_reset = time.time()
+        self._sync_reset_interval_s = 10.0  # re-sync every 10s
+
         # Auto-reconnect settings
         self._max_reconnect_attempts = 5  # max attempts before giving up
         self._reconnect_base_delay_s = 2.0  # initial delay between reconnect attempts
@@ -619,6 +623,10 @@ class MultiCameraPipeline:
                 if stale:
                     continue  # Skip this pair — don't load stale params
 
+                # Extract calibration RMS for per-camera reproj threshold
+                rms_a = getattr(intr_a, "rms", None)
+                rms_b = getattr(intr_b, "rms", None)
+
                 # Camera 1 is the world origin (identity extrinsics)
                 self._stereo_params[cam_a] = CameraParams(
                     camera_id=cam_a,
@@ -626,6 +634,7 @@ class MultiCameraPipeline:
                     dist_coeffs=intr_a.dist_coeffs,
                     R=np.eye(3, dtype=np.float64),
                     T=np.zeros((3, 1), dtype=np.float64),
+                    calibration_rms=rms_a,
                 )
                 # Camera 2: relative pose from stereo calibration (cam1 -> cam2)
                 self._stereo_params[cam_b] = CameraParams(
@@ -634,6 +643,7 @@ class MultiCameraPipeline:
                     dist_coeffs=intr_b.dist_coeffs,
                     R=np.array(pair_data["R"], dtype=np.float64).reshape(3, 3),
                     T=np.array(pair_data["T"], dtype=np.float64).reshape(3, 1),
+                    calibration_rms=rms_b,
                 )
                 logger.info(
                     "Loaded stereo params for pair '%s'--'%s'", cam_a, cam_b
@@ -666,6 +676,19 @@ class MultiCameraPipeline:
         """Periodically check detection buffer and fuse multi-camera results."""
         while self._running:
             time.sleep(0.05)  # 20Hz check rate
+            # Periodic re-sync: clear stale buffer entries to prevent drift
+            now = time.time()
+            if now - self._last_sync_reset > self._sync_reset_interval_s:
+                self._last_sync_reset = now
+                with self._buffer_lock:
+                    stale = [
+                        k for k, v in self._detection_buffer.items()
+                        if now - v["timestamp"] > self._max_time_diff_s * 2
+                    ]
+                    for k in stale:
+                        del self._detection_buffer[k]
+                    if stale:
+                        logger.debug("Sync reset: cleared %d stale buffer entries", len(stale))
             self._try_fuse()
 
     def _try_fuse(self) -> None:

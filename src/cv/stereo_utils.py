@@ -20,6 +20,7 @@ class CameraParams:
     dist_coeffs: np.ndarray        # Nx1
     R: np.ndarray                  # 3x3 rotation (world -> camera)
     T: np.ndarray                  # 3x1 translation (world -> camera)
+    calibration_rms: float | None = None  # Lens calibration RMS error (px)
 
     @property
     def projection_matrix(self) -> np.ndarray:
@@ -82,16 +83,23 @@ def triangulate_point(
         return TriangulationResult(np.zeros(3), float("inf"), False)
     point_3d = (pts_4d[:3, 0] / w).astype(np.float64)
 
-    # Reprojection error check
+    # Reprojection error check — adapt threshold per camera if calibration RMS known
     reproj_1 = _reproject(point_3d, cam1)
     reproj_2 = _reproject(point_3d, cam2)
     err_1 = np.linalg.norm(reproj_1 - np.array(pt1))
     err_2 = np.linalg.norm(reproj_2 - np.array(pt2))
     avg_error = float((err_1 + err_2) / 2.0)
 
-    valid = avg_error <= max_reproj_error and point_3d[2] > 0  # Z > 0 = in front of cameras
+    # Per-camera adaptive threshold: cameras with worse calibration get more tolerance
+    effective_max = max_reproj_error
+    if cam1.calibration_rms is not None or cam2.calibration_rms is not None:
+        rms_max = max(cam1.calibration_rms or 0, cam2.calibration_rms or 0)
+        if rms_max > 0.5:
+            effective_max = max(max_reproj_error, rms_max * 20)  # scale RMS to px tolerance
 
-    if avg_error > max_reproj_error:
+    valid = avg_error <= effective_max and point_3d[2] > 0  # Z > 0 = in front of cameras
+
+    if avg_error > effective_max:
         logger.debug(
             "Triangulation debug: pt1=%s pt1_undist=%s pt2=%s pt2_undist=%s "
             "3D=%s reproj1=%s(err=%.1f) reproj2=%s(err=%.1f) "
